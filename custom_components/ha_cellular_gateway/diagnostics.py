@@ -13,6 +13,17 @@ TO_REDACT = {
     "upstream_gateway",
     "upstream_ssid",
     "downstream_mac",
+    "management_address",
+    "downstream_address",
+    "transit_subnet",
+    "dhcp_start",
+    "dhcp_end",
+    "management_interface",
+    "upstream_interface",
+    "downstream_interface",
+    "api_bind",
+    "last_error",
+    "config",
 }
 
 

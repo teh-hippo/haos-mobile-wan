@@ -13,7 +13,8 @@
       "cannot_connect": "Unable to connect to the gateway app"
     },
     "abort": {
-      "already_configured": "This gateway is already configured"
+      "already_configured": "This gateway is already configured",
+      "cannot_connect": "Unable to connect to the gateway app"
     }
   }
 }

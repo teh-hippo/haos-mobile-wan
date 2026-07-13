@@ -16,6 +16,6 @@ class GatewayEntity(CoordinatorEntity[GatewayCoordinator]):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry_id)},
             name=DEFAULT_NAME,
-            manufacturer="Local",
-            model="HAOS cellular gateway prototype",
+            manufacturer="teh-hippo",
+            model="HAOS Mobile WAN",
         )

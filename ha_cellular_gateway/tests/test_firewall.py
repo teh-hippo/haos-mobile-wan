@@ -1,0 +1,84 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+from rootfs.app.gateway import GatewayEngine
+
+from helpers import FakeRunner, make_config, sysctl_values
+
+
+class FirewallTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.directory = tempfile.TemporaryDirectory()
+        self.runner = FakeRunner()
+        values = sysctl_values()
+        self.engine = GatewayEngine(
+            make_config(),
+            runner=self.runner,
+            read_text=lambda path: values[path],
+            state_path=Path(self.directory.name) / "state.json",
+        )
+
+    def tearDown(self) -> None:
+        self.directory.cleanup()
+
+    def test_firewall_is_scoped_and_protects_host(self) -> None:
+        self.engine.firewall.apply("enx001122334455")
+        commands = [" ".join(command) for command in self.runner.commands]
+
+        self.assertIn(
+            "iptables -I INPUT 1 -i enx001122334455 -j HA_CELLGW_LOCAL "
+            "-m comment --comment ha-cellgw:local-jump",
+            commands,
+        )
+        self.assertTrue(
+            any(
+                "HA_CELLGW_LOCAL -p udp --sport 68 --dport 67 -j ACCEPT"
+                in command
+                for command in commands
+            )
+        )
+        self.assertTrue(
+            any(
+                "HA_CELLGW_LOCAL -p icmp -j ACCEPT" in command
+                for command in commands
+            )
+        )
+        self.assertTrue(
+            any(
+                "HA_CELLGW_LOCAL -j DROP" in command
+                for command in commands
+            )
+        )
+        self.assertTrue(
+            any(
+                "-i enx001122334455 -o wlan0 -s 192.168.80.0/24"
+                in command
+                and "TCPMSS" in command
+                for command in commands
+            )
+        )
+        self.assertFalse(
+            any(
+                "INPUT 1 -i end0" in command
+                or "INPUT 1 -i wlan0" in command
+                for command in commands
+            )
+        )
+
+    def test_ipv6_is_blocked_on_downstream(self) -> None:
+        self.engine.firewall.apply("enx001122334455")
+        commands = [" ".join(command) for command in self.runner.commands]
+        self.assertIn(
+            "ip6tables -I INPUT 1 -i enx001122334455 -j HA_CELLGW6_LOCAL "
+            "-m comment --comment ha-cellgw:v6-local-jump",
+            commands,
+        )
+        self.assertIn(
+            "ip6tables -A HA_CELLGW6_LOCAL -j DROP",
+            commands,
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

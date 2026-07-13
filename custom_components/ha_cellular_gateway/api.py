@@ -48,8 +48,5 @@ class GatewayApi:
     async def reconcile(self) -> dict[str, Any]:
         return await self._request("POST", "/v1/reconcile")
 
-    async def seek(self) -> dict[str, Any]:
-        return await self._request("POST", "/v1/seek")
-
     async def set_mode(self, mode: str) -> dict[str, Any]:
         return await self._request("POST", "/v1/mode", {"mode": mode})

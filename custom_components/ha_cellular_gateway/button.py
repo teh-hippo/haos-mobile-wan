@@ -1,28 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 
 from . import GatewayConfigEntry
 from .entity import GatewayEntity
 
-
-@dataclass(frozen=True, kw_only=True)
-class GatewayButtonEntityDescription(ButtonEntityDescription):
-    action: str
-
-
 DESCRIPTIONS = (
-    GatewayButtonEntityDescription(
+    ButtonEntityDescription(
         key="reconcile",
-        name="Reconcile",
-        action="reconcile",
-    ),
-    GatewayButtonEntityDescription(
-        key="seek_hotspot",
-        name="Scan for hotspot",
-        action="seek",
+        name="Reapply gateway state",
     ),
 )
 
@@ -39,15 +25,12 @@ class GatewayButton(GatewayEntity, ButtonEntity):
         self,
         coordinator,
         entry_id: str,
-        description: GatewayButtonEntityDescription,
+        description: ButtonEntityDescription,
     ) -> None:
         super().__init__(coordinator, entry_id, description.key)
         self.entity_description = description
         self._attr_name = description.name
 
     async def async_press(self) -> None:
-        if self.entity_description.action == "reconcile":
-            await self.coordinator.api.reconcile()
-        else:
-            await self.coordinator.api.seek()
+        await self.coordinator.api.reconcile()
         await self.coordinator.async_request_refresh()

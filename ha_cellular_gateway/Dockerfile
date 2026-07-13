@@ -1,8 +1,16 @@
-ARG BUILD_FROM=ghcr.io/home-assistant/aarch64-base:3.22
-FROM ${BUILD_FROM}
+FROM ghcr.io/home-assistant/aarch64-base:3.22
+
+ARG BUILD_VERSION
+ARG BUILD_ARCH
+
+LABEL \
+    io.hass.version="${BUILD_VERSION}" \
+    io.hass.type="app" \
+    io.hass.arch="${BUILD_ARCH}"
+
+ENV PYTHONDONTWRITEBYTECODE=1
 
 RUN apk add --no-cache \
-    conntrack-tools \
     curl \
     dnsmasq \
     iproute2 \

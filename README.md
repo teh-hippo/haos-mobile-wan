@@ -1,6 +1,6 @@
 # HAOS Mobile WAN
 
-Home Assistant OS app for a redundant mobile WAN gateway.
+Home Assistant OS App for a vendor-neutral mobile WAN gateway.
 
 The app is intentionally safe by default:
 
@@ -14,7 +14,7 @@ The app is intentionally safe by default:
 
 - `end0`: unchanged Home Assistant management network;
 - `wlan0`: iPhone hotspot upstream, with no main-table default route;
-- USB Ethernet NIC: isolated downstream to a separate UniFi WAN profile;
+- USB Ethernet NIC: isolated downstream to a router WAN port;
 - policy routing table 201;
 - tagged `iptables-nft` rules through Docker's `DOCKER-USER`;
 - dnsmasq bound only to the downstream NIC;
@@ -41,7 +41,8 @@ In Home Assistant:
 4. Install **HAOS Mobile WAN**.
 
 Leave manual boot, disabled mode and dry-run enabled until every interface and
-address has been configured for the target HAOS host.
+address has been configured for the target HAOS host. Then follow the
+[commissioning guide](ha_cellular_gateway/DOCS.md).
 
 ## Development validation
 

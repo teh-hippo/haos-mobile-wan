@@ -32,9 +32,10 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: |
-          python -m py_compile \
+          PYTHONPATH=ha_cellular_gateway python -m py_compile \
             ha_cellular_gateway/rootfs/app/*.py \
             custom_components/ha_cellular_gateway/*.py
+          PYTHONPATH=ha_cellular_gateway/rootfs python -c "import app.main"
 
       - name: Validate JSON and YAML
         run: |
@@ -49,4 +50,31 @@ jobs:
           for pattern in ("*.yaml", "*.yml"):
               for path in Path(".").rglob(pattern):
                   yaml.safe_load(path.read_text(encoding="utf-8"))
+
+          app = yaml.safe_load(
+              Path("ha_cellular_gateway/config.yaml").read_text(encoding="utf-8")
+          )
+          integration = json.loads(
+              Path(
+                  "custom_components/ha_cellular_gateway/manifest.json"
+              ).read_text(encoding="utf-8")
+          )
+          assert app["version"] == integration["version"]
+          assert not Path(
+              "custom_components/ha_cellular_gateway/strings.json"
+          ).exists()
+          assert Path("ha_cellular_gateway/DOCS.md").exists()
+          assert Path("ha_cellular_gateway/translations/en.yaml").exists()
+
+          for path in Path("ha_cellular_gateway/rootfs/app").glob("*.py"):
+              line_count = len(path.read_text(encoding="utf-8").splitlines())
+              assert line_count <= 450, f"{path} has {line_count} lines"
+
+          dockerfile = Path(
+              "ha_cellular_gateway/Dockerfile"
+          ).read_text(encoding="utf-8")
+          assert "ARG BUILD_FROM" not in dockerfile
+          assert dockerfile.startswith(
+              "FROM ghcr.io/home-assistant/aarch64-base:"
+          )
           PY

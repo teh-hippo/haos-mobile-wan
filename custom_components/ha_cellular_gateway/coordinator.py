@@ -16,7 +16,7 @@ class GatewayCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hass,
             logger=__import__("logging").getLogger(__name__),
             name=DOMAIN,
-            update_interval=timedelta(seconds=5),
+            update_interval=timedelta(seconds=30),
         )
         self.api = api
 

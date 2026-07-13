@@ -1,5 +1,5 @@
 name: HAOS Mobile WAN
-version: "0.1.1"
+version: "0.2.0"
 slug: ha_cellular_gateway
 description: Redundant mobile WAN gateway engine for Home Assistant OS
 url: https://github.com/teh-hippo/haos-mobile-wan
@@ -7,9 +7,9 @@ arch:
   - aarch64
 startup: services
 boot: manual
+stage: experimental
 init: false
 host_network: true
-host_dbus: true
 hassio_api: true
 discovery:
   - ha_cellular_gateway
@@ -17,6 +17,8 @@ privileged:
   - NET_ADMIN
   - NET_RAW
 apparmor: true
+backup_exclude:
+  - dnsmasq.leases
 options:
   mode: disabled
   dry_run: true

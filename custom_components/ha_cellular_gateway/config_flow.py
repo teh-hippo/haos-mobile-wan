@@ -4,7 +4,7 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_URL
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
@@ -16,9 +16,14 @@ from .const import CONF_TOKEN, DEFAULT_NAME, DOMAIN
 class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
-    def _entry_for_url(self, url: str):
+    @staticmethod
+    def _normalize_url(url: str) -> str:
+        return url.rstrip("/")
+
+    def _entry_for_url(self, url: str) -> ConfigEntry | None:
+        normalized_url = self._normalize_url(url)
         for entry in self._async_current_entries(include_ignore=True):
-            if entry.data.get(CONF_URL) == url:
+            if self._normalize_url(str(entry.data.get(CONF_URL, ""))) == normalized_url:
                 return entry
         return None
 
@@ -32,7 +37,7 @@ class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            url = user_input[CONF_URL].rstrip("/")
+            url = self._normalize_url(user_input[CONF_URL])
             token = user_input[CONF_TOKEN]
             try:
                 await self._validate(url, token)
@@ -67,8 +72,12 @@ class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
         discovery_info: HassioServiceInfo,
     ) -> ConfigFlowResult:
         config: dict[str, Any] = discovery_info.config
-        url = f"http://{config['host']}:{config['port']}"
+        url = self._normalize_url(f"http://{config['host']}:{config['port']}")
         token = str(config["token"])
+        try:
+            await self._validate(url, token)
+        except GatewayApiError:
+            return self.async_abort(reason="cannot_connect")
         if entry := self._entry_for_url(url):
             return self.async_update_reload_and_abort(
                 entry,
@@ -81,10 +90,6 @@ class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
         self._abort_if_unique_id_configured(
             updates={CONF_URL: url, CONF_TOKEN: token}
         )
-        try:
-            await self._validate(url, token)
-        except GatewayApiError:
-            return self.async_abort(reason="cannot_connect")
         return self.async_create_entry(
             title=discovery_info.name or DEFAULT_NAME,
             data={CONF_URL: url, CONF_TOKEN: token},

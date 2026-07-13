@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from homeassistant.components.select import SelectEntity
-from homeassistant.exceptions import ServiceValidationError
-
 from . import GatewayConfigEntry
 from .entity import GatewayEntity
 
@@ -15,7 +13,7 @@ async def async_setup_entry(hass, entry: GatewayConfigEntry, async_add_entities)
 
 class GatewayModeSelect(GatewayEntity, SelectEntity):
     _attr_name = "Mode"
-    _attr_options = ["disabled", "trial", "active"]
+    _attr_options = ["disabled", "trial"]
 
     def __init__(self, coordinator, entry_id: str) -> None:
         super().__init__(coordinator, entry_id, "mode_control")
@@ -26,9 +24,5 @@ class GatewayModeSelect(GatewayEntity, SelectEntity):
         return mode if mode in self.options else None
 
     async def async_select_option(self, option: str) -> None:
-        if option == "active":
-            raise ServiceValidationError(
-                "Select active mode in the app options after a successful trial"
-            )
         await self.coordinator.api.set_mode(option)
         await self.coordinator.async_request_refresh()

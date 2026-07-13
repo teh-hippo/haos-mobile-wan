@@ -7,6 +7,11 @@
 - Fail closed when host safety inspection fails.
 - Persist trial deadlines across app restarts.
 - Cache health and safety status outside API requests.
+- Prevent duplicate optional integration entries when Supervisor discovery
+  updates a manually added connection.
+- Redact the optional integration URL from diagnostics output.
+- Keep the optional integration's mode entity readable in steady-state active
+  mode without allowing it to bypass the documented trial workflow.
 - Remove the non-functional hotspot scan and unused host D-Bus access.
 - Add translated options and a complete HAOS commissioning guide.
 - Split the gateway engine into focused configuration, safety, policy,

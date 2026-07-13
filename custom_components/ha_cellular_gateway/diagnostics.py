@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from homeassistant.components.diagnostics import async_redact_data
+from homeassistant.const import CONF_URL
 
 from . import GatewayConfigEntry
 from .const import CONF_TOKEN
@@ -8,6 +9,7 @@ from .const import CONF_TOKEN
 
 TO_REDACT = {
     CONF_TOKEN,
+    CONF_URL,
     "public_ip",
     "upstream_address",
     "upstream_gateway",
@@ -23,7 +25,6 @@ TO_REDACT = {
     "downstream_interface",
     "api_bind",
     "last_error",
-    "config",
 }
 
 

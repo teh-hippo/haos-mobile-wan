@@ -37,7 +37,7 @@ class GatewayApi:
                 )
                 data = await response.json()
         except (aiohttp.ClientError, TimeoutError, ValueError) as err:
-            raise GatewayApiError("Unable to communicate with gateway add-on") from err
+            raise GatewayApiError("Unable to communicate with gateway app") from err
         if response.status >= 400:
             raise GatewayApiError(str(data.get("error", f"HTTP {response.status}")))
         return data

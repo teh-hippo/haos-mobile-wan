@@ -2,7 +2,7 @@
 
 Home Assistant OS app for a redundant mobile WAN gateway.
 
-The add-on is intentionally safe by default:
+The app is intentionally safe by default:
 
 - manual boot;
 - `mode: disabled`;
@@ -34,7 +34,7 @@ install the optional custom integration.
 
 In Home Assistant:
 
-1. Open **Settings → Apps → App store**.
+1. Open **Settings > Apps > App store**.
 2. Open the menu and select **Repositories**.
 3. Add `https://github.com/teh-hippo/haos-mobile-wan`.
 4. Install **HAOS Mobile WAN**.

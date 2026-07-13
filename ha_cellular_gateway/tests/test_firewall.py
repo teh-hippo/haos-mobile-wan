@@ -4,7 +4,12 @@ from pathlib import Path
 
 from rootfs.app.gateway import GatewayEngine
 
-from helpers import FakeRunner, make_config, sysctl_values
+from helpers import (
+    FakeRunner,
+    install_realistic_firewall_state,
+    make_config,
+    sysctl_values,
+)
 
 
 class FirewallTests(unittest.TestCase):
@@ -104,6 +109,12 @@ class FirewallTests(unittest.TestCase):
 
         self.assertFalse(firewall.installed("enx001122334455"))
 
+    def test_installed_accepts_realistic_iptables_s_output(self) -> None:
+        firewall = self.engine.firewall
+        install_realistic_firewall_state(self.runner, firewall, "enx001122334455")
+
+        self.assertTrue(firewall.installed("enx001122334455"))
+
     def test_host_protection_rejects_unexpected_local_accept(self) -> None:
         firewall = self.engine.firewall
         firewall.netfilter.chain_exists = lambda family, chain: family == "iptables"
@@ -129,6 +140,12 @@ class FirewallTests(unittest.TestCase):
         ]
 
         self.assertFalse(firewall.host_protection_installed("enx001122334455"))
+
+    def test_host_protection_accepts_realistic_iptables_s_output(self) -> None:
+        firewall = self.engine.firewall
+        install_realistic_firewall_state(self.runner, firewall, "enx001122334455")
+
+        self.assertTrue(firewall.host_protection_installed("enx001122334455"))
 
 
 if __name__ == "__main__":

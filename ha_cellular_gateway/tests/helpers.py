@@ -41,6 +41,8 @@ class FakeRunner:
         self.policy_rules: list[dict[str, object]] = []
         self.policy_routes: list[dict[str, object]] = []
         self.fail_ip_forward = False
+        self.chain_listings: dict[tuple[str, str], str] = {}
+        self.rule_checks: set[tuple[str, tuple[str, ...], tuple[str, ...]]] = set()
 
     def run(
         self,
@@ -59,6 +61,10 @@ class FakeRunner:
             ["ip6tables", "-S", "INPUT"],
         ):
             return Result()
+        if len(args) == 3 and args[1] == "-S":
+            listing = self.chain_listings.get((args[0], args[2]))
+            if listing is not None:
+                return Result(stdout=listing)
         if len(args) >= 3 and args[1] == "-S" and args[2].startswith("HA_CELL"):
             return Result(returncode=1)
         if args[:4] == ["ip", "-4", "-j", "address"]:
@@ -114,6 +120,13 @@ class FakeRunner:
         if args[:3] in (["ip", "rule", "del"], ["ip", "route", "del"]):
             return Result(returncode=1)
         if "-C" in args:
+            index = args.index("-C")
+            if (
+                args[0],
+                tuple(args[1:index]),
+                tuple(args[index + 1 :]),
+            ) in self.rule_checks:
+                return Result()
             return Result(returncode=1)
         if args and args[0] == "curl":
             return Result(stdout="ip=203.0.113.10\n")
@@ -144,6 +157,132 @@ def make_config(**overrides: object) -> GatewayConfig:
     }
     values.update(overrides)
     return GatewayConfig(**values)
+
+
+def install_realistic_firewall_state(runner: FakeRunner, firewall, downstream: str) -> None:
+    upstream = firewall.config.upstream_interface
+    subnet = firewall.config.transit_subnet
+    runner.rule_checks.update(
+        {
+            (
+                "iptables",
+                tuple(),
+                (
+                    "INPUT",
+                    *firewall.netfilter.jump_rule(
+                        firewall.INPUT_CHAIN,
+                        "ha-cellgw:local-jump",
+                        ["-i", downstream],
+                    ),
+                ),
+            ),
+            (
+                "iptables",
+                tuple(),
+                (
+                    "DOCKER-USER",
+                    *firewall.netfilter.jump_rule(
+                        firewall.FORWARD_CHAIN,
+                        "ha-cellgw:jump",
+                    ),
+                ),
+            ),
+            (
+                "iptables",
+                ("-t", "nat"),
+                ("POSTROUTING", *firewall._nat_rule()),
+            ),
+            *{
+                (
+                    "iptables",
+                    ("-t", "mangle"),
+                    ("FORWARD", *rule),
+                )
+                for rule in firewall._mss_rules(downstream)
+            },
+            (
+                "ip6tables",
+                tuple(),
+                (
+                    "INPUT",
+                    *firewall.netfilter.jump_rule(
+                        firewall.INPUT6_CHAIN,
+                        "ha-cellgw:v6-local-jump",
+                        ["-i", downstream],
+                    ),
+                ),
+            ),
+            (
+                "ip6tables",
+                tuple(),
+                (
+                    "DOCKER-USER",
+                    *firewall.netfilter.jump_rule(
+                        firewall.FORWARD6_CHAIN,
+                        "ha-cellgw:v6-jump",
+                    ),
+                ),
+            ),
+        }
+    )
+    runner.chain_listings.update(
+        {
+            (
+                "iptables",
+                firewall.INPUT_CHAIN,
+            ): "\n".join(
+                (
+                    f"-N {firewall.INPUT_CHAIN}",
+                    "-A HA_CELLGW_LOCAL -m conntrack --ctstate RELATED,ESTABLISHED "
+                    "-m comment --comment ha-cellgw:local-established -j ACCEPT",
+                    "-A HA_CELLGW_LOCAL -p udp -m udp --sport 68 --dport 67 "
+                    "-m comment --comment ha-cellgw:dhcp-in -j ACCEPT",
+                    "-A HA_CELLGW_LOCAL -p icmp -m comment --comment ha-cellgw:icmp-in "
+                    "-j ACCEPT",
+                    "-A HA_CELLGW_LOCAL -m comment --comment ha-cellgw:local-drop -j DROP",
+                )
+            ),
+            (
+                "iptables",
+                firewall.FORWARD_CHAIN,
+            ): "\n".join(
+                (
+                    f"-N {firewall.FORWARD_CHAIN}",
+                    f"-A HA_CELLGW -i {downstream} -o {upstream} -s {subnet} "
+                    "-m conntrack --ctstate ESTABLISHED,NEW -m comment "
+                    "--comment ha-cellgw:out -j ACCEPT",
+                    f"-A HA_CELLGW -i {upstream} -o {downstream} -d {subnet} "
+                    "-m conntrack --ctstate RELATED,ESTABLISHED -m comment "
+                    "--comment ha-cellgw:in -j ACCEPT",
+                    f"-A HA_CELLGW -i {downstream} ! -o {upstream} -m comment "
+                    "--comment ha-cellgw:drop-out -j DROP",
+                    f"-A HA_CELLGW ! -i {upstream} -o {downstream} -m comment "
+                    "--comment ha-cellgw:drop-in -j DROP",
+                    "-A HA_CELLGW -j RETURN",
+                )
+            ),
+            (
+                "ip6tables",
+                firewall.INPUT6_CHAIN,
+            ): "\n".join(
+                (
+                    f"-N {firewall.INPUT6_CHAIN}",
+                    "-A HA_CELLGW6_LOCAL -j DROP",
+                )
+            ),
+            (
+                "ip6tables",
+                firewall.FORWARD6_CHAIN,
+            ): "\n".join(
+                (
+                    f"-N {firewall.FORWARD6_CHAIN}",
+                    f"-A HA_CELLGW6 -i {downstream} -j DROP",
+                    f"-A HA_CELLGW6 -o {downstream} -j DROP",
+                    "-A HA_CELLGW6 -j RETURN",
+                )
+            ),
+        }
+    )
 
 
 def sysctl_values() -> dict[Path, str]:

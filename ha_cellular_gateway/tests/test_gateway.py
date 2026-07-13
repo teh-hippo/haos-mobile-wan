@@ -7,7 +7,13 @@ from pathlib import Path
 from rootfs.app.errors import GatewayError, SafetyError
 from rootfs.app.gateway import GatewayEngine
 
-from helpers import FakeProcess, FakeRunner, make_config, sysctl_values
+from helpers import (
+    FakeProcess,
+    FakeRunner,
+    install_realistic_firewall_state,
+    make_config,
+    sysctl_values,
+)
 
 
 class GatewayEngineTests(unittest.TestCase):
@@ -141,6 +147,40 @@ class GatewayEngineTests(unittest.TestCase):
             any(command[:3] == ["ip", "route", "replace"] for command in reapplied)
         )
 
+    def test_active_mode_reconcile_does_not_reapply_realistic_firewall_state(self) -> None:
+        engine = self._prepare_active_engine()
+        install_realistic_firewall_state(engine.runner, engine.firewall, "enx001122334455")
+        engine.firewall.installed = engine.firewall.__class__.installed.__get__(
+            engine.firewall,
+            engine.firewall.__class__,
+        )
+        engine.mode = "active"
+        engine.desired_mode = "active"
+        engine.applied = True
+        engine.startup_cleanup_pending = False
+        engine.policy.installed = lambda downstream: True
+        engine.dhcp.process = FakeProcess()
+        before = len(engine.runner.commands)
+
+        engine.reconcile()
+
+        mutating_commands = [
+            command
+            for command in engine.runner.commands[before:]
+            if (
+                command[:3] == ["ip", "rule", "add"]
+                or command[:3] == ["ip", "route", "replace"]
+                or (
+                    command[0] in {"iptables", "ip6tables"}
+                    and any(
+                        operation in command
+                        for operation in ("-A", "-D", "-I", "-N", "-F", "-X")
+                    )
+                )
+            )
+        ]
+        self.assertEqual(mutating_commands, [])
+
     def test_disabled_mode_preserves_live_host_protection(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply("active")
@@ -165,6 +205,36 @@ class GatewayEngineTests(unittest.TestCase):
                 for command in commands
             )
         )
+
+    def test_disabled_mode_reconcile_does_not_flush_realistic_host_guard(self) -> None:
+        values = sysctl_values()
+        engine = GatewayEngine(
+            make_config(mode="disabled", dry_run=False),
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda: "enx001122334455"
+        engine.safety.errors = lambda downstream=None, state_error=None: []
+        install_realistic_firewall_state(
+            engine.runner,
+            engine.firewall,
+            "enx001122334455",
+        )
+        engine.startup_cleanup_pending = False
+        before = len(engine.runner.commands)
+
+        engine.reconcile()
+
+        mutating_commands = [
+            command
+            for command in engine.runner.commands[before:]
+            if command[0] in {"iptables", "ip6tables"} and any(
+                operation in command
+                for operation in ("-A", "-D", "-I", "-N", "-F", "-X")
+            )
+        ]
+        self.assertEqual(mutating_commands, [])
 
     def test_trial_deadline_survives_restart(self) -> None:
         engine = self._prepare_active_engine("trial")

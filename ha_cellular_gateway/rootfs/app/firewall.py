@@ -97,7 +97,7 @@ class Firewall:
         )
 
     def _chain_matches(self, family: str, chain: str, expected: tuple[list[str], ...]) -> bool:
-        return self.netfilter.chain_rules(family, chain) == list(expected)
+        return self.netfilter.chain_matches(family, chain, expected)
 
     def _input_guard_installed(self, downstream: str) -> bool:
         return all(

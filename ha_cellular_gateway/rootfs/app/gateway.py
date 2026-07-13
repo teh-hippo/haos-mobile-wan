@@ -4,7 +4,6 @@ import secrets
 import subprocess
 import threading
 import time
-from dataclasses import asdict
 from pathlib import Path
 from typing import Callable
 
@@ -13,6 +12,14 @@ from .config import STATE_PATH, TOKEN_PATH, GatewayConfig
 from .dhcp import DnsmasqService
 from .errors import GatewayError, SafetyError
 from .firewall import Firewall
+from .gateway_runtime import (
+    fail_closed,
+    health,
+    refresh_health_if_due,
+    run_loop,
+    status,
+    stop,
+)
 from .policy import PolicyRouting
 from .safety import SafetyInspector
 from .state import StateStore
@@ -62,6 +69,7 @@ class GatewayEngine:
         self.applied = False
         self.started_at = time.time()
         self.startup_cleanup_pending = True
+        self.gateway_error = GatewayError
 
         state, state_error = self.state_store.load()
         self.state_load_error = state_error
@@ -203,17 +211,7 @@ class GatewayEngine:
         return True, public_ip
 
     def _refresh_health_if_due(self) -> None:
-        with self.lock:
-            last_probe = self.last_health_probe
-            upstream = self.last_upstream
-        now = time.time()
-        if last_probe is not None and now - last_probe < self.HEALTH_PROBE_INTERVAL:
-            return
-        healthy, public_ip = self._health_probe(upstream)
-        with self.lock:
-            self.upstream_healthy = healthy
-            self.public_ip = public_ip
-            self.last_health_probe = time.time()
+        refresh_health_if_due(self)
 
     def apply(self, mode: str, *, recovering: bool = False) -> None:
         if mode not in {"trial", "active"}:
@@ -414,107 +412,19 @@ class GatewayEngine:
                 self._refresh_health_if_due()
 
     def _fail_closed(self, error: Exception) -> None:
-        with self.operation_lock:
-            cleanup_error: Exception | None = None
-            try:
-                self.cleanup(
-                    preserve_desired=True,
-                    preserve_trial_deadline=True,
-                    preserve_host_protection=self._protectable_downstream(
-                        self.last_downstream,
-                    ),
-                )
-            except (
-                GatewayError,
-                OSError,
-                subprocess.SubprocessError,
-                ValueError,
-            ) as err:
-                cleanup_error = err
-            with self.lock:
-                self.mode = "disabled"
-                self.applied = False
-                self.last_error = (
-                    f"{error}; cleanup failed: {cleanup_error}"
-                    if cleanup_error
-                    else str(error)
-                )
-                self.last_safety_errors = [self.last_error]
+        fail_closed(self, error)
 
     def status(self) -> dict[str, object]:
-        with self.lock:
-            upstream = self.last_upstream
-            upstream_status = self.upstream.runtime_status()
-            return {
-                "mode": self.mode,
-                "desired_mode": self.desired_mode,
-                "configured_mode": self.config.mode,
-                "dry_run": self.config.dry_run,
-                "management_interface": self.config.management_interface,
-                "upstream_mode": self.config.upstream_mode,
-                "configured_upstream_interface": self.config.upstream_interface,
-                "upstream_interface": (
-                    upstream.interface
-                    if upstream
-                    else upstream_status["upstream_runtime_interface"]
-                    or self.config.upstream_interface
-                ),
-                "upstream_address": upstream.address if upstream else None,
-                "upstream_gateway": upstream.gateway if upstream else None,
-                "downstream_interface": self.last_downstream,
-                "downstream_present": self.last_downstream is not None,
-                "rules_installed": self.applied,
-                "dnsmasq_running": self.dhcp.running,
-                "upstream_healthy": self.upstream_healthy,
-                "public_ip": self.public_ip,
-                "rollback_armed": self.trial_deadline is not None,
-                "rollback_deadline": self.trial_deadline,
-                "last_reconcile": self.last_reconcile,
-                "last_health_probe": self.last_health_probe,
-                "last_error": self.last_error,
-                "safety_errors": list(self.last_safety_errors),
-                **upstream_status,
-                "config": {
-                    key: value
-                    for key, value in asdict(self.config).items()
-                    if key not in {"dns_servers"}
-                },
-            }
+        return status(self)
 
     def health(self) -> dict[str, object]:
-        with self.lock:
-            last_activity = self.last_reconcile or self.started_at
-            maximum_age = max(30, self.config.reconcile_seconds * 3)
-            return {"ok": time.time() - last_activity <= maximum_age, "last_reconcile": self.last_reconcile}
+        return health(self)
 
     def run_loop(self) -> None:
-        while not self.stop_event.is_set():
-            try:
-                self.reconcile(refresh_health=True)
-            except (
-                GatewayError,
-                OSError,
-                subprocess.SubprocessError,
-                ValueError,
-            ) as err:
-                self._fail_closed(err)
-            if self.stop_event.wait(self.config.reconcile_seconds):
-                break
+        run_loop(self)
 
     def stop(self) -> None:
-        with self.operation_lock:
-            self.stop_event.set()
-            with self.lock:
-                preserve_trial = (
-                    self.desired_mode == "trial" and self.trial_deadline is not None
-                )
-                force = bool(self.owned_state or self.applied)
-            self.cleanup(
-                preserve_desired=True,
-                preserve_trial_deadline=preserve_trial,
-                force=force,
-            )
-            self.upstream.cleanup()
+        stop(self)
 
 
 def load_or_create_token(path: Path = TOKEN_PATH) -> str:

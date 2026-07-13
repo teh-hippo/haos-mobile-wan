@@ -45,7 +45,7 @@ class GatewayEngineTests(unittest.TestCase):
             state_path=self.state_path,
         )
         restarted.safety.find_downstream = lambda: "enx001122334455"
-        restarted.safety.errors = lambda downstream=None, state_error=None: []
+        restarted.safety.errors = lambda *args, **kwargs: []
         return restarted
 
     def _prepare_active_engine(self, mode: str = "active") -> GatewayEngine:
@@ -58,7 +58,9 @@ class GatewayEngineTests(unittest.TestCase):
         )
         engine.safety.find_downstream = lambda: "enx001122334455"
         engine.safety.errors = lambda *args, **kwargs: []
-        engine.firewall.installed = lambda downstream=None: engine.applied
+        engine.firewall.installed = (
+            lambda downstream=None, upstream_interface=None: engine.applied
+        )
         engine.dhcp.start = lambda downstream: setattr(
             engine.dhcp,
             "process",
@@ -218,8 +220,8 @@ class GatewayEngineTests(unittest.TestCase):
         before = len(engine.runner.commands)
 
         engine.startup_cleanup_pending = False
-        engine.policy.installed = lambda downstream: False
-        engine.firewall.installed = lambda downstream=None: True
+        engine.policy.installed = lambda downstream, upstream=None: False
+        engine.firewall.installed = lambda downstream=None, upstream_interface=None: True
         engine.reconcile()
 
         reapplied = engine.runner.commands[before:]
@@ -241,7 +243,7 @@ class GatewayEngineTests(unittest.TestCase):
         engine.desired_mode = "active"
         engine.applied = True
         engine.startup_cleanup_pending = False
-        engine.policy.installed = lambda downstream: True
+        engine.policy.installed = lambda downstream, upstream=None: True
         engine.dhcp.process = FakeProcess()
         before = len(engine.runner.commands)
 
@@ -298,7 +300,7 @@ class GatewayEngineTests(unittest.TestCase):
             state_path=self.state_path,
         )
         engine.safety.find_downstream = lambda: "enx001122334455"
-        engine.safety.errors = lambda downstream=None, state_error=None: []
+        engine.safety.errors = lambda *args, **kwargs: []
         install_realistic_firewall_state(
             engine.runner,
             engine.firewall,
@@ -388,7 +390,7 @@ class GatewayEngineTests(unittest.TestCase):
             state_path=self.state_path,
         )
         engine.safety.find_downstream = lambda: "enx001122334455"
-        engine.safety.errors = lambda downstream=None, state_error=None: []
+        engine.safety.errors = lambda *args, **kwargs: []
         install_realistic_firewall_state(
             engine.runner,
             engine.firewall,

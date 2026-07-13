@@ -279,9 +279,8 @@ class GatewayEngine:
                         owned_downstream = self.owned_state.get("downstream") if isinstance(self.owned_state, dict) else None
                         if isinstance(owned_downstream, str) and self._protectable_downstream(owned_downstream) and owned_downstream not in candidates:
                             candidates.append(owned_downstream)
-                        preserve_host_protection = any(
-                            self.firewall.host_protection_installed(candidate)
-                            for candidate in candidates
+                        preserve_host_protection = bool(
+                            candidates and self.firewall.host_guard_chains_installed()
                         )
                     self.cleanup(
                         preserve_desired=True,

@@ -92,6 +92,30 @@ class Firewall:
             )
         )
 
+    def host_guard_chains_installed(self) -> bool:
+        return all(
+            (
+                self.netfilter.chain_exists("iptables", self.INPUT_CHAIN),
+                self._chain_matches(
+                    "iptables",
+                    self.INPUT_CHAIN,
+                    self._input_rules(),
+                ),
+            )
+        ) and (
+            not self.netfilter.chain_exists("ip6tables", "DOCKER-USER")
+            or all(
+                (
+                    self.netfilter.chain_exists("ip6tables", self.INPUT6_CHAIN),
+                    self._chain_matches(
+                        "ip6tables",
+                        self.INPUT6_CHAIN,
+                        self._input6_rules(),
+                    ),
+                )
+            )
+        )
+
     def _chain_matches(self, family: str, chain: str, expected: tuple[list[str], ...]) -> bool:
         return self.netfilter.chain_matches(family, chain, expected)
 

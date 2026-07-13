@@ -16,6 +16,12 @@ from .const import CONF_TOKEN, DEFAULT_NAME, DOMAIN
 class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
+    def _entry_for_url(self, url: str):
+        for entry in self._async_current_entries(include_ignore=True):
+            if entry.data.get(CONF_URL) == url:
+                return entry
+        return None
+
     async def _validate(self, url: str, token: str) -> None:
         api = GatewayApi(async_get_clientsession(self.hass), url, token)
         await api.status()
@@ -33,6 +39,11 @@ class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
             except GatewayApiError:
                 errors["base"] = "cannot_connect"
             else:
+                if entry := self._entry_for_url(url):
+                    return self.async_update_reload_and_abort(
+                        entry,
+                        data_updates={CONF_URL: url, CONF_TOKEN: token},
+                    )
                 await self.async_set_unique_id(url)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
@@ -58,6 +69,14 @@ class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
         config: dict[str, Any] = discovery_info.config
         url = f"http://{config['host']}:{config['port']}"
         token = str(config["token"])
+        if entry := self._entry_for_url(url):
+            return self.async_update_reload_and_abort(
+                entry,
+                unique_id=discovery_info.uuid,
+                data_updates={CONF_URL: url, CONF_TOKEN: token},
+                reload_even_if_entry_is_unchanged=False,
+                reason="already_configured",
+            )
         await self.async_set_unique_id(discovery_info.uuid)
         self._abort_if_unique_id_configured(
             updates={CONF_URL: url, CONF_TOKEN: token}

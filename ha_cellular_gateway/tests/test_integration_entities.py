@@ -1,5 +1,6 @@
 import asyncio
 import importlib.util
+import json
 import sys
 import types
 import unittest
@@ -167,6 +168,10 @@ class GatewayIntegrationTests(unittest.TestCase):
         flow._abort_if_unique_id_configured = lambda **kwargs: None
         return flow
 
+    def test_manifest_does_not_use_single_config_entry_gate(self) -> None:
+        manifest = json.loads((PACKAGE_PATH / "manifest.json").read_text(encoding="utf-8"))
+        self.assertNotIn("single_config_entry", manifest)
+
     def test_manual_entry_deduplicates_normalized_url(self) -> None:
         flow = self.make_flow()
         entry = SimpleNamespace(data={"url": "http://gateway.local:8099"})
@@ -187,6 +192,20 @@ class GatewayIntegrationTests(unittest.TestCase):
             result["data_updates"],
             {"url": "http://gateway.local:8099", "token": "abc"},
         )
+
+    def test_manual_entry_rejects_second_distinct_gateway(self) -> None:
+        flow = self.make_flow()
+        flow._async_current_entries = lambda include_ignore=True: [
+            SimpleNamespace(data={"url": "http://gateway.local:8099"})
+        ]
+        flow._validate = AsyncMock()
+
+        result = asyncio.run(
+            flow.async_step_user({"url": "http://other-gateway.local:8099", "token": "abc"})
+        )
+
+        flow._validate.assert_awaited_once_with("http://other-gateway.local:8099", "abc")
+        self.assertEqual(result, {"reason": "single_instance_allowed"})
 
     def test_hassio_discovery_does_not_replace_manual_entry_on_validation_failure(
         self,
@@ -257,6 +276,33 @@ class GatewayIntegrationTests(unittest.TestCase):
             {"url": "http://gateway.local:8099", "token": "fresh-token"},
         )
         self.assertEqual(result["reason"], "already_configured")
+
+    def test_hassio_discovery_rejects_second_distinct_gateway(self) -> None:
+        flow = self.make_flow()
+        flow._async_current_entries = lambda include_ignore=True: [
+            SimpleNamespace(data={"url": "http://gateway.local:8099"})
+        ]
+        flow._validate = AsyncMock()
+
+        result = asyncio.run(
+            flow.async_step_hassio(
+                SimpleNamespace(
+                    config={
+                        "host": "other-gateway.local",
+                        "port": 8099,
+                        "token": "fresh-token",
+                    },
+                    uuid="gateway-uuid",
+                    name="Gateway",
+                )
+            )
+        )
+
+        flow._validate.assert_awaited_once_with(
+            "http://other-gateway.local:8099",
+            "fresh-token",
+        )
+        self.assertEqual(result, {"reason": "single_instance_allowed"})
 
     def test_mode_select_only_exposes_supported_actions(self) -> None:
         coordinator = SimpleNamespace(

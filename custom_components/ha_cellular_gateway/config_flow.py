@@ -20,6 +20,9 @@ class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
     def _normalize_url(url: str) -> str:
         return url.rstrip("/")
 
+    def _existing_entry(self) -> ConfigEntry | None:
+        return next(iter(self._async_current_entries(include_ignore=True)), None)
+
     def _entry_for_url(self, url: str) -> ConfigEntry | None:
         normalized_url = self._normalize_url(url)
         for entry in self._async_current_entries(include_ignore=True):
@@ -49,6 +52,8 @@ class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
                         entry,
                         data_updates={CONF_URL: url, CONF_TOKEN: token},
                     )
+                if self._existing_entry() is not None:
+                    return self.async_abort(reason="single_instance_allowed")
                 await self.async_set_unique_id(url)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
@@ -86,6 +91,8 @@ class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
                 reload_even_if_entry_is_unchanged=False,
                 reason="already_configured",
             )
+        if self._existing_entry() is not None:
+            return self.async_abort(reason="single_instance_allowed")
         await self.async_set_unique_id(discovery_info.uuid)
         self._abort_if_unique_id_configured(
             updates={CONF_URL: url, CONF_TOKEN: token}

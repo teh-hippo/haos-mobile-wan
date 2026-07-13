@@ -75,6 +75,6 @@ jobs:
           ).read_text(encoding="utf-8")
           assert "ARG BUILD_FROM" not in dockerfile
           assert dockerfile.startswith(
-              "FROM ghcr.io/home-assistant/aarch64-base:"
+              "FROM ghcr.io/home-assistant/base:"
           )
           PY

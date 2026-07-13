@@ -1,0 +1,19 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to HAOS Mobile WAN",
+        "data": {
+          "url": "Add-on API URL",
+          "token": "API token"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to the gateway add-on"
+    },
+    "abort": {
+      "already_configured": "This gateway is already configured"
+    }
+  }
+}

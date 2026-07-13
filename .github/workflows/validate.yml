@@ -1,0 +1,52 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install validation dependency
+        run: python -m pip install --disable-pip-version-check pyyaml
+
+      - name: Run unit tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONPATH: ha_cellular_gateway
+        run: python -m unittest discover -s ha_cellular_gateway/tests -v
+
+      - name: Compile Python
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python -m py_compile \
+            ha_cellular_gateway/rootfs/app/*.py \
+            custom_components/ha_cellular_gateway/*.py
+
+      - name: Validate JSON and YAML
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          import yaml
+
+          for path in Path(".").rglob("*.json"):
+              json.loads(path.read_text(encoding="utf-8"))
+
+          for pattern in ("*.yaml", "*.yml"):
+              for path in Path(".").rglob(pattern):
+                  yaml.safe_load(path.read_text(encoding="utf-8"))
+          PY

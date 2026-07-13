@@ -1,0 +1,11 @@
+{
+  "domain": "ha_cellular_gateway",
+  "name": "HAOS Mobile WAN",
+  "after_dependencies": ["hassio"],
+  "codeowners": ["@teh-hippo"],
+  "config_flow": true,
+  "documentation": "https://github.com/teh-hippo/haos-mobile-wan",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "version": "0.1.0"
+}

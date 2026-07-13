@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from pathlib import Path
 
 from rootfs.app.config import GatewayConfig
@@ -54,18 +55,31 @@ class FakeRunner:
         self.commands.append(args)
         if args[:2] == ["iptables", "--version"]:
             return Result(stdout="iptables v1.8.13 (nf_tables)\n")
-        if len(args) == 3 and args[1] == "-S":
-            listing = self.chain_listings.get((args[0], args[2]))
+        family = args[0] if args else ""
+        action_index = 1
+        if len(args) >= 3 and args[1] == "-t":
+            action_index = 3
+        if len(args) > action_index + 1 and args[action_index] == "-S":
+            chain = args[action_index + 1]
+            listing = self.chain_listings.get((family, chain))
             if listing is not None:
                 return Result(stdout=listing)
-        if args[:3] in (
-            ["iptables", "-S", "DOCKER-USER"],
-            ["iptables", "-S", "INPUT"],
-            ["ip6tables", "-S", "DOCKER-USER"],
-            ["ip6tables", "-S", "INPUT"],
+        if (
+            len(args) > action_index + 1
+            and args[action_index] == "-S"
+            and (family, args[action_index + 1]) in {
+                ("iptables", "DOCKER-USER"),
+                ("iptables", "INPUT"),
+                ("ip6tables", "DOCKER-USER"),
+                ("ip6tables", "INPUT"),
+            }
         ):
             return Result()
-        if len(args) >= 3 and args[1] == "-S" and args[2].startswith("HA_CELL"):
+        if (
+            len(args) > action_index + 1
+            and args[action_index] == "-S"
+            and args[action_index + 1].startswith("HA_CELL")
+        ):
             return Result(returncode=1)
         if args[:4] == ["ip", "-4", "-j", "address"]:
             interface = args[-1]
@@ -128,9 +142,87 @@ class FakeRunner:
             ) in self.rule_checks:
                 return Result()
             return Result(returncode=1)
+        if family in {"iptables", "ip6tables"} and len(args) > action_index:
+            action = args[action_index]
+            command = args[action_index + 1 :]
+            if action == "-N" and command:
+                self.chain_listings.setdefault((family, command[0]), f"-N {command[0]}")
+            elif action == "-F" and command:
+                self._flush_chain(family, command[0])
+            elif action == "-X" and command:
+                self.chain_listings.pop((family, command[0]), None)
+            elif action == "-A" and len(command) >= 2:
+                self._append_rule(family, command[0], command[1:])
+            elif action == "-I" and len(command) >= 3:
+                self._insert_rule(
+                    family,
+                    command[0],
+                    int(command[1]),
+                    command[2:],
+                )
+            elif action == "-D" and len(command) >= 1:
+                self._delete_rule(family, command[0], command[1:])
         if args and args[0] == "curl":
             return Result(stdout="ip=203.0.113.10\n")
         return Result()
+
+    def _chain_lines(self, family: str, chain: str) -> list[str]:
+        listing = self.chain_listings.get((family, chain))
+        return [] if not listing else listing.splitlines()
+
+    def _set_chain_lines(self, family: str, chain: str, lines: list[str]) -> None:
+        self.chain_listings[(family, chain)] = "\n".join(lines)
+
+    def _append_rule(self, family: str, chain: str, rule: list[str]) -> None:
+        lines = self._chain_lines(family, chain)
+        lines.append(self._rule_line(chain, rule))
+        self._set_chain_lines(family, chain, lines)
+
+    def _insert_rule(
+        self,
+        family: str,
+        chain: str,
+        position: int,
+        rule: list[str],
+    ) -> None:
+        lines = self._chain_lines(family, chain)
+        header = 1 if lines[:1] == [f"-N {chain}"] else 0
+        insert_at = min(header + max(position - 1, 0), len(lines))
+        lines.insert(insert_at, self._rule_line(chain, rule))
+        self._set_chain_lines(family, chain, lines)
+
+    def _delete_rule(self, family: str, chain: str, spec: list[str]) -> None:
+        lines = self._chain_lines(family, chain)
+        rule_indexes = [
+            index
+            for index, line in enumerate(lines)
+            if line.startswith(f"-A {chain} ")
+        ]
+        if not rule_indexes:
+            return
+        if len(spec) == 1 and spec[0].isdigit():
+            position = int(spec[0])
+            if 1 <= position <= len(rule_indexes):
+                del lines[rule_indexes[position - 1]]
+                self._set_chain_lines(family, chain, lines)
+            return
+        target = self._rule_line(chain, spec)
+        for index in rule_indexes:
+            if lines[index] == target:
+                del lines[index]
+                self._set_chain_lines(family, chain, lines)
+                return
+
+    def _flush_chain(self, family: str, chain: str) -> None:
+        lines = self._chain_lines(family, chain)
+        if lines[:1] == [f"-N {chain}"]:
+            self._set_chain_lines(family, chain, [lines[0]])
+            return
+        self._set_chain_lines(family, chain, [])
+
+    @staticmethod
+    def _rule_line(chain: str, rule: list[str]) -> str:
+        return shlex.join(["-A", chain, *rule])
 
 
 def make_config(**overrides: object) -> GatewayConfig:

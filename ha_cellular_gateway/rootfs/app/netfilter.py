@@ -203,26 +203,14 @@ class Netfilter:
         match: list[str] | None = None,
     ) -> None:
         rule = self.jump_rule(child, comment, match)
-        if self.rule_is_first_unique(family, parent, rule):
+        rule_indexes = self._matching_rule_indexes(family, parent, rule)
+        if rule_indexes == [0]:
             return
-        if not self.rule_exists(family, parent, rule):
+        if not rule_indexes or rule_indexes[0] != 0:
             self.run(family, "-I", parent, "1", *rule)
-        elif not self._matching_rule_indexes(family, parent, rule)[:1] == [0]:
-            self.run(family, "-I", parent, "1", *rule)
-        rules = self.chain_rules(family, parent)
-        if rules is None:
-            return
-        normalized_rule = self._normalize_rule(rule)
-        if normalized_rule is None:
-            return
-        seen_first = False
-        for existing in rules:
-            if self._normalize_rule(existing) != normalized_rule:
-                continue
-            if not seen_first:
-                seen_first = True
-                continue
-            self.run(family, "-D", parent, *existing, check=False)
+            rule_indexes = self._matching_rule_indexes(family, parent, rule)
+        for index in reversed(rule_indexes[1:]):
+            self.run(family, "-D", parent, str(index + 1), check=False)
 
     def ensure_rule(
         self,

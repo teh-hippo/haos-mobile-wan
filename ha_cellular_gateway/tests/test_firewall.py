@@ -28,6 +28,34 @@ class FirewallTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.directory.cleanup()
 
+    def _assert_parent_jump_repair(
+        self,
+        family: str,
+        parent: str,
+        child: str,
+        comment: str,
+        initial_rules: list[str],
+        match: list[str] | None = None,
+    ) -> None:
+        rule = self.engine.firewall.netfilter.jump_rule(child, comment, match)
+        self.runner.chain_listings[(family, parent)] = "\n".join(initial_rules)
+
+        self.engine.firewall.netfilter.ensure_jump(
+            family,
+            parent,
+            child,
+            comment,
+            match,
+        )
+
+        self.assertTrue(
+            self.engine.firewall.netfilter.rule_is_first_unique(
+                family,
+                parent,
+                rule,
+            )
+        )
+
     def test_firewall_is_scoped_and_protects_host(self) -> None:
         self.engine.firewall.apply("enx001122334455")
         commands = [" ".join(command) for command in self.runner.commands]
@@ -249,6 +277,83 @@ class FirewallTests(unittest.TestCase):
             ],
             commands,
         )
+
+    def test_ensure_jump_repairs_stateful_parent_hooks(self) -> None:
+        firewall = self.engine.firewall
+        downstream = "enx001122334455"
+        cases = (
+            (
+                "iptables",
+                "INPUT",
+                firewall.INPUT_CHAIN,
+                "ha-cellgw:local-jump",
+                [
+                    "-A INPUT -j ACCEPT",
+                    f"-A INPUT -i {downstream} -m comment --comment ha-cellgw:local-jump -j {firewall.INPUT_CHAIN}",
+                ],
+                ["-i", downstream],
+            ),
+            (
+                "iptables",
+                "INPUT",
+                firewall.INPUT_CHAIN,
+                "ha-cellgw:local-jump",
+                [
+                    f"-A INPUT -i {downstream} -m comment --comment ha-cellgw:local-jump -j {firewall.INPUT_CHAIN}",
+                    "-A INPUT -j ACCEPT",
+                    f"-A INPUT -i {downstream} -m comment --comment ha-cellgw:local-jump -j {firewall.INPUT_CHAIN}",
+                ],
+                ["-i", downstream],
+            ),
+            (
+                "iptables",
+                "DOCKER-USER",
+                firewall.FORWARD_CHAIN,
+                "ha-cellgw:jump",
+                [
+                    "-A DOCKER-USER -j RETURN",
+                    f"-A DOCKER-USER -m comment --comment ha-cellgw:jump -j {firewall.FORWARD_CHAIN}",
+                    f"-A DOCKER-USER -m comment --comment ha-cellgw:jump -j {firewall.FORWARD_CHAIN}",
+                    f"-A DOCKER-USER -m comment --comment ha-cellgw:jump -j {firewall.FORWARD_CHAIN}",
+                ],
+                None,
+            ),
+            (
+                "ip6tables",
+                "INPUT",
+                firewall.INPUT6_CHAIN,
+                "ha-cellgw:v6-local-jump",
+                [
+                    "-A INPUT -j ACCEPT",
+                    f"-A INPUT -i {downstream} -m comment --comment ha-cellgw:v6-local-jump -j {firewall.INPUT6_CHAIN}",
+                ],
+                ["-i", downstream],
+            ),
+            (
+                "ip6tables",
+                "DOCKER-USER",
+                firewall.FORWARD6_CHAIN,
+                "ha-cellgw:v6-jump",
+                [
+                    f"-A DOCKER-USER -m comment --comment ha-cellgw:v6-jump -j {firewall.FORWARD6_CHAIN}",
+                    "-A DOCKER-USER -j RETURN",
+                    f"-A DOCKER-USER -m comment --comment ha-cellgw:v6-jump -j {firewall.FORWARD6_CHAIN}",
+                ],
+                None,
+            ),
+        )
+
+        for family, parent, child, comment, initial_rules, match in cases:
+            with self.subTest(family=family, parent=parent, initial_rules=initial_rules):
+                self.runner.chain_listings.pop((family, parent), None)
+                self._assert_parent_jump_repair(
+                    family,
+                    parent,
+                    child,
+                    comment,
+                    initial_rules,
+                    match,
+                )
 
     def test_apply_repairs_forward_jump_without_flushing_live_chains(self) -> None:
         firewall = self.engine.firewall

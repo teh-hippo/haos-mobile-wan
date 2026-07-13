@@ -25,7 +25,6 @@ TO_REDACT = {
     "downstream_interface",
     "api_bind",
     "last_error",
-    "config",
 }
 
 

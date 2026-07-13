@@ -21,7 +21,9 @@ RUN apk add --no-cache \
 
 COPY rootfs /
 
-RUN chmod 0755 \
+RUN mkdir -p /data /var/lib \
+    && ln -snf /data/lockdown /var/lib/lockdown \
+    && chmod 0755 \
     /app/main.py \
     /app/udhcpc.script \
     /etc/services.d/ha-cellular-gateway/run

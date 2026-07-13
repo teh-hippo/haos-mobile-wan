@@ -3,8 +3,8 @@
 Use Home Assistant OS as a vendor-neutral mobile WAN gateway:
 
 - `wlan0` connects to a phone hotspot;
-- optional `iphone_usb` pairs with an iPhone and uses USB tethering over
-  `ipheth`;
+- optional `iphone_usb` pairs with an iPhone and uses app-owned USB tethering
+  over `ipheth`;
 - a USB Ethernet adapter connects to a router WAN port;
 - the app provides isolated DHCP, policy routing, firewalling and NAT.
 

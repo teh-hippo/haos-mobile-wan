@@ -40,7 +40,7 @@ case "${1:-}" in
       exit 0
     fi
     cat >"$LEASE_PATH" <<EOF
-{"interface":"$interface","address":"$ip/$prefix","gateway":"$gateway"}
+{"owner":"app","interface":"$interface","address":"$ip/$prefix","gateway":"$gateway"}
 EOF
     ;;
 esac

@@ -77,6 +77,7 @@ class GatewayConfig:
         try:
             management = ipaddress.ip_interface(self.management_address)
             downstream = ipaddress.ip_interface(self.downstream_address)
+            transit = ipaddress.ip_network(self.transit_subnet)
             dhcp_start = ipaddress.ip_address(self.dhcp_start)
             dhcp_end = ipaddress.ip_address(self.dhcp_end)
             api_bind = ipaddress.ip_address(self.api_bind)
@@ -90,7 +91,6 @@ class GatewayConfig:
                 gateway = ipaddress.ip_address(self.upstream_gateway)
             except ValueError as err:
                 raise GatewayError(f"Invalid network configuration: {err}") from err
-        transit = ipaddress.ip_network(self.transit_subnet)
 
         if management.version != 4 or downstream.version != 4:
             raise GatewayError("Only IPv4 gateway mode is supported")

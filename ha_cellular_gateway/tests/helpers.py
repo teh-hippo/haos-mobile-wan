@@ -20,11 +20,21 @@ class Result:
 
 
 class FakeProcess:
-    def __init__(self) -> None:
-        self.running = True
+    def __init__(
+        self,
+        *,
+        running: bool = True,
+        returncode: int = 0,
+        stdout: str = "",
+        stderr: str = "",
+    ) -> None:
+        self.running = running
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
 
     def poll(self) -> int | None:
-        return None if self.running else 0
+        return None if self.running else self.returncode
 
     def terminate(self) -> None:
         self.running = False
@@ -33,7 +43,11 @@ class FakeProcess:
         self.running = False
 
     def wait(self, timeout: int = 5) -> int:
-        return 0
+        return self.returncode
+
+    def communicate(self, timeout: int = 1) -> tuple[str, str]:
+        self.running = False
+        return self.stdout, self.stderr
 
 
 class FakeRunner:
@@ -92,6 +106,8 @@ class FakeRunner:
             return Result(returncode=1)
         if args[:4] == ["ip", "-4", "-j", "address"]:
             interface = args[-1]
+            if interface not in self.interface_addresses:
+                return Result(stdout="[]")
             address, prefix = self.interface_addresses[interface]
             return Result(
                 stdout=json.dumps(

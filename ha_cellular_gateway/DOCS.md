@@ -70,16 +70,23 @@ commissioning flow.
 
 `upstream_mode: iphone_usb` is experimental. The app:
 
-- requires the app's `usb: true` and `udev: true` permissions;
+- requires the app's `usb: true` permission;
 - starts `usbmuxd` inside the container;
-- persists pairing records under `/data/lockdown`;
+- persists `/var/lib/lockdown` under `/data/lockdown`;
 - pairs only after you unlock the iPhone and tap **Trust**;
-- runs its own DHCP client on the detected `ipheth` interface;
-- strips any USB default route from the main table before the gateway can
-  activate.
+- owns DHCP on the detected `ipheth` interface itself.
 
 If pairing, `ipheth` or DHCP never become ready, the app stays disabled and
 reports a focused preflight error instead of guessing.
+
+### 3a. Keep `ipheth` app-owned
+
+Do not configure the dynamic `ipheth` interface in HAOS. Leave IPv4, DHCP and
+the main default route unmanaged on that interface so the app can own them.
+
+If `ipheth` already has a host-managed IPv4 address or main default route, the
+app reports an ownership conflict and stays disabled instead of racing HAOS or
+NetworkManager for DHCP.
 
 ### 4. Configure the phone hotspot interface
 
@@ -217,13 +224,12 @@ Adding this Apps repository does not install the integration.
 
 ## Security status
 
-The app uses `NET_ADMIN`, `NET_RAW`, `usb: true` and `udev: true`, without
-`full_access` or host D-Bus. `usb` exposes `/dev/bus/usb` so libimobiledevice
-can pair with the phone, and `udev` exposes host device metadata so the app can
-detect `ipheth` attach and detach events. Its AppArmor profile remains in
-complain mode while the network and USB command surface is audited on real
-hardware. Runtime isolation therefore depends on the app's scoped netfilter and
-policy-routing rules plus the limited USB device cgroup.
+The app uses `NET_ADMIN`, `NET_RAW` and `usb: true`, without `full_access` or
+host D-Bus. `usb` exposes `/dev/bus/usb` so libimobiledevice can pair with the
+phone. Its AppArmor profile remains in complain mode while the network and USB
+command surface is audited on real hardware. Runtime isolation therefore
+depends on the app's scoped netfilter and policy-routing rules plus the limited
+USB device cgroup.
 
 The API binds to the Supervisor-side host address and requires a generated
 Bearer token. Diagnostics redact credentials, public addressing and network

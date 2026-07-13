@@ -9,6 +9,8 @@ from .entity import GatewayEntity
 DESCRIPTIONS = (
     SensorEntityDescription(key="mode", name="Mode"),
     SensorEntityDescription(key="desired_mode", name="Desired mode"),
+    SensorEntityDescription(key="upstream_mode", name="Upstream mode"),
+    SensorEntityDescription(key="upstream_pairing_state", name="Upstream pairing"),
     SensorEntityDescription(key="downstream_interface", name="Downstream interface"),
     SensorEntityDescription(key="public_ip", name="Cellular public IP"),
     SensorEntityDescription(key="last_error", name="Last error"),

@@ -23,6 +23,7 @@ class GatewayConfig:
     dry_run: bool
     management_interface: str
     management_address: str
+    upstream_mode: str
     upstream_interface: str
     upstream_ssid: str
     upstream_address: str
@@ -47,6 +48,7 @@ class GatewayConfig:
             dry_run=bool(data.get("dry_run", True)),
             management_interface=str(data.get("management_interface", "end0")),
             management_address=str(data.get("management_address", "192.168.1.2/24")),
+            upstream_mode=str(data.get("upstream_mode", "hotspot_wifi")),
             upstream_interface=str(data.get("upstream_interface", "wlan0")),
             upstream_ssid=str(data.get("upstream_ssid", "MobileHotspot")),
             upstream_address=str(data.get("upstream_address", "172.20.10.4/28")),
@@ -69,26 +71,35 @@ class GatewayConfig:
     def validate(self) -> None:
         if self.mode not in {"disabled", "trial", "active"}:
             raise GatewayError(f"Unsupported mode: {self.mode}")
+        if self.upstream_mode not in {"hotspot_wifi", "iphone_usb"}:
+            raise GatewayError(f"Unsupported upstream mode: {self.upstream_mode}")
 
         try:
             management = ipaddress.ip_interface(self.management_address)
-            upstream = ipaddress.ip_interface(self.upstream_address)
             downstream = ipaddress.ip_interface(self.downstream_address)
             transit = ipaddress.ip_network(self.transit_subnet)
-            gateway = ipaddress.ip_address(self.upstream_gateway)
             dhcp_start = ipaddress.ip_address(self.dhcp_start)
             dhcp_end = ipaddress.ip_address(self.dhcp_end)
             api_bind = ipaddress.ip_address(self.api_bind)
         except ValueError as err:
             raise GatewayError(f"Invalid network configuration: {err}") from err
+        upstream = None
+        gateway = None
+        if self.upstream_mode == "hotspot_wifi":
+            try:
+                upstream = ipaddress.ip_interface(self.upstream_address)
+                gateway = ipaddress.ip_address(self.upstream_gateway)
+            except ValueError as err:
+                raise GatewayError(f"Invalid network configuration: {err}") from err
 
-        if management.version != 4 or upstream.version != 4 or downstream.version != 4:
+        if management.version != 4 or downstream.version != 4:
+            raise GatewayError("Only IPv4 gateway mode is supported")
+        if upstream and upstream.version != 4:
             raise GatewayError("Only IPv4 gateway mode is supported")
         if api_bind.version != 4 or api_bind.is_unspecified or api_bind.is_multicast:
             raise GatewayError("API bind address must be a specific IPv4 address")
         for label, interface in (
             ("Management", management),
-            ("Upstream", upstream),
             ("Downstream", downstream),
         ):
             if interface.ip in {
@@ -96,16 +107,23 @@ class GatewayConfig:
                 interface.network.broadcast_address,
             }:
                 raise GatewayError(f"{label} address is not a usable host address")
-        if self.management_interface == self.upstream_interface:
-            raise GatewayError("Management and upstream interfaces must differ")
-        if gateway not in upstream.network:
-            raise GatewayError("Upstream gateway is outside the upstream subnet")
-        if gateway in {
-            upstream.ip,
-            upstream.network.network_address,
-            upstream.network.broadcast_address,
-        }:
-            raise GatewayError("Upstream gateway is not a usable peer address")
+        if upstream:
+            if upstream.ip in {
+                upstream.network.network_address,
+                upstream.network.broadcast_address,
+            }:
+                raise GatewayError("Upstream address is not a usable host address")
+            if self.management_interface == self.upstream_interface:
+                raise GatewayError("Management and upstream interfaces must differ")
+            assert gateway is not None
+            if gateway not in upstream.network:
+                raise GatewayError("Upstream gateway is outside the upstream subnet")
+            if gateway in {
+                upstream.ip,
+                upstream.network.network_address,
+                upstream.network.broadcast_address,
+            }:
+                raise GatewayError("Upstream gateway is not a usable peer address")
         if downstream.network != transit:
             raise GatewayError("Downstream address must use the transit subnet prefix")
         if dhcp_start not in transit or dhcp_end not in transit or dhcp_start > dhcp_end:
@@ -123,9 +141,13 @@ class GatewayConfig:
         if any(
             left.overlaps(right)
             for index, left in enumerate(
-                (management.network, upstream.network, transit)
+                (management.network, *( [upstream.network] if upstream else [] ), transit)
             )
-            for right in (management.network, upstream.network, transit)[index + 1 :]
+            for right in (
+                management.network,
+                *( [upstream.network] if upstream else [] ),
+                transit,
+            )[index + 1 :]
         ):
             raise GatewayError("Management, upstream and transit networks must not overlap")
         if self.downstream_mac and not re.fullmatch(

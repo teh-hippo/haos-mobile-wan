@@ -35,9 +35,14 @@ class Firewall:
     def chain_exists(self, family: str, chain: str) -> bool:
         return self.netfilter.chain_exists(family, chain)
 
-    def installed(self, downstream: str | None) -> bool:
+    def installed(
+        self,
+        downstream: str | None,
+        upstream_interface: str | None = None,
+    ) -> bool:
         if not downstream or not self.host_protection_installed(downstream):
             return False
+        upstream = upstream_interface or self.config.upstream_interface
         if not all(
             (
                 self.netfilter.chain_exists("iptables", self.FORWARD_CHAIN),
@@ -50,12 +55,12 @@ class Firewall:
                 self._chain_matches(
                     "iptables",
                     self.FORWARD_CHAIN,
-                    self._forward_rules(downstream),
+                    self._forward_rules(downstream, upstream),
                 ),
                 self.netfilter.rule_exists(
                     "iptables",
                     "POSTROUTING",
-                    self._nat_rule(),
+                    self._nat_rule(upstream),
                     ["-t", "nat"],
                 ),
                 all(
@@ -65,7 +70,7 @@ class Firewall:
                         rule,
                         ["-t", "mangle"],
                     )
-                    for rule in self._mss_rules(downstream)
+                    for rule in self._mss_rules(downstream, upstream)
                 ),
             )
         ):
@@ -178,10 +183,12 @@ class Firewall:
             parent,
             self.netfilter.jump_rule(child, comment, match),
         )
-    def apply(self, downstream: str) -> None:
+
+    def apply(self, downstream: str, upstream_interface: str | None = None) -> None:
+        upstream = upstream_interface or self.config.upstream_interface
         self._apply_input_guard(downstream)
-        self._apply_forwarding(downstream)
-        self._apply_nat_and_mss(downstream)
+        self._apply_forwarding(downstream, upstream)
+        self._apply_nat_and_mss(downstream, upstream)
         self._apply_ipv6_block(downstream)
 
     def protect_host(self, downstream: str) -> None:
@@ -206,10 +213,14 @@ class Firewall:
             ["-i", downstream],
         )
 
-    def _apply_forwarding(self, downstream: str) -> None:
-        if not self._chain_matches("iptables", self.FORWARD_CHAIN, self._forward_rules(downstream)):
+    def _apply_forwarding(self, downstream: str, upstream: str) -> None:
+        if not self._chain_matches(
+            "iptables",
+            self.FORWARD_CHAIN,
+            self._forward_rules(downstream, upstream),
+        ):
             self.netfilter.ensure_chain("iptables", self.FORWARD_CHAIN)
-            for rule in self._forward_rules(downstream):
+            for rule in self._forward_rules(downstream, upstream):
                 self.netfilter.run(
                     "iptables",
                     "-A",
@@ -223,14 +234,14 @@ class Firewall:
             f"{self.COMMENT_PREFIX}:jump",
         )
 
-    def _apply_nat_and_mss(self, downstream: str) -> None:
+    def _apply_nat_and_mss(self, downstream: str, upstream: str) -> None:
         self.netfilter.ensure_rule(
             "iptables",
             ["-t", "nat"],
             "POSTROUTING",
-            self._nat_rule(),
+            self._nat_rule(upstream),
         )
-        for rule in self._mss_rules(downstream):
+        for rule in self._mss_rules(downstream, upstream):
             self.netfilter.ensure_rule(
                 "iptables",
                 ["-t", "mangle"],

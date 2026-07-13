@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shlex
+import subprocess
 from pathlib import Path
 
 from rootfs.app.config import GatewayConfig
@@ -20,11 +21,21 @@ class Result:
 
 
 class FakeProcess:
-    def __init__(self) -> None:
-        self.running = True
+    def __init__(
+        self,
+        *,
+        running: bool = True,
+        returncode: int = 0,
+        stdout: str = "",
+        stderr: str = "",
+    ) -> None:
+        self.running = running
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
 
     def poll(self) -> int | None:
-        return None if self.running else 0
+        return None if self.running else self.returncode
 
     def terminate(self) -> None:
         self.running = False
@@ -33,7 +44,13 @@ class FakeProcess:
         self.running = False
 
     def wait(self, timeout: int = 5) -> int:
-        return 0
+        if self.running:
+            raise subprocess.TimeoutExpired("fake-process", timeout)
+        return self.returncode
+
+    def communicate(self, timeout: int = 1) -> tuple[str, str]:
+        self.running = False
+        return self.stdout, self.stderr
 
 
 class FakeRunner:
@@ -44,6 +61,15 @@ class FakeRunner:
         self.fail_ip_forward = False
         self.chain_listings: dict[tuple[str, str], str] = {}
         self.rule_checks: set[tuple[str, tuple[str, ...], tuple[str, ...]]] = set()
+        self.idevice_udids: list[str] = []
+        self.idevice_pair_result = Result(returncode=1, stdout="ERROR: Please accept the trust dialog\n")
+        self.idevice_validate_result = Result(returncode=1, stdout="ERROR: Device is not paired\n")
+        self.main_default_routes = [{"dst": "default", "gateway": "192.168.1.1", "dev": "end0"}]
+        self.interface_addresses = {
+            "end0": ("192.168.1.2", 24),
+            "wlan0": ("172.20.10.4", 28),
+            "enx001122334455": ("192.168.80.1", 24),
+        }
 
     def run(
         self,
@@ -83,13 +109,9 @@ class FakeRunner:
             return Result(returncode=1)
         if args[:4] == ["ip", "-4", "-j", "address"]:
             interface = args[-1]
-            mapping = {
-                "end0": "192.168.1.2",
-                "wlan0": "172.20.10.4",
-                "enx001122334455": "192.168.80.1",
-            }
-            address = mapping[interface]
-            prefix = 28 if interface == "wlan0" else 24
+            if interface not in self.interface_addresses:
+                return Result(stdout="[]")
+            address, prefix = self.interface_addresses[interface]
             return Result(
                 stdout=json.dumps(
                     [
@@ -116,9 +138,7 @@ class FakeRunner:
             "table",
             "main",
         ]:
-            return Result(
-                stdout='[{"dst":"default","gateway":"192.168.1.1","dev":"end0"}]'
-            )
+            return Result(stdout=json.dumps(self.main_default_routes))
         if args[:7] == [
             "ip",
             "-4",
@@ -132,7 +152,25 @@ class FakeRunner:
         if args[:4] == ["ip", "-j", "rule", "show"]:
             return Result(stdout=json.dumps(self.policy_rules))
         if args[:3] in (["ip", "rule", "del"], ["ip", "route", "del"]):
+            if args[:5] == ["ip", "route", "del", "default", "dev"]:
+                interface = args[5]
+                removed = False
+                remaining = []
+                for route in self.main_default_routes:
+                    if route.get("dev") == interface and route.get("dst") == "default" and not removed:
+                        removed = True
+                        continue
+                    remaining.append(route)
+                self.main_default_routes = remaining
+                return Result(returncode=0 if removed else 1)
             return Result(returncode=1)
+        if args[:2] == ["idevice_id", "--list"]:
+            return Result(stdout="\n".join(self.idevice_udids) + ("\n" if self.idevice_udids else ""))
+        if args and args[0] == "idevicepair" and "--udid" in args:
+            if args[-1] == "validate":
+                return self.idevice_validate_result
+            if args[-1] == "pair":
+                return self.idevice_pair_result
         if "-C" in args:
             index = args.index("-C")
             if (
@@ -231,6 +269,7 @@ def make_config(**overrides: object) -> GatewayConfig:
         "dry_run": True,
         "management_interface": "end0",
         "management_address": "192.168.1.2/24",
+        "upstream_mode": "hotspot_wifi",
         "upstream_interface": "wlan0",
         "upstream_ssid": "MobileHotspot",
         "upstream_address": "172.20.10.4/28",
@@ -251,8 +290,13 @@ def make_config(**overrides: object) -> GatewayConfig:
     return GatewayConfig(**values)
 
 
-def install_realistic_firewall_state(runner: FakeRunner, firewall, downstream: str) -> None:
-    upstream = firewall.config.upstream_interface
+def install_realistic_firewall_state(
+    runner: FakeRunner,
+    firewall,
+    downstream: str,
+    upstream: str | None = None,
+) -> None:
+    upstream = upstream or firewall.config.upstream_interface
     subnet = firewall.config.transit_subnet
     runner.rule_checks.update(
         {
@@ -282,7 +326,7 @@ def install_realistic_firewall_state(runner: FakeRunner, firewall, downstream: s
             (
                 "iptables",
                 ("-t", "nat"),
-                ("POSTROUTING", *firewall._nat_rule()),
+                ("POSTROUTING", *firewall._nat_rule(upstream)),
             ),
             *{
                 (
@@ -290,7 +334,7 @@ def install_realistic_firewall_state(runner: FakeRunner, firewall, downstream: s
                     ("-t", "mangle"),
                     ("FORWARD", *rule),
                 )
-                for rule in firewall._mss_rules(downstream)
+                for rule in firewall._mss_rules(downstream, upstream)
             },
             (
                 "ip6tables",
@@ -415,6 +459,45 @@ def install_realistic_firewall_state(runner: FakeRunner, firewall, downstream: s
     )
 
 
+def install_realistic_policy_state(
+    runner: FakeRunner,
+    policy,
+    downstream: str,
+    upstream=None,
+) -> None:
+    ownership = policy.ownership(downstream, upstream)
+    runner.policy_rules = []
+    for rule in policy.rule_args(ownership):
+        entry = {
+            "priority": int(rule[rule.index("pref") + 1]),
+            "table": rule[rule.index("lookup") + 1],
+        }
+        if "iif" in rule:
+            entry["iifname"] = rule[rule.index("iif") + 1]
+        if "from" in rule:
+            source = rule[rule.index("from") + 1]
+            if "/" in source:
+                address, _, length = source.partition("/")
+                entry["src"] = address
+                entry["srclen"] = int(length)
+            else:
+                entry["src"] = source
+        runner.policy_rules.append(entry)
+    runner.policy_routes = [
+        {
+            "dst": route[0],
+            "dev": route[route.index("dev") + 1],
+            "prefsrc": route[route.index("src") + 1],
+            **(
+                {"gateway": route[route.index("via") + 1]}
+                if "via" in route
+                else {}
+            ),
+        }
+        for route in policy.route_args(ownership)
+    ]
+
+
 def prepend_chain_rule(
     runner: FakeRunner,
     family: str,
@@ -434,5 +517,6 @@ def sysctl_values() -> dict[Path, str]:
         Path("/proc/sys/net/ipv4/conf/default/rp_filter"): "2",
         Path("/proc/sys/net/ipv4/conf/end0/rp_filter"): "2",
         Path("/proc/sys/net/ipv4/conf/wlan0/rp_filter"): "2",
+        Path("/proc/sys/net/ipv4/conf/eth0/rp_filter"): "2",
         Path("/proc/sys/net/ipv4/conf/enx001122334455/rp_filter"): "2",
     }

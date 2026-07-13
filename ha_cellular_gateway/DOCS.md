@@ -9,7 +9,8 @@ only needs a WAN Ethernet port configured as a DHCP client.
 | Interface | Role |
 |---|---|
 | Management Ethernet, usually `end0` | Normal Home Assistant LAN and main default route |
-| Wi-Fi, usually `wlan0` | Phone hotspot upstream |
+| Wi-Fi, usually `wlan0` | Default phone hotspot upstream |
+| `ipheth`, dynamic name such as `eth0` | Optional experimental iPhone USB-tethering upstream |
 | USB Ethernet | Isolated downstream connection to a router WAN port |
 
 The app:
@@ -20,6 +21,7 @@ The app:
 - masquerades only the configured transit subnet;
 - blocks IPv6 on the fallback path;
 - protects HAOS host-local services from the downstream interface;
+- keeps iPhone USB DHCP off the main routing table;
 - fails closed instead of falling back through the management LAN.
 
 ## Safety first
@@ -61,7 +63,32 @@ again. Record its interface name and MAC address.
 Do not change the management interface. Record its current static address and
 confirm it owns the main default route.
 
-### 3. Configure the phone hotspot interface
+### 3. Choose the upstream mode
+
+`upstream_mode: hotspot_wifi` is the default and keeps the current static Wi-Fi
+commissioning flow.
+
+`upstream_mode: iphone_usb` is experimental. The app:
+
+- requires the app's `usb: true` permission;
+- starts `usbmuxd` inside the container;
+- persists `/var/lib/lockdown` under `/data/lockdown`;
+- pairs only after you unlock the iPhone and tap **Trust**;
+- owns DHCP on the detected `ipheth` interface itself.
+
+If pairing, `ipheth` or DHCP never become ready, the app stays disabled and
+reports a focused preflight error instead of guessing.
+
+### 3a. Keep `ipheth` app-owned
+
+Do not configure the dynamic `ipheth` interface in HAOS. Leave IPv4, DHCP and
+the main default route unmanaged on that interface so the app can own them.
+
+If `ipheth` already has a host-managed IPv4 address or main default route, the
+app reports an ownership conflict and stays disabled instead of racing HAOS or
+NetworkManager for DHCP.
+
+### 4. Configure the phone hotspot interface
 
 The example defaults match an iPhone Personal Hotspot:
 
@@ -82,7 +109,7 @@ Do not configure an IPv4 gateway on `wlan0`. The app adds the phone gateway
 only to its dedicated policy table. Verify that `wlan0` does not appear as a
 main-table default route.
 
-### 4. Configure the USB Ethernet interface
+### 5. Configure the USB Ethernet interface
 
 Replace `enx001122334455` with the detected interface:
 
@@ -95,7 +122,7 @@ ha network update enx001122334455 \
 
 Do not configure a gateway or DNS servers on this interface.
 
-### 5. Verify the host baseline
+### 6. Verify the host baseline
 
 Confirm:
 
@@ -113,8 +140,9 @@ The defaults are examples and must match the target host.
 
 | Option | Purpose |
 |---|---|
+| `upstream_mode` | `hotspot_wifi` for the existing Wi-Fi path, `iphone_usb` for experimental USB tethering |
 | `management_interface`, `management_address` | Baseline that must remain unchanged |
-| `upstream_interface`, `upstream_address`, `upstream_gateway` | Phone hotspot path |
+| `upstream_interface`, `upstream_address`, `upstream_gateway` | Phone hotspot path for `hotspot_wifi` |
 | `downstream_mac`, `downstream_address` | Stable USB adapter identity and gateway |
 | `transit_subnet`, `dhcp_start`, `dhcp_end` | Isolated router WAN network |
 | `dns_servers` | Public DNS servers advertised by DHCP |
@@ -130,15 +158,20 @@ Options are read when the app starts. Restart the app after changing them.
 
 1. Start the app with disabled mode and dry-run enabled.
 2. Review the logs and safety-check status. Resolve every reported error.
-3. Set `dry_run: false`, keep `mode: disabled`, save and restart. This leaves
-   the downstream host-ingress guard in place while transit, NAT, DHCP and
-   policy routing stay disabled.
-4. Connect the USB Ethernet cable only to the intended router WAN port.
-5. Select `trial` mode.
-6. Confirm the router receives an address from the configured DHCP range.
-7. Confirm DNS and HTTPS traffic use the phone hotspot.
-8. Confirm Home Assistant management remains reachable.
-9. Confirm no transit traffic can use the management interface.
+3. Set `dry_run: false`, keep `mode: disabled`, save and restart.
+   This leaves the downstream host-ingress guard in place while transit, NAT,
+   DHCP and policy routing stay disabled.
+4. If using `iphone_usb`, connect the iPhone by USB, unlock it, enable Personal
+   Hotspot and tap **Trust** when prompted. Then press **Reapply gateway state**
+   until the pairing state becomes `paired`.
+5. Confirm the selected upstream is ready while the gateway still remains
+   disabled.
+6. Connect the USB Ethernet cable only to the intended router WAN port.
+7. Select `trial` mode.
+8. Confirm the router receives an address from the configured DHCP range.
+9. Confirm DNS and HTTPS traffic use the selected mobile upstream.
+10. Confirm Home Assistant management remains reachable.
+11. Confirm no transit traffic can use the management interface.
 
 Trial mode automatically tears down DHCP, firewall, NAT and policy routing
 after `trial_seconds`. The absolute deadline is stored under `/data`, so an app
@@ -169,6 +202,20 @@ To recover:
 4. Correct HAOS interface configuration or app options.
 5. Restart in disabled dry-run mode.
 
+## iPhone USB feasibility and limits
+
+This path is intentionally experimental on stock HAOS 18.1:
+
+- it depends on the host `ipheth` kernel driver appearing for the connected
+  iPhone;
+- it depends on container USB access plus `usbmuxd`/`libimobiledevice`;
+- the interface name is discovered dynamically and must not be hard-coded;
+- the trust workflow is still user-driven on the phone;
+- real hardware validation is still required for every target HAOS build.
+
+If the phone is visible over USB but pairing cannot complete, the app fails
+closed and keeps downstream forwarding disabled.
+
 ## Optional Home Assistant integration
 
 The app is fully operable without the custom integration. The optional
@@ -177,11 +224,12 @@ Adding this Apps repository does not install the integration.
 
 ## Security status
 
-The app uses only `NET_ADMIN` and `NET_RAW`, without `full_access` or host
-D-Bus. Its AppArmor profile remains in complain mode while the network command
-surface is audited on real hardware. AppArmor currently records policy misses
-but does not enforce them. Runtime isolation therefore depends on the app's
-scoped netfilter and policy-routing rules.
+The app uses `NET_ADMIN`, `NET_RAW` and `usb: true`, without `full_access` or
+host D-Bus. `usb` exposes `/dev/bus/usb` so libimobiledevice can pair with the
+phone. Its AppArmor profile remains in complain mode while the network and USB
+command surface is audited on real hardware. Runtime isolation therefore
+depends on the app's scoped netfilter and policy-routing rules plus the limited
+USB device cgroup.
 
 The API binds to the Supervisor-side host address and requires a generated
 Bearer token. Diagnostics redact credentials, public addressing and network

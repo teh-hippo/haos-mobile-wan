@@ -13,6 +13,7 @@ host_network: true
 hassio_api: true
 discovery:
   - ha_cellular_gateway
+usb: true
 privileged:
   - NET_ADMIN
   - NET_RAW
@@ -24,6 +25,7 @@ options:
   dry_run: true
   management_interface: end0
   management_address: 192.168.1.2/24
+  upstream_mode: hotspot_wifi
   upstream_interface: wlan0
   upstream_ssid: MobileHotspot
   upstream_address: 172.20.10.4/28
@@ -46,6 +48,7 @@ schema:
   dry_run: bool
   management_interface: str
   management_address: str
+  upstream_mode: list(hotspot_wifi|iphone_usb)
   upstream_interface: str
   upstream_ssid: str
   upstream_address: str

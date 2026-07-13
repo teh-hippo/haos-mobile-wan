@@ -7,6 +7,7 @@ from collections.abc import Callable
 
 from .config import GatewayConfig
 from .errors import GatewayError
+from .upstream import ResolvedUpstream, configured_upstream
 
 
 RunCommand = Callable[..., subprocess.CompletedProcess[str]]
@@ -23,14 +24,19 @@ class PolicyRouting:
         result = self.run(*args)
         return json.loads(result.stdout or "[]")
 
-    def ownership(self, downstream: str) -> dict[str, object]:
+    def ownership(
+        self,
+        downstream: str,
+        upstream: ResolvedUpstream | None = None,
+    ) -> dict[str, object]:
+        current = upstream or configured_upstream(self.config)
         return {
             "downstream": downstream,
             "downstream_address": self.config.downstream_address,
             "transit_subnet": self.config.transit_subnet,
-            "upstream_interface": self.config.upstream_interface,
-            "upstream_address": self.config.upstream_address,
-            "upstream_gateway": self.config.upstream_gateway,
+            "upstream_interface": current.interface,
+            "upstream_address": current.address,
+            "upstream_gateway": current.gateway,
             "routing_table": self.config.routing_table,
         }
 
@@ -100,15 +106,24 @@ class PolicyRouting:
             ],
         )
 
-    def conflicts(self, downstream: str) -> list[str]:
-        conflicts = self._rule_conflicts(downstream)
-        conflicts.extend(self._route_conflicts(downstream))
+    def conflicts(
+        self,
+        downstream: str,
+        upstream: ResolvedUpstream | None = None,
+    ) -> list[str]:
+        ownership = self.ownership(downstream, upstream)
+        conflicts = self._rule_conflicts(downstream, ownership)
+        conflicts.extend(self._route_conflicts(downstream, ownership))
         return conflicts
 
-    def installed(self, downstream: str | None) -> bool:
+    def installed(
+        self,
+        downstream: str | None,
+        upstream: ResolvedUpstream | None = None,
+    ) -> bool:
         if not downstream:
             return False
-        ownership = self.ownership(downstream)
+        ownership = self.ownership(downstream, upstream)
         rules = self._read_json("ip", "-j", "rule", "show")
         routes = self._read_json(
             "ip",
@@ -194,11 +209,15 @@ class PolicyRouting:
             str(route.get("gateway", "")),
         ) == (destination, interface, source, gateway)
 
-    def _rule_conflicts(self, downstream: str) -> list[str]:
+    def _rule_conflicts(
+        self,
+        downstream: str,
+        ownership: dict[str, object],
+    ) -> list[str]:
         rules = self._read_json("ip", "-j", "rule", "show")
         conflicts: list[str] = []
-        table = str(self.config.routing_table)
-        expected_rules = self.rule_args(self.ownership(downstream))
+        table = self._value(ownership, "routing_table")
+        expected_rules = self.rule_args(ownership)
         for rule in rules if isinstance(rules, list) else []:
             if not isinstance(rule, dict):
                 continue
@@ -219,7 +238,11 @@ class PolicyRouting:
                 )
         return conflicts
 
-    def _route_conflicts(self, downstream: str) -> list[str]:
+    def _route_conflicts(
+        self,
+        downstream: str,
+        ownership: dict[str, object],
+    ) -> list[str]:
         routes = self._read_json(
             "ip",
             "-4",
@@ -227,13 +250,19 @@ class PolicyRouting:
             "route",
             "show",
             "table",
-            str(self.config.routing_table),
+            self._value(ownership, "routing_table"),
+        )
+        upstream = ResolvedUpstream(
+            mode=self.config.upstream_mode,
+            interface=self._value(ownership, "upstream_interface"),
+            address=self._value(ownership, "upstream_address"),
+            gateway=self._value(ownership, "upstream_gateway"),
         )
         expected = {
             (
-                self.config.upstream_network,
-                self.config.upstream_interface,
-                self.config.upstream_ip,
+                upstream.network,
+                upstream.interface,
+                upstream.ip,
                 "",
             ),
             (
@@ -244,9 +273,9 @@ class PolicyRouting:
             ),
             (
                 "default",
-                self.config.upstream_interface,
-                self.config.upstream_ip,
-                self.config.upstream_gateway,
+                upstream.interface,
+                upstream.ip,
+                upstream.gateway,
             ),
         }
         conflicts: list[str] = []
@@ -263,8 +292,12 @@ class PolicyRouting:
                 )
         return conflicts
 
-    def apply(self, downstream: str) -> dict[str, object]:
-        ownership = self.ownership(downstream)
+    def apply(
+        self,
+        downstream: str,
+        upstream: ResolvedUpstream | None = None,
+    ) -> dict[str, object]:
+        ownership = self.ownership(downstream, upstream)
         self.cleanup(ownership)
         for route in self.route_args(ownership):
             self.run("ip", "route", "replace", *route)

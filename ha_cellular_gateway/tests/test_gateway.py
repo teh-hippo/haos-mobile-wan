@@ -1,16 +1,20 @@
 import json
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
 
 from rootfs.app.errors import GatewayError, SafetyError
 from rootfs.app.gateway import GatewayEngine
+from rootfs.app.upstream import IPhoneUsbUpstream
+from rootfs.app.upstream_models import ResolvedUpstream
 
 from helpers import (
     FakeProcess,
     FakeRunner,
     install_realistic_firewall_state,
+    install_realistic_policy_state,
     make_config,
     prepend_chain_rule,
     sysctl_values,
@@ -43,7 +47,7 @@ class GatewayEngineTests(unittest.TestCase):
             state_path=self.state_path,
         )
         restarted.safety.find_downstream = lambda: "enx001122334455"
-        restarted.safety.errors = lambda downstream=None, state_error=None: []
+        restarted.safety.errors = lambda *args, **kwargs: []
         return restarted
 
     def _prepare_active_engine(self, mode: str = "active") -> GatewayEngine:
@@ -55,8 +59,10 @@ class GatewayEngineTests(unittest.TestCase):
             state_path=self.state_path,
         )
         engine.safety.find_downstream = lambda: "enx001122334455"
-        engine.safety.errors = lambda downstream=None, state_error=None: []
-        engine.firewall.installed = lambda downstream=None: engine.applied
+        engine.safety.errors = lambda *args, **kwargs: []
+        engine.firewall.installed = (
+            lambda downstream=None, upstream_interface=None: engine.applied
+        )
         engine.dhcp.start = lambda downstream: setattr(
             engine.dhcp,
             "process",
@@ -171,7 +177,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_manual_reconcile_does_not_run_external_health_probe(self) -> None:
         self.engine.startup_cleanup_pending = False
-        self.engine.safety.errors = lambda downstream=None, state_error=None: []
+        self.engine.safety.errors = lambda *args, **kwargs: []
         self.engine.reconcile()
         self.assertFalse(
             any(command and command[0] == "curl" for command in self.runner.commands)
@@ -182,15 +188,13 @@ class GatewayEngineTests(unittest.TestCase):
         engine.apply("active")
         self.assertEqual(engine.mode, "active")
 
-        engine.safety.errors = (
-            lambda downstream=None, state_error=None: ["Upstream unavailable"]
-        )
+        engine.safety.errors = lambda *args, **kwargs: ["Upstream unavailable"]
         engine.startup_cleanup_pending = False
         engine.reconcile()
         self.assertEqual(engine.mode, "disabled")
         self.assertEqual(engine.desired_mode, "active")
 
-        engine.safety.errors = lambda downstream=None, state_error=None: []
+        engine.safety.errors = lambda *args, **kwargs: []
         engine.reconcile()
         self.assertEqual(engine.mode, "active")
         self.assertTrue(engine.applied)
@@ -198,7 +202,7 @@ class GatewayEngineTests(unittest.TestCase):
     def test_activation_failure_is_cleaned_and_retried(self) -> None:
         engine = self._prepare_active_engine()
 
-        def fail_firewall(downstream: str) -> None:
+        def fail_firewall(downstream: str, upstream_interface: str | None = None) -> None:
             raise OSError("firewall unavailable")
 
         engine.firewall.apply = fail_firewall
@@ -207,7 +211,7 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertEqual(engine.mode, "disabled")
         self.assertEqual(engine.desired_mode, "active")
 
-        engine.firewall.apply = lambda downstream: None
+        engine.firewall.apply = lambda downstream, upstream_interface=None: None
         engine.startup_cleanup_pending = False
         engine.reconcile()
         self.assertEqual(engine.mode, "active")
@@ -218,8 +222,8 @@ class GatewayEngineTests(unittest.TestCase):
         before = len(engine.runner.commands)
 
         engine.startup_cleanup_pending = False
-        engine.policy.installed = lambda downstream: False
-        engine.firewall.installed = lambda downstream=None: True
+        engine.policy.installed = lambda downstream, upstream=None: False
+        engine.firewall.installed = lambda downstream=None, upstream_interface=None: True
         engine.reconcile()
 
         reapplied = engine.runner.commands[before:]
@@ -241,7 +245,7 @@ class GatewayEngineTests(unittest.TestCase):
         engine.desired_mode = "active"
         engine.applied = True
         engine.startup_cleanup_pending = False
-        engine.policy.installed = lambda downstream: True
+        engine.policy.installed = lambda downstream, upstream=None: True
         engine.dhcp.process = FakeProcess()
         before = len(engine.runner.commands)
 
@@ -263,6 +267,81 @@ class GatewayEngineTests(unittest.TestCase):
             )
         ]
         self.assertEqual(mutating_commands, [])
+
+    def test_iphone_usb_reconcile_is_idempotent_with_dynamic_upstream_interface(
+        self,
+    ) -> None:
+        values = sysctl_values()
+        engine = GatewayEngine(
+            make_config(mode="active", dry_run=False, upstream_mode="iphone_usb"),
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda: "enx001122334455"
+        engine.safety.errors = lambda *args, **kwargs: []
+        resolved = ResolvedUpstream(
+            mode="iphone_usb",
+            interface="eth0",
+            address="172.20.10.6/28",
+            gateway="172.20.10.1",
+        )
+        engine.upstream.resolve = lambda *, allow_mutation: (resolved, [])
+        install_realistic_firewall_state(
+            engine.runner,
+            engine.firewall,
+            "enx001122334455",
+            resolved.interface,
+        )
+        install_realistic_policy_state(
+            engine.runner,
+            engine.policy,
+            "enx001122334455",
+            resolved,
+        )
+        engine.firewall.installed = engine.firewall.__class__.installed.__get__(
+            engine.firewall,
+            engine.firewall.__class__,
+        )
+        engine.policy.installed = engine.policy.__class__.installed.__get__(
+            engine.policy,
+            engine.policy.__class__,
+        )
+        engine.mode = "active"
+        engine.desired_mode = "active"
+        engine.applied = True
+        engine.startup_cleanup_pending = False
+        engine.owned_state = engine.policy.ownership("enx001122334455", resolved)
+        engine.dhcp.process = FakeProcess()
+        dnsmasq_starts: list[str] = []
+
+        def track_dnsmasq_start(downstream: str) -> None:
+            dnsmasq_starts.append(downstream)
+            engine.dhcp.process = FakeProcess()
+
+        engine.dhcp.start = track_dnsmasq_start
+        before = len(engine.runner.commands)
+
+        engine.reconcile()
+
+        commands = engine.runner.commands[before:]
+        mutating_commands = [
+            command
+            for command in commands
+            if (
+                command[:3] == ["ip", "rule", "add"]
+                or command[:3] == ["ip", "route", "replace"]
+                or (
+                    command[0] in {"iptables", "ip6tables"}
+                    and any(
+                        operation in command
+                        for operation in ("-A", "-D", "-I", "-N", "-F", "-X")
+                    )
+                )
+            )
+        ]
+        self.assertEqual(mutating_commands, [])
+        self.assertEqual(dnsmasq_starts, [])
 
     def test_disabled_mode_preserves_live_host_protection(self) -> None:
         engine = self._prepare_active_engine()
@@ -298,7 +377,7 @@ class GatewayEngineTests(unittest.TestCase):
             state_path=self.state_path,
         )
         engine.safety.find_downstream = lambda: "enx001122334455"
-        engine.safety.errors = lambda downstream=None, state_error=None: []
+        engine.safety.errors = lambda *args, **kwargs: []
         install_realistic_firewall_state(
             engine.runner,
             engine.firewall,
@@ -388,7 +467,7 @@ class GatewayEngineTests(unittest.TestCase):
             state_path=self.state_path,
         )
         engine.safety.find_downstream = lambda: "enx001122334455"
-        engine.safety.errors = lambda downstream=None, state_error=None: []
+        engine.safety.errors = lambda *args, **kwargs: []
         install_realistic_firewall_state(
             engine.runner,
             engine.firewall,
@@ -461,7 +540,7 @@ class GatewayEngineTests(unittest.TestCase):
             state_path=self.state_path,
         )
         engine.safety.find_downstream = lambda: "enx001122334455"
-        engine.safety.errors = lambda downstream=None, state_error=None: []
+        engine.safety.errors = lambda *args, **kwargs: []
         engine.reconcile()
         self.assertEqual(engine.mode, "disabled")
         self.assertEqual(engine.desired_mode, "disabled")
@@ -470,7 +549,7 @@ class GatewayEngineTests(unittest.TestCase):
     def test_unexpected_reconcile_error_fails_closed(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply("active")
-        engine.safety.errors = lambda downstream=None, state_error=None: (_ for _ in ()).throw(
+        engine.safety.errors = lambda *args, **kwargs: (_ for _ in ()).throw(
             OSError("inspection failed")
         )
         engine.startup_cleanup_pending = False
@@ -478,6 +557,102 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertEqual(engine.mode, "disabled")
         self.assertFalse(engine.applied)
         self.assertIn("Safety inspection failed", engine.last_error)
+
+    def test_status_remains_responsive_during_blocking_upstream_resolution(self) -> None:
+        values = sysctl_values()
+        engine = GatewayEngine(
+            make_config(mode="disabled", dry_run=False, upstream_mode="iphone_usb"),
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda: "enx001122334455"
+        started = threading.Event()
+        release = threading.Event()
+
+        def slow_resolve(*, allow_mutation: bool):
+            started.set()
+            release.wait(timeout=2)
+            return None, ["waiting for usb"]
+
+        engine.upstream.resolve = slow_resolve
+        worker = threading.Thread(target=engine.reconcile)
+        worker.start()
+        self.assertTrue(started.wait(timeout=1))
+
+        began = time.time()
+        status = engine.status()
+        elapsed = time.time() - began
+
+        release.set()
+        worker.join(timeout=2)
+        self.assertLess(elapsed, 0.5)
+        self.assertEqual(status["mode"], "disabled")
+
+    def test_stop_after_dry_run_detected_usb_does_not_flush_external_interface(self) -> None:
+        values = sysctl_values()
+        runner = FakeRunner()
+        runner.interface_addresses["eth0"] = ("172.20.10.2", 28)
+        runner.main_default_routes.append(
+            {"dst": "default", "gateway": "172.20.10.1", "dev": "eth0"}
+        )
+        engine = GatewayEngine(
+            make_config(upstream_mode="iphone_usb"),
+            runner=runner,
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            usb_root = root / "dev" / "bus" / "usb"
+            sys_net_root = root / "sys" / "class" / "net"
+            sys_usb_root = root / "sys" / "bus" / "usb" / "devices"
+            driver_root = root / "drivers"
+            udhcpc_script = root / "udhcpc.script"
+            run_dir = root / "run"
+            usb_root.mkdir(parents=True)
+            sys_net_root.mkdir(parents=True)
+            sys_usb_root.mkdir(parents=True)
+            driver_root.mkdir(parents=True)
+            udhcpc_script.write_text("#!/bin/sh\n", encoding="utf-8")
+
+            target = driver_root / "ipheth"
+            target.mkdir()
+            interface = sys_net_root / "eth0" / "device"
+            interface.mkdir(parents=True)
+            (interface / "driver").symlink_to(target)
+
+            device = sys_usb_root / "1-1"
+            device.mkdir(parents=True)
+            (device / "idVendor").write_text("05ac\n", encoding="utf-8")
+
+            engine.upstream = IPhoneUsbUpstream(
+                engine.config,
+                lambda *args, **kwargs: runner.run(list(args), **kwargs),
+                run_dir=run_dir,
+                lockdown_dir=root / "lockdown",
+                usb_root=usb_root,
+                sys_net_root=sys_net_root,
+                sys_usb_root=sys_usb_root,
+                udhcpc_script=udhcpc_script,
+                which=lambda command: f"/usr/bin/{command}",
+                popen=lambda *args, **kwargs: FakeProcess(),
+            )
+            resolved, errors = engine.upstream.resolve(allow_mutation=False)
+            self.assertEqual(errors, [])
+            self.assertIsNotNone(resolved)
+
+            runner.commands.clear()
+            engine.stop()
+
+        self.assertFalse(
+            any(
+                command[:4] == ["ip", "-4", "address", "flush"]
+                or command[:5] == ["ip", "route", "del", "default", "dev"]
+                for command in runner.commands
+            )
+        )
 
 
 if __name__ == "__main__":

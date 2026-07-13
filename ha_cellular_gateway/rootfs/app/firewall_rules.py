@@ -57,8 +57,12 @@ class FirewallRules:
             ],
         )
 
-    def forward_rules(self, downstream: str) -> tuple[list[str], ...]:
-        upstream = self.config.upstream_interface
+    def forward_rules(
+        self,
+        downstream: str,
+        upstream: str | None = None,
+    ) -> tuple[list[str], ...]:
+        upstream = upstream or self.config.upstream_interface
         subnet = self.config.transit_subnet
         tag = self.comment_prefix
         return (
@@ -127,12 +131,13 @@ class FirewallRules:
             ["-j", "RETURN"],
         )
 
-    def nat_rule(self) -> list[str]:
+    def nat_rule(self, upstream: str | None = None) -> list[str]:
+        upstream = upstream or self.config.upstream_interface
         return [
             "-s",
             self.config.transit_subnet,
             "-o",
-            self.config.upstream_interface,
+            upstream,
             "-j",
             "MASQUERADE",
             "-m",
@@ -141,8 +146,12 @@ class FirewallRules:
             f"{self.comment_prefix}:snat",
         ]
 
-    def mss_rules(self, downstream: str) -> tuple[list[str], ...]:
-        upstream = self.config.upstream_interface
+    def mss_rules(
+        self,
+        downstream: str,
+        upstream: str | None = None,
+    ) -> tuple[list[str], ...]:
+        upstream = upstream or self.config.upstream_interface
         subnet = self.config.transit_subnet
         tag = self.comment_prefix
         return (

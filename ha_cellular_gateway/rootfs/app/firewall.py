@@ -28,68 +28,48 @@ class Firewall:
         return self.netfilter.chain_exists(family, chain)
 
     def installed(self, downstream: str | None) -> bool:
-        if not downstream:
+        if not downstream or not self.host_protection_installed(downstream):
             return False
         if not all(
-            self.netfilter.chain_exists("iptables", chain)
-            for chain in (self.FORWARD_CHAIN, self.INPUT_CHAIN)
-        ):
-            return False
-        if not self.netfilter.rule_exists(
-            "iptables",
-            "DOCKER-USER",
-            self.netfilter.jump_rule(
-                self.FORWARD_CHAIN,
-                f"{self.COMMENT_PREFIX}:jump",
-            ),
-        ):
-            return False
-        if not self.netfilter.rule_exists(
-            "iptables",
-            "INPUT",
-            self.netfilter.jump_rule(
-                self.INPUT_CHAIN,
-                f"{self.COMMENT_PREFIX}:local-jump",
-                ["-i", downstream],
-            ),
-        ):
-            return False
-        if not all(
-            self.netfilter.rule_exists("iptables", self.INPUT_CHAIN, rule)
-            for rule in self._input_rules()
-        ):
-            return False
-        if not all(
-            self.netfilter.rule_exists("iptables", self.FORWARD_CHAIN, rule)
-            for rule in self._forward_rules(downstream)
-        ):
-            return False
-        if not self.netfilter.rule_exists(
-            "iptables",
-            "POSTROUTING",
-            self._nat_rule(),
-            ["-t", "nat"],
-        ):
-            return False
-        if not all(
-            self.netfilter.rule_exists(
-                "iptables",
-                "FORWARD",
-                rule,
-                ["-t", "mangle"],
+            (
+                self.netfilter.chain_exists("iptables", self.FORWARD_CHAIN),
+                self.netfilter.rule_exists(
+                    "iptables",
+                    "DOCKER-USER",
+                    self.netfilter.jump_rule(
+                        self.FORWARD_CHAIN,
+                        f"{self.COMMENT_PREFIX}:jump",
+                    ),
+                ),
+                self._chain_matches(
+                    "iptables",
+                    self.FORWARD_CHAIN,
+                    self._forward_rules(downstream),
+                ),
+                self.netfilter.rule_exists(
+                    "iptables",
+                    "POSTROUTING",
+                    self._nat_rule(),
+                    ["-t", "nat"],
+                ),
+                all(
+                    self.netfilter.rule_exists(
+                        "iptables",
+                        "FORWARD",
+                        rule,
+                        ["-t", "mangle"],
+                    )
+                    for rule in self._mss_rules(downstream)
+                ),
             )
-            for rule in self._mss_rules(downstream)
         ):
             return False
         if not self.netfilter.chain_exists("ip6tables", "DOCKER-USER"):
             return True
         return all(
             (
-                self.netfilter.chain_exists(
-                    "ip6tables",
-                    self.FORWARD6_CHAIN,
-                ),
-                self.netfilter.chain_exists("ip6tables", self.INPUT6_CHAIN),
+                self._ipv6_input_guard_installed(downstream),
+                self.netfilter.chain_exists("ip6tables", self.FORWARD6_CHAIN),
                 self.netfilter.rule_exists(
                     "ip6tables",
                     "DOCKER-USER",
@@ -98,6 +78,52 @@ class Firewall:
                         f"{self.COMMENT_PREFIX}:v6-jump",
                     ),
                 ),
+                self._chain_matches(
+                    "ip6tables",
+                    self.FORWARD6_CHAIN,
+                    self._forward6_rules(downstream),
+                ),
+            )
+        )
+
+    def host_protection_installed(self, downstream: str | None) -> bool:
+        return bool(
+            downstream
+            and self._input_guard_installed(downstream)
+            and (
+                not self.netfilter.chain_exists("ip6tables", "DOCKER-USER")
+                or self._ipv6_input_guard_installed(downstream)
+            )
+        )
+
+    def _chain_matches(self, family: str, chain: str, expected: tuple[list[str], ...]) -> bool:
+        return self.netfilter.chain_rules(family, chain) == list(expected)
+
+    def _input_guard_installed(self, downstream: str) -> bool:
+        return all(
+            (
+                self.netfilter.chain_exists("iptables", self.INPUT_CHAIN),
+                self.netfilter.rule_exists(
+                    "iptables",
+                    "INPUT",
+                    self.netfilter.jump_rule(
+                        self.INPUT_CHAIN,
+                        f"{self.COMMENT_PREFIX}:local-jump",
+                        ["-i", downstream],
+                    ),
+                ),
+                self._chain_matches(
+                    "iptables",
+                    self.INPUT_CHAIN,
+                    self._input_rules(),
+                ),
+            )
+        )
+
+    def _ipv6_input_guard_installed(self, downstream: str) -> bool:
+        return all(
+            (
+                self.netfilter.chain_exists("ip6tables", self.INPUT6_CHAIN),
                 self.netfilter.rule_exists(
                     "ip6tables",
                     "INPUT",
@@ -107,61 +133,12 @@ class Firewall:
                         ["-i", downstream],
                     ),
                 ),
-                *(
-                    self.netfilter.rule_exists(
-                        "ip6tables",
-                        self.INPUT6_CHAIN,
-                        rule,
-                    )
-                    for rule in self._input6_rules()
-                ),
-                *(
-                    self.netfilter.rule_exists(
-                        "ip6tables",
-                        self.FORWARD6_CHAIN,
-                        rule,
-                    )
-                    for rule in self._forward6_rules(downstream)
+                self._chain_matches(
+                    "ip6tables",
+                    self.INPUT6_CHAIN,
+                    self._input6_rules(),
                 ),
             )
-        )
-
-    def host_protection_installed(self, downstream: str | None) -> bool:
-        if not downstream:
-            return False
-        if not self.netfilter.chain_exists("iptables", self.INPUT_CHAIN):
-            return False
-        if not self.netfilter.rule_exists(
-            "iptables",
-            "INPUT",
-            self.netfilter.jump_rule(
-                self.INPUT_CHAIN,
-                f"{self.COMMENT_PREFIX}:local-jump",
-                ["-i", downstream],
-            ),
-        ):
-            return False
-        if not all(
-            self.netfilter.rule_exists("iptables", self.INPUT_CHAIN, rule)
-            for rule in self._input_rules()
-        ):
-            return False
-        if not self.netfilter.chain_exists("ip6tables", "DOCKER-USER"):
-            return True
-        return self.netfilter.chain_exists(
-            "ip6tables",
-            self.INPUT6_CHAIN,
-        ) and self.netfilter.rule_exists(
-            "ip6tables",
-            "INPUT",
-            self.netfilter.jump_rule(
-                self.INPUT6_CHAIN,
-                f"{self.COMMENT_PREFIX}:v6-local-jump",
-                ["-i", downstream],
-            ),
-        ) and all(
-            self.netfilter.rule_exists("ip6tables", self.INPUT6_CHAIN, rule)
-            for rule in self._input6_rules()
         )
 
     def _input_rules(self) -> tuple[list[str], ...]:
@@ -442,13 +419,11 @@ class Firewall:
         for rule in self._input6_rules():
             self.netfilter.run("ip6tables", "-A", self.INPUT6_CHAIN, *rule)
 
-    def cleanup(self) -> None:
+    def cleanup(self, preserved_downstream: str | None = None) -> None:
         for family, table_args, chain in (
-            ("iptables", [], "INPUT"),
             ("iptables", [], "DOCKER-USER"),
             ("iptables", ["-t", "nat"], "POSTROUTING"),
             ("iptables", ["-t", "mangle"], "FORWARD"),
-            ("ip6tables", [], "INPUT"),
             ("ip6tables", [], "DOCKER-USER"),
         ):
             self.netfilter.delete_tagged_rules(
@@ -456,11 +431,11 @@ class Firewall:
                 chain,
                 table_args,
             )
-        self.netfilter.remove_chains(
-            "iptables",
-            (self.FORWARD_CHAIN, self.INPUT_CHAIN),
-        )
-        self.netfilter.remove_chains(
-            "ip6tables",
-            (self.FORWARD6_CHAIN, self.INPUT6_CHAIN),
-        )
+        self.netfilter.remove_chains("iptables", (self.FORWARD_CHAIN,))
+        self.netfilter.remove_chains("ip6tables", (self.FORWARD6_CHAIN,))
+        if preserved_downstream:
+            return
+        for family, chain in (("iptables", "INPUT"), ("ip6tables", "INPUT")):
+            self.netfilter.delete_tagged_rules(family, chain)
+        self.netfilter.remove_chains("iptables", (self.INPUT_CHAIN,))
+        self.netfilter.remove_chains("ip6tables", (self.INPUT6_CHAIN,))

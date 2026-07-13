@@ -108,11 +108,7 @@ class GatewayEngine:
         return self.runner.run(list(args), check=check, timeout=timeout)
 
     def _persist_state(self) -> None:
-        self.state_store.save(
-            owned=self.owned_state,
-            trial_started_at=self.trial_started_at,
-            trial_deadline=self.trial_deadline,
-        )
+        self.state_store.save(owned=self.owned_state, trial_started_at=self.trial_started_at, trial_deadline=self.trial_deadline)
 
     def cleanup(
         self,
@@ -134,21 +130,28 @@ class GatewayEngine:
                 self._persist_state()
                 return
 
+            downstream = None
+            try:
+                downstream = self.safety.find_downstream()
+            except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
+                pass
+            preserved_downstream = downstream
+            if not self._protectable_downstream(preserved_downstream) and isinstance(self.owned_state, dict):
+                candidate = self.owned_state.get("downstream")
+                preserved_downstream = candidate if isinstance(candidate, str) else None
+            if not preserve_host_protection or not self._protectable_downstream(preserved_downstream):
+                preserved_downstream = None
             self.dhcp.stop()
-            self.firewall.cleanup()
+            self.firewall.cleanup(preserved_downstream)
 
             ownerships: list[dict[str, object]] = []
-            downstream = self.safety.find_downstream()
             if self.owned_state:
                 ownerships.append(self.owned_state)
             if downstream:
                 current = self.policy.ownership(downstream)
-                if current not in ownerships:
-                    ownerships.append(current)
+                if current not in ownerships: ownerships.append(current)
             for ownership in ownerships:
                 self.policy.cleanup(ownership)
-            if self._protectable_downstream(downstream) and preserve_host_protection:
-                self.firewall.protect_host(downstream)
 
             self.owned_state = None
             self.mode = "disabled"
@@ -161,13 +164,10 @@ class GatewayEngine:
             self._persist_state()
 
     def _protectable_downstream(self, downstream: str | None) -> bool:
-        return bool(
-            downstream
-            and downstream not in {
-                self.config.management_interface,
-                self.config.upstream_interface,
-            }
-        )
+        return bool(downstream) and downstream not in {
+            self.config.management_interface,
+            self.config.upstream_interface,
+        }
 
     def _health_probe(self) -> tuple[bool, str | None]:
         try:

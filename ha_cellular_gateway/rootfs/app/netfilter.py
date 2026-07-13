@@ -55,6 +55,25 @@ class Netfilter:
             == 0
         )
 
+    def chain_rules(
+        self,
+        family: str,
+        chain: str,
+        table_args: list[str] | None = None,
+    ) -> list[list[str]] | None:
+        result = self.run(family, *(table_args or []), "-S", chain, check=False)
+        if result.returncode != 0:
+            return None
+        rules: list[list[str]] = []
+        for line in result.stdout.splitlines():
+            try:
+                arguments = shlex.split(line)
+            except ValueError:
+                return None
+            if len(arguments) >= 2 and arguments[:2] == ["-A", chain]:
+                rules.append(arguments[2:])
+        return rules
+
     def ensure_chain(self, family: str, chain: str) -> None:
         if not self.chain_exists(family, chain):
             self.run(family, "-N", chain)

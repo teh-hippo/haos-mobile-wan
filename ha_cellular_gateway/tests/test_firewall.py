@@ -82,39 +82,53 @@ class FirewallTests(unittest.TestCase):
     def test_installed_requires_owned_local_rules(self) -> None:
         firewall = self.engine.firewall
         existing = {
-            (
-                "iptables",
-                "DOCKER-USER",
-                tuple(
-                    firewall.netfilter.jump_rule(
-                        firewall.FORWARD_CHAIN,
-                        "ha-cellgw:jump",
-                    )
-                ),
-            ),
-            (
-                "iptables",
-                "INPUT",
-                tuple(
-                    firewall.netfilter.jump_rule(
-                        firewall.INPUT_CHAIN,
-                        "ha-cellgw:local-jump",
-                        ["-i", "enx001122334455"],
-                    )
-                ),
-            ),
+            ("iptables", "DOCKER-USER", tuple(), tuple(firewall.netfilter.jump_rule(firewall.FORWARD_CHAIN, "ha-cellgw:jump"))),
+            ("iptables", "INPUT", tuple(), tuple(firewall.netfilter.jump_rule(firewall.INPUT_CHAIN, "ha-cellgw:local-jump", ["-i", "enx001122334455"]))),
+            ("iptables", "POSTROUTING", ("-t", "nat"), tuple(firewall._nat_rule())),
+            *{
+                ("iptables", "FORWARD", ("-t", "mangle"), tuple(rule))
+                for rule in firewall._mss_rules("enx001122334455")
+            },
         }
         firewall.netfilter.chain_exists = lambda family, chain: family == "iptables"
         firewall.netfilter.rule_exists = (
             lambda family, chain, rule, table_args=None: (
                 family,
                 chain,
+                tuple(table_args or ()),
                 tuple(rule),
             )
             in existing
         )
+        firewall.netfilter.chain_rules = lambda family, chain, table_args=None: []
 
         self.assertFalse(firewall.installed("enx001122334455"))
+
+    def test_host_protection_rejects_unexpected_local_accept(self) -> None:
+        firewall = self.engine.firewall
+        firewall.netfilter.chain_exists = lambda family, chain: family == "iptables"
+        firewall.netfilter.rule_exists = lambda family, chain, rule, table_args=None: (
+            family,
+            chain,
+            tuple(rule),
+        ) == (
+            "iptables",
+            "INPUT",
+            tuple(
+                firewall.netfilter.jump_rule(
+                    firewall.INPUT_CHAIN,
+                    "ha-cellgw:local-jump",
+                    ["-i", "enx001122334455"],
+                )
+            ),
+        )
+        firewall.netfilter.chain_rules = lambda family, chain, table_args=None: [
+            *firewall._input_rules()[:-1],
+            ["-j", "ACCEPT"],
+            firewall._input_rules()[-1],
+        ]
+
+        self.assertFalse(firewall.host_protection_installed("enx001122334455"))
 
 
 if __name__ == "__main__":

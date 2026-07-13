@@ -130,7 +130,9 @@ Options are read when the app starts. Restart the app after changing them.
 
 1. Start the app with disabled mode and dry-run enabled.
 2. Review the logs and safety-check status. Resolve every reported error.
-3. Set `dry_run: false`, keep `mode: disabled`, save and restart.
+3. Set `dry_run: false`, keep `mode: disabled`, save and restart. This leaves
+   the downstream host-ingress guard in place while transit, NAT, DHCP and
+   policy routing stay disabled.
 4. Connect the USB Ethernet cable only to the intended router WAN port.
 5. Select `trial` mode.
 6. Confirm the router receives an address from the configured DHCP range.

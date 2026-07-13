@@ -141,18 +141,29 @@ class GatewayEngineTests(unittest.TestCase):
             any(command[:3] == ["ip", "route", "replace"] for command in reapplied)
         )
 
-    def test_disabled_mode_keeps_host_protection(self) -> None:
+    def test_disabled_mode_preserves_live_host_protection(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply("active")
+        engine.firewall.netfilter.chain_exists = lambda family, chain: True
+        engine.safety.find_downstream = lambda: (_ for _ in ()).throw(
+            OSError("adapter probe failed")
+        )
         before = len(engine.runner.commands)
 
         engine.cleanup(preserve_host_protection=True)
 
         commands = [" ".join(command) for command in engine.runner.commands[before:]]
-        self.assertIn(
-            "iptables -I INPUT 1 -i enx001122334455 -j HA_CELLGW_LOCAL "
-            "-m comment --comment ha-cellgw:local-jump",
-            commands,
+        self.assertTrue(
+            any(command == "iptables -F HA_CELLGW" for command in commands)
+        )
+        self.assertTrue(
+            any(command == "ip6tables -F HA_CELLGW6" for command in commands)
+        )
+        self.assertFalse(
+            any(
+                "HA_CELLGW_LOCAL" in command or "HA_CELLGW6_LOCAL" in command
+                for command in commands
+            )
         )
 
     def test_trial_deadline_survives_restart(self) -> None:

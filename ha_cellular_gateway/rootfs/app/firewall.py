@@ -55,12 +55,12 @@ class Firewall:
                 self._chain_matches(
                     "iptables",
                     self.FORWARD_CHAIN,
-                    self._forward_rules(downstream),
+                    self._forward_rules(downstream, upstream),
                 ),
                 self.netfilter.rule_exists(
                     "iptables",
                     "POSTROUTING",
-                    self._nat_rule(),
+                    self._nat_rule(upstream),
                     ["-t", "nat"],
                 ),
                 all(
@@ -70,7 +70,7 @@ class Firewall:
                         rule,
                         ["-t", "mangle"],
                     )
-                    for rule in self._mss_rules(downstream)
+                    for rule in self._mss_rules(downstream, upstream)
                 ),
             )
         ):

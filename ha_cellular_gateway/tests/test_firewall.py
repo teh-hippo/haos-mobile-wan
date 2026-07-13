@@ -144,6 +144,17 @@ class FirewallTests(unittest.TestCase):
 
         self.assertTrue(firewall.installed("enx001122334455"))
 
+    def test_installed_accepts_realistic_dynamic_usb_upstream(self) -> None:
+        firewall = self.engine.firewall
+        install_realistic_firewall_state(
+            self.runner,
+            firewall,
+            "enx001122334455",
+            "eth0",
+        )
+
+        self.assertTrue(firewall.installed("enx001122334455", "eth0"))
+
     def test_host_protection_rejects_unexpected_local_accept(self) -> None:
         firewall = self.engine.firewall
         firewall.netfilter.chain_exists = lambda family, chain: family == "iptables"

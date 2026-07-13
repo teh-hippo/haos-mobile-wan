@@ -290,8 +290,13 @@ def make_config(**overrides: object) -> GatewayConfig:
     return GatewayConfig(**values)
 
 
-def install_realistic_firewall_state(runner: FakeRunner, firewall, downstream: str) -> None:
-    upstream = firewall.config.upstream_interface
+def install_realistic_firewall_state(
+    runner: FakeRunner,
+    firewall,
+    downstream: str,
+    upstream: str | None = None,
+) -> None:
+    upstream = upstream or firewall.config.upstream_interface
     subnet = firewall.config.transit_subnet
     runner.rule_checks.update(
         {
@@ -321,7 +326,7 @@ def install_realistic_firewall_state(runner: FakeRunner, firewall, downstream: s
             (
                 "iptables",
                 ("-t", "nat"),
-                ("POSTROUTING", *firewall._nat_rule()),
+                ("POSTROUTING", *firewall._nat_rule(upstream)),
             ),
             *{
                 (
@@ -329,7 +334,7 @@ def install_realistic_firewall_state(runner: FakeRunner, firewall, downstream: s
                     ("-t", "mangle"),
                     ("FORWARD", *rule),
                 )
-                for rule in firewall._mss_rules(downstream)
+                for rule in firewall._mss_rules(downstream, upstream)
             },
             (
                 "ip6tables",
@@ -452,6 +457,45 @@ def install_realistic_firewall_state(runner: FakeRunner, firewall, downstream: s
             ),
         }
     )
+
+
+def install_realistic_policy_state(
+    runner: FakeRunner,
+    policy,
+    downstream: str,
+    upstream=None,
+) -> None:
+    ownership = policy.ownership(downstream, upstream)
+    runner.policy_rules = []
+    for rule in policy.rule_args(ownership):
+        entry = {
+            "priority": int(rule[rule.index("pref") + 1]),
+            "table": rule[rule.index("lookup") + 1],
+        }
+        if "iif" in rule:
+            entry["iifname"] = rule[rule.index("iif") + 1]
+        if "from" in rule:
+            source = rule[rule.index("from") + 1]
+            if "/" in source:
+                address, _, length = source.partition("/")
+                entry["src"] = address
+                entry["srclen"] = int(length)
+            else:
+                entry["src"] = source
+        runner.policy_rules.append(entry)
+    runner.policy_routes = [
+        {
+            "dst": route[0],
+            "dev": route[route.index("dev") + 1],
+            "prefsrc": route[route.index("src") + 1],
+            **(
+                {"gateway": route[route.index("via") + 1]}
+                if "via" in route
+                else {}
+            ),
+        }
+        for route in policy.route_args(ownership)
+    ]
 
 
 def prepend_chain_rule(

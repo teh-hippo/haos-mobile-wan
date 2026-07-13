@@ -8,11 +8,13 @@ from pathlib import Path
 from rootfs.app.errors import GatewayError, SafetyError
 from rootfs.app.gateway import GatewayEngine
 from rootfs.app.upstream import IPhoneUsbUpstream
+from rootfs.app.upstream_models import ResolvedUpstream
 
 from helpers import (
     FakeProcess,
     FakeRunner,
     install_realistic_firewall_state,
+    install_realistic_policy_state,
     make_config,
     prepend_chain_rule,
     sysctl_values,
@@ -265,6 +267,81 @@ class GatewayEngineTests(unittest.TestCase):
             )
         ]
         self.assertEqual(mutating_commands, [])
+
+    def test_iphone_usb_reconcile_is_idempotent_with_dynamic_upstream_interface(
+        self,
+    ) -> None:
+        values = sysctl_values()
+        engine = GatewayEngine(
+            make_config(mode="active", dry_run=False, upstream_mode="iphone_usb"),
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda: "enx001122334455"
+        engine.safety.errors = lambda *args, **kwargs: []
+        resolved = ResolvedUpstream(
+            mode="iphone_usb",
+            interface="eth0",
+            address="172.20.10.6/28",
+            gateway="172.20.10.1",
+        )
+        engine.upstream.resolve = lambda *, allow_mutation: (resolved, [])
+        install_realistic_firewall_state(
+            engine.runner,
+            engine.firewall,
+            "enx001122334455",
+            resolved.interface,
+        )
+        install_realistic_policy_state(
+            engine.runner,
+            engine.policy,
+            "enx001122334455",
+            resolved,
+        )
+        engine.firewall.installed = engine.firewall.__class__.installed.__get__(
+            engine.firewall,
+            engine.firewall.__class__,
+        )
+        engine.policy.installed = engine.policy.__class__.installed.__get__(
+            engine.policy,
+            engine.policy.__class__,
+        )
+        engine.mode = "active"
+        engine.desired_mode = "active"
+        engine.applied = True
+        engine.startup_cleanup_pending = False
+        engine.owned_state = engine.policy.ownership("enx001122334455", resolved)
+        engine.dhcp.process = FakeProcess()
+        dnsmasq_starts: list[str] = []
+
+        def track_dnsmasq_start(downstream: str) -> None:
+            dnsmasq_starts.append(downstream)
+            engine.dhcp.process = FakeProcess()
+
+        engine.dhcp.start = track_dnsmasq_start
+        before = len(engine.runner.commands)
+
+        engine.reconcile()
+
+        commands = engine.runner.commands[before:]
+        mutating_commands = [
+            command
+            for command in commands
+            if (
+                command[:3] == ["ip", "rule", "add"]
+                or command[:3] == ["ip", "route", "replace"]
+                or (
+                    command[0] in {"iptables", "ip6tables"}
+                    and any(
+                        operation in command
+                        for operation in ("-A", "-D", "-I", "-N", "-F", "-X")
+                    )
+                )
+            )
+        ]
+        self.assertEqual(mutating_commands, [])
+        self.assertEqual(dnsmasq_starts, [])
 
     def test_disabled_mode_preserves_live_host_protection(self) -> None:
         engine = self._prepare_active_engine()

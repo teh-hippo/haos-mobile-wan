@@ -60,4 +60,5 @@ PYTHONDONTWRITEBYTECODE=1 python -m py_compile \
 
 Do not disable dry-run until the documented management, routing, IPv6 and
 firewall safety gates pass. The optional iPhone USB mode also needs the app's
-`usb` and `udev` permissions plus an explicit Trust workflow on the phone.
+`usb` permission, an explicit Trust workflow on the phone, and an unmanaged
+`ipheth` interface so the app owns DHCP itself.

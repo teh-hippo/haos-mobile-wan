@@ -1,11 +1,13 @@
 import json
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
 
 from rootfs.app.errors import GatewayError, SafetyError
 from rootfs.app.gateway import GatewayEngine
+from rootfs.app.upstream import IPhoneUsbUpstream
 
 from helpers import FakeProcess, FakeRunner, make_config, sysctl_values
 
@@ -174,6 +176,102 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertEqual(engine.mode, "disabled")
         self.assertFalse(engine.applied)
         self.assertIn("Safety inspection failed", engine.last_error)
+
+    def test_status_remains_responsive_during_blocking_upstream_resolution(self) -> None:
+        values = sysctl_values()
+        engine = GatewayEngine(
+            make_config(mode="disabled", dry_run=False, upstream_mode="iphone_usb"),
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda: "enx001122334455"
+        started = threading.Event()
+        release = threading.Event()
+
+        def slow_resolve(*, allow_mutation: bool):
+            started.set()
+            release.wait(timeout=2)
+            return None, ["waiting for usb"]
+
+        engine.upstream.resolve = slow_resolve
+        worker = threading.Thread(target=engine.reconcile)
+        worker.start()
+        self.assertTrue(started.wait(timeout=1))
+
+        began = time.time()
+        status = engine.status()
+        elapsed = time.time() - began
+
+        release.set()
+        worker.join(timeout=2)
+        self.assertLess(elapsed, 0.5)
+        self.assertEqual(status["mode"], "disabled")
+
+    def test_stop_after_dry_run_detected_usb_does_not_flush_external_interface(self) -> None:
+        values = sysctl_values()
+        runner = FakeRunner()
+        runner.interface_addresses["eth0"] = ("172.20.10.2", 28)
+        runner.main_default_routes.append(
+            {"dst": "default", "gateway": "172.20.10.1", "dev": "eth0"}
+        )
+        engine = GatewayEngine(
+            make_config(upstream_mode="iphone_usb"),
+            runner=runner,
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            usb_root = root / "dev" / "bus" / "usb"
+            sys_net_root = root / "sys" / "class" / "net"
+            sys_usb_root = root / "sys" / "bus" / "usb" / "devices"
+            driver_root = root / "drivers"
+            udhcpc_script = root / "udhcpc.script"
+            run_dir = root / "run"
+            usb_root.mkdir(parents=True)
+            sys_net_root.mkdir(parents=True)
+            sys_usb_root.mkdir(parents=True)
+            driver_root.mkdir(parents=True)
+            udhcpc_script.write_text("#!/bin/sh\n", encoding="utf-8")
+
+            target = driver_root / "ipheth"
+            target.mkdir()
+            interface = sys_net_root / "eth0" / "device"
+            interface.mkdir(parents=True)
+            (interface / "driver").symlink_to(target)
+
+            device = sys_usb_root / "1-1"
+            device.mkdir(parents=True)
+            (device / "idVendor").write_text("05ac\n", encoding="utf-8")
+
+            engine.upstream = IPhoneUsbUpstream(
+                engine.config,
+                lambda *args, **kwargs: runner.run(list(args), **kwargs),
+                run_dir=run_dir,
+                lockdown_dir=root / "lockdown",
+                usb_root=usb_root,
+                sys_net_root=sys_net_root,
+                sys_usb_root=sys_usb_root,
+                udhcpc_script=udhcpc_script,
+                which=lambda command: f"/usr/bin/{command}",
+                popen=lambda *args, **kwargs: FakeProcess(),
+            )
+            resolved, errors = engine.upstream.resolve(allow_mutation=False)
+            self.assertEqual(errors, [])
+            self.assertIsNotNone(resolved)
+
+            runner.commands.clear()
+            engine.stop()
+
+        self.assertFalse(
+            any(
+                command[:4] == ["ip", "-4", "address", "flush"]
+                or command[:5] == ["ip", "route", "del", "default", "dev"]
+                for command in runner.commands
+            )
+        )
 
 
 if __name__ == "__main__":

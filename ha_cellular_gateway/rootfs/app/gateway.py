@@ -34,6 +34,7 @@ class GatewayEngine:
         self.runner = runner or CommandRunner()
         self.read_text = read_text or (lambda path: path.read_text(encoding="utf-8"))
         self.lock = threading.RLock()
+        self.operation_lock = threading.RLock()
         self.firewall = Firewall(config, self._run)
         self.policy = PolicyRouting(config, self._run)
         self.safety = SafetyInspector(
@@ -120,24 +121,26 @@ class GatewayEngine:
         preserve_trial_deadline: bool = False,
         force: bool = False,
     ) -> None:
-        with self.lock:
-            if self.config.dry_run and not force:
-                self.mode = "disabled"
-                self.applied = False
-                if not preserve_desired:
-                    self.desired_mode = "disabled"
-                if not preserve_trial_deadline:
-                    self.trial_started_at = None
-                    self.trial_deadline = None
-                self._persist_state()
-                return
+        with self.operation_lock:
+            with self.lock:
+                if self.config.dry_run and not force:
+                    self.mode = "disabled"
+                    self.applied = False
+                    if not preserve_desired:
+                        self.desired_mode = "disabled"
+                    if not preserve_trial_deadline:
+                        self.trial_started_at = None
+                        self.trial_deadline = None
+                    self._persist_state()
+                    return
+                owned_state = self.owned_state
 
             self.dhcp.stop()
             self.firewall.cleanup()
 
             ownerships: list[dict[str, object]] = []
-            if self.owned_state:
-                ownerships.append(self.owned_state)
+            if owned_state:
+                ownerships.append(owned_state)
             downstream = self.safety.find_downstream()
             if downstream:
                 current = self.policy.ownership(downstream)
@@ -146,15 +149,16 @@ class GatewayEngine:
             for ownership in ownerships:
                 self.policy.cleanup(ownership)
 
-            self.owned_state = None
-            self.mode = "disabled"
-            self.applied = False
-            if not preserve_desired:
-                self.desired_mode = "disabled"
-            if not preserve_trial_deadline:
-                self.trial_started_at = None
-                self.trial_deadline = None
-            self._persist_state()
+            with self.lock:
+                self.owned_state = None
+                self.mode = "disabled"
+                self.applied = False
+                if not preserve_desired:
+                    self.desired_mode = "disabled"
+                if not preserve_trial_deadline:
+                    self.trial_started_at = None
+                    self.trial_deadline = None
+                self._persist_state()
 
     def _resolve_upstream(self) -> tuple[ResolvedUpstream | None, list[str]]:
         if self.config.upstream_mode == "iphone_usb":
@@ -210,17 +214,18 @@ class GatewayEngine:
         if self.config.dry_run:
             raise SafetyError("Mutation is disabled while dry_run is true")
 
-        with self.lock:
-            if not recovering:
-                self.desired_mode = mode
-                if mode == "trial":
-                    self.trial_started_at = time.time()
-                    self.trial_deadline = (
-                        self.trial_started_at + self.config.trial_seconds
-                    )
-                else:
-                    self.trial_started_at = None
-                    self.trial_deadline = None
+        with self.operation_lock:
+            with self.lock:
+                if not recovering:
+                    self.desired_mode = mode
+                    if mode == "trial":
+                        self.trial_started_at = time.time()
+                        self.trial_deadline = (
+                            self.trial_started_at + self.config.trial_seconds
+                        )
+                    else:
+                        self.trial_started_at = None
+                        self.trial_deadline = None
 
             downstream = self.safety.find_downstream()
             upstream, upstream_errors = self._resolve_upstream()
@@ -230,16 +235,19 @@ class GatewayEngine:
                 upstream_errors=upstream_errors,
                 state_error=self.state_load_error,
             )
-            self.last_downstream = downstream
-            self.last_upstream = upstream
-            self.last_safety_errors = errors
+            with self.lock:
+                self.last_downstream = downstream
+                self.last_upstream = upstream
+                self.last_safety_errors = errors
             if errors:
                 self.cleanup(
                     preserve_desired=True,
                     preserve_trial_deadline=recovering or mode == "trial",
                 )
-                self.last_error = "; ".join(errors)
-                raise SafetyError(self.last_error)
+                message = "; ".join(errors)
+                with self.lock:
+                    self.last_error = message
+                raise SafetyError(message)
             assert downstream is not None
             assert upstream is not None
 
@@ -247,8 +255,9 @@ class GatewayEngine:
                 preserve_desired=True,
                 preserve_trial_deadline=mode == "trial",
             )
-            self.owned_state = self.policy.ownership(downstream, upstream)
-            self._persist_state()
+            with self.lock:
+                self.owned_state = self.policy.ownership(downstream, upstream)
+                self._persist_state()
             try:
                 self.policy.apply(downstream, upstream)
                 self.firewall.apply(downstream, upstream.interface)
@@ -263,26 +272,38 @@ class GatewayEngine:
                     preserve_desired=True,
                     preserve_trial_deadline=mode == "trial",
                 )
-                self.last_error = f"Activation failed: {err}"
-                raise GatewayError(self.last_error) from err
+                message = f"Activation failed: {err}"
+                with self.lock:
+                    self.last_error = message
+                raise GatewayError(message) from err
 
-            self.mode = mode
-            self.applied = True
-            self.last_error = None
-            self._persist_state()
+            with self.lock:
+                self.mode = mode
+                self.applied = True
+                self.last_error = None
+                self._persist_state()
 
     def reconcile(self, *, refresh_health: bool = False) -> None:
         try:
-            with self.lock:
-                self.last_reconcile = time.time()
-                if self.startup_cleanup_pending:
+            with self.operation_lock:
+                with self.lock:
+                    self.last_reconcile = time.time()
+                    startup_cleanup_pending = self.startup_cleanup_pending
+                    owned_state = bool(self.owned_state)
+                    desired_mode = self.desired_mode
+                    trial_deadline = self.trial_deadline
+                    state_load_error = self.state_load_error
+
+                if startup_cleanup_pending:
                     self.cleanup(
                         preserve_desired=True,
                         preserve_trial_deadline=True,
-                        force=bool(self.owned_state),
+                        force=owned_state,
                     )
-                    self.state_load_error = None
-                    self.startup_cleanup_pending = False
+                    with self.lock:
+                        self.state_load_error = None
+                        self.startup_cleanup_pending = False
+                        state_load_error = None
                 downstream = self.safety.find_downstream()
                 upstream, upstream_errors = self._resolve_upstream()
                 try:
@@ -290,7 +311,7 @@ class GatewayEngine:
                         downstream,
                         upstream=upstream,
                         upstream_errors=upstream_errors,
-                        state_error=self.state_load_error,
+                        state_error=state_load_error,
                     )
                 except (
                     GatewayError,
@@ -299,20 +320,22 @@ class GatewayEngine:
                     ValueError,
                 ) as err:
                     errors = [f"Safety inspection failed: {err}"]
-                self.last_downstream = downstream
-                self.last_upstream = upstream
-                self.last_safety_errors = errors
+                with self.lock:
+                    self.last_downstream = downstream
+                    self.last_upstream = upstream
+                    self.last_safety_errors = errors
 
                 if (
-                    self.desired_mode == "trial"
-                    and self.trial_deadline
-                    and time.time() >= self.trial_deadline
+                    desired_mode == "trial"
+                    and trial_deadline
+                    and time.time() >= trial_deadline
                 ):
                     self.cleanup()
-                    self.last_error = "Trial expired and was rolled back"
+                    with self.lock:
+                        self.last_error = "Trial expired and was rolled back"
                     return
 
-                if self.desired_mode not in {"trial", "active"}:
+                if desired_mode not in {"trial", "active"}:
                     if self.owned_state or self.applied or self.dhcp.running:
                         self.cleanup(force=bool(self.owned_state or self.applied))
                     return
@@ -322,45 +345,47 @@ class GatewayEngine:
                         preserve_desired=True,
                         preserve_trial_deadline=True,
                     )
-                    self.last_error = "; ".join(errors)
+                    with self.lock:
+                        self.last_error = "; ".join(errors)
                     return
 
                 if (
-                    self.mode != self.desired_mode
+                    self.mode != desired_mode
                     or not self.firewall.installed(
                         downstream,
                         upstream.interface if upstream else None,
                     )
                     or not self.dhcp.running
                 ):
-                    self.apply(self.desired_mode, recovering=True)
+                    self.apply(desired_mode, recovering=True)
         finally:
             if refresh_health:
                 self._refresh_health_if_due()
 
     def _fail_closed(self, error: Exception) -> None:
-        cleanup_error: Exception | None = None
-        try:
-            self.cleanup(
-                preserve_desired=True,
-                preserve_trial_deadline=True,
-            )
-        except (
-            GatewayError,
-            OSError,
-            subprocess.SubprocessError,
-            ValueError,
-        ) as err:
-            cleanup_error = err
-        with self.lock:
-            self.mode = "disabled"
-            self.applied = False
-            self.last_error = (
-                f"{error}; cleanup failed: {cleanup_error}"
-                if cleanup_error
-                else str(error)
-            )
-            self.last_safety_errors = [self.last_error]
+        with self.operation_lock:
+            cleanup_error: Exception | None = None
+            try:
+                self.cleanup(
+                    preserve_desired=True,
+                    preserve_trial_deadline=True,
+                )
+            except (
+                GatewayError,
+                OSError,
+                subprocess.SubprocessError,
+                ValueError,
+            ) as err:
+                cleanup_error = err
+            with self.lock:
+                self.mode = "disabled"
+                self.applied = False
+                self.last_error = (
+                    f"{error}; cleanup failed: {cleanup_error}"
+                    if cleanup_error
+                    else str(error)
+                )
+                self.last_safety_errors = [self.last_error]
 
     def status(self) -> dict[str, object]:
         with self.lock:
@@ -426,16 +451,19 @@ class GatewayEngine:
                 break
 
     def stop(self) -> None:
-        self.stop_event.set()
-        preserve_trial = (
-            self.desired_mode == "trial" and self.trial_deadline is not None
-        )
-        self.cleanup(
-            preserve_desired=True,
-            preserve_trial_deadline=preserve_trial,
-            force=bool(self.owned_state or self.applied),
-        )
-        self.upstream.cleanup()
+        with self.operation_lock:
+            self.stop_event.set()
+            with self.lock:
+                preserve_trial = (
+                    self.desired_mode == "trial" and self.trial_deadline is not None
+                )
+                force = bool(self.owned_state or self.applied)
+            self.cleanup(
+                preserve_desired=True,
+                preserve_trial_deadline=preserve_trial,
+                force=force,
+            )
+            self.upstream.cleanup()
 
 
 def load_or_create_token(path: Path = TOKEN_PATH) -> str:

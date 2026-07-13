@@ -47,6 +47,11 @@ class GatewayConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(GatewayError, "transit subnet prefix"):
             config.validate()
 
+    def test_rejects_invalid_transit_subnet(self) -> None:
+        config = make_config(transit_subnet="not-a-subnet")
+        with self.assertRaisesRegex(GatewayError, "Invalid network configuration"):
+            config.validate()
+
     def test_rejects_dhcp_range_containing_gateway(self) -> None:
         config = make_config(
             dhcp_start="192.168.80.1",

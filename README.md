@@ -18,6 +18,7 @@ The app is intentionally safe by default:
 - policy routing table 201;
 - tagged `iptables-nft` rules through Docker's `DOCKER-USER`;
 - dnsmasq bound only to the downstream NIC;
+- fail-closed teardown and automatic recovery after transient interface loss;
 - typed authenticated local API;
 - optional Supervisor-discovered Home Assistant integration.
 

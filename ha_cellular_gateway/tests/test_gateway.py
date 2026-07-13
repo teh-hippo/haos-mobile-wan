@@ -1,9 +1,10 @@
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
-from rootfs.app.gateway import GatewayConfig, GatewayEngine, SafetyError
+from rootfs.app.gateway import GatewayConfig, GatewayEngine, GatewayError, SafetyError
 
 
 class Result:
@@ -11,6 +12,23 @@ class Result:
         self.returncode = returncode
         self.stdout = stdout
         self.stderr = ""
+
+
+class FakeProcess:
+    def __init__(self) -> None:
+        self.running = True
+
+    def poll(self) -> int | None:
+        return None if self.running else 0
+
+    def terminate(self) -> None:
+        self.running = False
+
+    def kill(self) -> None:
+        self.running = False
+
+    def wait(self, timeout: int = 5) -> int:
+        return 0
 
 
 class FakeRunner:
@@ -162,6 +180,100 @@ class GatewayEngineTests(unittest.TestCase):
             commands,
         )
         self.assertFalse(any("end0" in command for command in commands))
+
+    def test_active_mode_recovers_after_transient_safety_failure(self) -> None:
+        engine = GatewayEngine(
+            make_config(mode="active", dry_run=False),
+            runner=FakeRunner(),
+            read_text=self.engine.read_text,
+        )
+        engine._find_interface_by_mac = lambda: "enx001122334455"
+        engine.safety_errors = lambda downstream=None: []
+        engine._start_dnsmasq = lambda downstream: setattr(
+            engine,
+            "dnsmasq",
+            FakeProcess(),
+        )
+
+        engine.apply("active")
+        self.assertEqual(engine.mode, "active")
+        self.assertEqual(engine.desired_mode, "active")
+
+        engine.safety_errors = lambda downstream=None: ["Upstream unavailable"]
+        engine.reconcile()
+        self.assertEqual(engine.mode, "disabled")
+        self.assertEqual(engine.desired_mode, "active")
+        self.assertFalse(engine.applied)
+
+        engine.safety_errors = lambda downstream=None: []
+        engine.reconcile()
+        self.assertEqual(engine.mode, "active")
+        self.assertEqual(engine.desired_mode, "active")
+        self.assertTrue(engine.applied)
+
+    def test_activation_failure_is_cleaned_and_retried(self) -> None:
+        engine = GatewayEngine(
+            make_config(mode="active", dry_run=False),
+            runner=FakeRunner(),
+            read_text=self.engine.read_text,
+        )
+        engine._find_interface_by_mac = lambda: "enx001122334455"
+        engine.safety_errors = lambda downstream=None: []
+
+        def fail_firewall(downstream: str) -> None:
+            raise OSError("firewall unavailable")
+
+        engine._apply_firewall = fail_firewall
+
+        with self.assertRaisesRegex(GatewayError, "Activation failed"):
+            engine.apply("active")
+        self.assertEqual(engine.mode, "disabled")
+        self.assertEqual(engine.desired_mode, "active")
+        self.assertFalse(engine.applied)
+
+        engine._apply_firewall = lambda downstream: None
+        engine._start_dnsmasq = lambda downstream: setattr(
+            engine,
+            "dnsmasq",
+            FakeProcess(),
+        )
+        engine.reconcile()
+        self.assertEqual(engine.mode, "active")
+        self.assertTrue(engine.applied)
+
+    def test_trial_deadline_survives_recovery_and_still_expires(self) -> None:
+        engine = GatewayEngine(
+            make_config(mode="trial", dry_run=False),
+            runner=FakeRunner(),
+            read_text=self.engine.read_text,
+        )
+        engine._find_interface_by_mac = lambda: "enx001122334455"
+        engine.safety_errors = lambda downstream=None: []
+        engine._start_dnsmasq = lambda downstream: setattr(
+            engine,
+            "dnsmasq",
+            FakeProcess(),
+        )
+
+        engine.apply("trial")
+        deadline = engine.trial_deadline
+        self.assertIsNotNone(deadline)
+
+        engine.safety_errors = lambda downstream=None: ["Upstream unavailable"]
+        engine.reconcile()
+        self.assertEqual(engine.trial_deadline, deadline)
+        self.assertEqual(engine.desired_mode, "trial")
+
+        engine.safety_errors = lambda downstream=None: []
+        engine.reconcile()
+        self.assertEqual(engine.trial_deadline, deadline)
+        self.assertEqual(engine.mode, "trial")
+
+        engine.trial_deadline = time.time() - 1
+        engine.reconcile()
+        self.assertEqual(engine.mode, "disabled")
+        self.assertEqual(engine.desired_mode, "disabled")
+        self.assertIsNone(engine.trial_deadline)
 
 
 if __name__ == "__main__":

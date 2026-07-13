@@ -151,6 +151,7 @@ class GatewayEngine:
         self.read_text = read_text or (lambda path: path.read_text(encoding="utf-8"))
         self.lock = threading.RLock()
         self.mode = "disabled"
+        self.desired_mode = config.mode if config.mode in {"trial", "active"} else "disabled"
         self.last_error: str | None = None
         self.last_reconcile: float | None = None
         self.trial_deadline: float | None = None
@@ -568,12 +569,20 @@ class GatewayEngine:
                 self.dnsmasq.wait(timeout=5)
         self.dnsmasq = None
 
-    def cleanup(self) -> None:
+    def cleanup(
+        self,
+        *,
+        preserve_desired: bool = False,
+        preserve_trial_deadline: bool = False,
+    ) -> None:
         with self.lock:
             self._stop_dnsmasq()
             if self.config.dry_run:
                 self.mode = "disabled"
-                self.trial_deadline = None
+                if not preserve_desired:
+                    self.desired_mode = "disabled"
+                if not preserve_trial_deadline:
+                    self.trial_deadline = None
                 self.applied = False
                 return
 
@@ -663,7 +672,10 @@ class GatewayEngine:
                 self._delete_rule(["-t", "mangle"], mss_rule)
 
             self.mode = "disabled"
-            self.trial_deadline = None
+            if not preserve_desired:
+                self.desired_mode = "disabled"
+            if not preserve_trial_deadline:
+                self.trial_deadline = None
             self.applied = False
 
     def _health_probe(self) -> tuple[bool, str | None]:
@@ -688,48 +700,79 @@ class GatewayEngine:
                 break
         return True, public_ip
 
-    def apply(self, mode: str) -> None:
+    def apply(self, mode: str, *, recovering: bool = False) -> None:
         if mode not in {"trial", "active"}:
             raise GatewayError("Mode must be trial or active")
         if self.config.dry_run:
             raise SafetyError("Mutation is disabled while dry_run is true")
 
         with self.lock:
+            if not recovering:
+                self.desired_mode = mode
+                self.trial_deadline = None
             downstream = self._find_interface_by_mac()
             errors = self.safety_errors(downstream)
             if errors:
-                raise SafetyError("; ".join(errors))
+                self.cleanup(
+                    preserve_desired=True,
+                    preserve_trial_deadline=recovering,
+                )
+                self.last_error = "; ".join(errors)
+                raise SafetyError(self.last_error)
             assert downstream is not None
 
-            self.cleanup()
-            self._apply_policy_routing(downstream)
-            self._apply_firewall(downstream)
-            self._start_dnsmasq(downstream)
+            self.cleanup(
+                preserve_desired=True,
+                preserve_trial_deadline=recovering and mode == "trial",
+            )
+            try:
+                self._apply_policy_routing(downstream)
+                self._apply_firewall(downstream)
+                self._start_dnsmasq(downstream)
+            except (GatewayError, OSError, subprocess.SubprocessError, ValueError) as err:
+                self.cleanup(
+                    preserve_desired=True,
+                    preserve_trial_deadline=recovering and mode == "trial",
+                )
+                self.last_error = f"Activation failed: {err}"
+                raise GatewayError(self.last_error) from err
             self.mode = mode
             self.applied = True
-            self.trial_deadline = (
-                time.time() + self.config.trial_seconds if mode == "trial" else None
-            )
+            if mode == "trial" and self.trial_deadline is None:
+                self.trial_deadline = time.time() + self.config.trial_seconds
+            elif mode == "active":
+                self.trial_deadline = None
             self.last_error = None
 
     def reconcile(self) -> None:
         with self.lock:
             self.last_reconcile = time.time()
-            if self.mode == "trial" and self.trial_deadline and time.time() >= self.trial_deadline:
+            if (
+                self.desired_mode == "trial"
+                and self.trial_deadline
+                and time.time() >= self.trial_deadline
+            ):
                 self.cleanup()
                 self.last_error = "Trial expired and was rolled back"
                 return
-            if self.mode not in {"trial", "active"}:
+            if self.desired_mode not in {"trial", "active"}:
                 return
             downstream = self._find_interface_by_mac()
             errors = self.safety_errors(downstream)
             if errors:
-                self.cleanup()
+                self.cleanup(
+                    preserve_desired=True,
+                    preserve_trial_deadline=True,
+                )
                 self.last_error = "; ".join(errors)
                 return
-            if not self._rules_installed() or not self.dnsmasq or self.dnsmasq.poll() is not None:
-                current_mode = self.mode
-                self.apply(current_mode)
+            if (
+                self.mode != self.desired_mode
+                or not self._rules_installed()
+                or not self.dnsmasq
+                or self.dnsmasq.poll() is not None
+            ):
+                self.apply(self.desired_mode, recovering=True)
 
     def status(self) -> dict[str, object]:
         with self.lock:
@@ -738,6 +781,7 @@ class GatewayEngine:
             healthy, public_ip = self._health_probe()
             return {
                 "mode": self.mode,
+                "desired_mode": self.desired_mode,
                 "configured_mode": self.config.mode,
                 "dry_run": self.config.dry_run,
                 "management_interface": self.config.management_interface,
@@ -761,12 +805,11 @@ class GatewayEngine:
             }
 
     def run_loop(self) -> None:
-        if self.config.mode in {"trial", "active"} and not self.config.dry_run:
+        if self.desired_mode in {"trial", "active"} and not self.config.dry_run:
             try:
-                self.apply(self.config.mode)
+                self.apply(self.desired_mode)
             except GatewayError as err:
                 self.last_error = str(err)
-                self.cleanup()
 
         while not self.stop_event.wait(self.config.reconcile_seconds):
             try:

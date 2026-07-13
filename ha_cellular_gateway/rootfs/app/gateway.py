@@ -311,6 +311,7 @@ class GatewayEngine:
 
                 if (
                     self.mode != self.desired_mode
+                    or not self.policy.installed(downstream)
                     or not self.firewall.installed(downstream)
                     or not self.dhcp.running
                 ):

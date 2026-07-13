@@ -54,6 +54,33 @@ class Firewall:
             ),
         ):
             return False
+        if not all(
+            self.netfilter.rule_exists("iptables", self.INPUT_CHAIN, rule)
+            for rule in self._input_rules()
+        ):
+            return False
+        if not all(
+            self.netfilter.rule_exists("iptables", self.FORWARD_CHAIN, rule)
+            for rule in self._forward_rules(downstream)
+        ):
+            return False
+        if not self.netfilter.rule_exists(
+            "iptables",
+            "POSTROUTING",
+            self._nat_rule(),
+            ["-t", "nat"],
+        ):
+            return False
+        if not all(
+            self.netfilter.rule_exists(
+                "iptables",
+                "FORWARD",
+                rule,
+                ["-t", "mangle"],
+            )
+            for rule in self._mss_rules(downstream)
+        ):
+            return False
         if not self.netfilter.chain_exists("ip6tables", "DOCKER-USER"):
             return True
         return all(
@@ -80,26 +107,28 @@ class Firewall:
                         ["-i", downstream],
                     ),
                 ),
+                *(
+                    self.netfilter.rule_exists(
+                        "ip6tables",
+                        self.INPUT6_CHAIN,
+                        rule,
+                    )
+                    for rule in self._input6_rules()
+                ),
+                *(
+                    self.netfilter.rule_exists(
+                        "ip6tables",
+                        self.FORWARD6_CHAIN,
+                        rule,
+                    )
+                    for rule in self._forward6_rules(downstream)
+                ),
             )
         )
 
-    def apply(self, downstream: str) -> None:
-        self._apply_input_guard(downstream)
-        self._apply_forwarding(downstream)
-        self._apply_nat_and_mss(downstream)
-        self._apply_ipv6_block(downstream)
-
-    def _apply_input_guard(self, downstream: str) -> None:
+    def _input_rules(self) -> tuple[list[str], ...]:
         tag = self.COMMENT_PREFIX
-        self.netfilter.ensure_chain("iptables", self.INPUT_CHAIN)
-        self.netfilter.ensure_jump(
-            "iptables",
-            "INPUT",
-            self.INPUT_CHAIN,
-            f"{tag}:local-jump",
-            ["-i", downstream],
-        )
-        for rule in (
+        return (
             [
                 "-m",
                 "conntrack",
@@ -144,26 +173,13 @@ class Firewall:
                 "--comment",
                 f"{tag}:local-drop",
             ],
-        ):
-            self.netfilter.run(
-                "iptables",
-                "-A",
-                self.INPUT_CHAIN,
-                *rule,
-            )
+        )
 
-    def _apply_forwarding(self, downstream: str) -> None:
+    def _forward_rules(self, downstream: str) -> tuple[list[str], ...]:
         upstream = self.config.upstream_interface
         subnet = self.config.transit_subnet
         tag = self.COMMENT_PREFIX
-        self.netfilter.ensure_chain("iptables", self.FORWARD_CHAIN)
-        self.netfilter.ensure_jump(
-            "iptables",
-            "DOCKER-USER",
-            self.FORWARD_CHAIN,
-            f"{tag}:jump",
-        )
-        for rule in (
+        return (
             [
                 "-i",
                 downstream,
@@ -227,7 +243,113 @@ class Firewall:
                 f"{tag}:drop-in",
             ],
             ["-j", "RETURN"],
-        ):
+        )
+
+    def _nat_rule(self) -> list[str]:
+        return [
+            "-s",
+            self.config.transit_subnet,
+            "-o",
+            self.config.upstream_interface,
+            "-j",
+            "MASQUERADE",
+            "-m",
+            "comment",
+            "--comment",
+            f"{self.COMMENT_PREFIX}:snat",
+        ]
+
+    def _mss_rules(self, downstream: str) -> tuple[list[str], ...]:
+        upstream = self.config.upstream_interface
+        subnet = self.config.transit_subnet
+        tag = self.COMMENT_PREFIX
+        return (
+            [
+                "-i",
+                downstream,
+                "-o",
+                upstream,
+                "-s",
+                subnet,
+                "-p",
+                "tcp",
+                "--tcp-flags",
+                "SYN,RST",
+                "SYN",
+                "-j",
+                "TCPMSS",
+                "--clamp-mss-to-pmtu",
+                "-m",
+                "comment",
+                "--comment",
+                f"{tag}:mss-out",
+            ],
+            [
+                "-i",
+                upstream,
+                "-o",
+                downstream,
+                "-d",
+                subnet,
+                "-p",
+                "tcp",
+                "--tcp-flags",
+                "SYN,RST",
+                "SYN",
+                "-j",
+                "TCPMSS",
+                "--clamp-mss-to-pmtu",
+                "-m",
+                "comment",
+                "--comment",
+                f"{tag}:mss-in",
+            ],
+        )
+
+    @staticmethod
+    def _input6_rules() -> tuple[list[str], ...]:
+        return (["-j", "DROP"],)
+
+    @staticmethod
+    def _forward6_rules(downstream: str) -> tuple[list[str], ...]:
+        return (
+            ["-i", downstream, "-j", "DROP"],
+            ["-o", downstream, "-j", "DROP"],
+            ["-j", "RETURN"],
+        )
+
+    def apply(self, downstream: str) -> None:
+        self._apply_input_guard(downstream)
+        self._apply_forwarding(downstream)
+        self._apply_nat_and_mss(downstream)
+        self._apply_ipv6_block(downstream)
+
+    def _apply_input_guard(self, downstream: str) -> None:
+        self.netfilter.ensure_chain("iptables", self.INPUT_CHAIN)
+        self.netfilter.ensure_jump(
+            "iptables",
+            "INPUT",
+            self.INPUT_CHAIN,
+            f"{self.COMMENT_PREFIX}:local-jump",
+            ["-i", downstream],
+        )
+        for rule in self._input_rules():
+            self.netfilter.run(
+                "iptables",
+                "-A",
+                self.INPUT_CHAIN,
+                *rule,
+            )
+
+    def _apply_forwarding(self, downstream: str) -> None:
+        self.netfilter.ensure_chain("iptables", self.FORWARD_CHAIN)
+        self.netfilter.ensure_jump(
+            "iptables",
+            "DOCKER-USER",
+            self.FORWARD_CHAIN,
+            f"{self.COMMENT_PREFIX}:jump",
+        )
+        for rule in self._forward_rules(downstream):
             self.netfilter.run(
                 "iptables",
                 "-A",
@@ -236,105 +358,43 @@ class Firewall:
             )
 
     def _apply_nat_and_mss(self, downstream: str) -> None:
-        upstream = self.config.upstream_interface
-        subnet = self.config.transit_subnet
-        tag = self.COMMENT_PREFIX
         self.netfilter.ensure_rule(
             "iptables",
             ["-t", "nat"],
             "POSTROUTING",
-            [
-                "-s",
-                subnet,
-                "-o",
-                upstream,
-                "-j",
-                "MASQUERADE",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:snat",
-            ],
+            self._nat_rule(),
         )
-        for direction in ("out", "in"):
-            match = (
-                ["-i", downstream, "-o", upstream, "-s", subnet]
-                if direction == "out"
-                else ["-i", upstream, "-o", downstream, "-d", subnet]
-            )
+        for rule in self._mss_rules(downstream):
             self.netfilter.ensure_rule(
                 "iptables",
                 ["-t", "mangle"],
                 "FORWARD",
-                [
-                    *match,
-                    "-p",
-                    "tcp",
-                    "--tcp-flags",
-                    "SYN,RST",
-                    "SYN",
-                    "-j",
-                    "TCPMSS",
-                    "--clamp-mss-to-pmtu",
-                    "-m",
-                    "comment",
-                    "--comment",
-                    f"{tag}:mss-{direction}",
-                ],
+                rule,
             )
 
     def _apply_ipv6_block(self, downstream: str) -> None:
         if not self.netfilter.chain_exists("ip6tables", "DOCKER-USER"):
             return
-        tag = self.COMMENT_PREFIX
         self.netfilter.ensure_chain("ip6tables", self.INPUT6_CHAIN)
         self.netfilter.ensure_jump(
             "ip6tables",
             "INPUT",
             self.INPUT6_CHAIN,
-            f"{tag}:v6-local-jump",
+            f"{self.COMMENT_PREFIX}:v6-local-jump",
             ["-i", downstream],
         )
-        self.netfilter.run(
-            "ip6tables",
-            "-A",
-            self.INPUT6_CHAIN,
-            "-j",
-            "DROP",
-        )
+        for rule in self._input6_rules():
+            self.netfilter.run("ip6tables", "-A", self.INPUT6_CHAIN, *rule)
 
         self.netfilter.ensure_chain("ip6tables", self.FORWARD6_CHAIN)
         self.netfilter.ensure_jump(
             "ip6tables",
             "DOCKER-USER",
             self.FORWARD6_CHAIN,
-            f"{tag}:v6-jump",
+            f"{self.COMMENT_PREFIX}:v6-jump",
         )
-        self.netfilter.run(
-            "ip6tables",
-            "-A",
-            self.FORWARD6_CHAIN,
-            "-i",
-            downstream,
-            "-j",
-            "DROP",
-        )
-        self.netfilter.run(
-            "ip6tables",
-            "-A",
-            self.FORWARD6_CHAIN,
-            "-o",
-            downstream,
-            "-j",
-            "DROP",
-        )
-        self.netfilter.run(
-            "ip6tables",
-            "-A",
-            self.FORWARD6_CHAIN,
-            "-j",
-            "RETURN",
-        )
+        for rule in self._forward6_rules(downstream):
+            self.netfilter.run("ip6tables", "-A", self.FORWARD6_CHAIN, *rule)
 
     def cleanup(self) -> None:
         for family, table_args, chain in (

@@ -123,6 +123,24 @@ class GatewayEngineTests(unittest.TestCase):
         engine.reconcile()
         self.assertEqual(engine.mode, "active")
 
+    def test_active_mode_reapplies_when_policy_state_is_missing(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply("active")
+        before = len(engine.runner.commands)
+
+        engine.startup_cleanup_pending = False
+        engine.policy.installed = lambda downstream: False
+        engine.firewall.installed = lambda downstream=None: True
+        engine.reconcile()
+
+        reapplied = engine.runner.commands[before:]
+        self.assertTrue(
+            any(command[:3] == ["ip", "rule", "add"] for command in reapplied)
+        )
+        self.assertTrue(
+            any(command[:3] == ["ip", "route", "replace"] for command in reapplied)
+        )
+
     def test_trial_deadline_survives_restart(self) -> None:
         engine = self._prepare_active_engine("trial")
         engine.apply("trial")

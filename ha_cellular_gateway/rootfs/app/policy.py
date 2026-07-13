@@ -105,6 +105,92 @@ class PolicyRouting:
         conflicts.extend(self._route_conflicts(downstream))
         return conflicts
 
+    def installed(self, downstream: str | None) -> bool:
+        if not downstream:
+            return False
+        ownership = self.ownership(downstream)
+        rules = self._read_json("ip", "-j", "rule", "show")
+        routes = self._read_json(
+            "ip",
+            "-4",
+            "-j",
+            "route",
+            "show",
+            "table",
+            str(self.config.routing_table),
+        )
+        return all(
+            self._rule_present(rules, rule)
+            for rule in self.rule_args(ownership)
+        ) and all(
+            self._route_present(routes, route)
+            for route in self.route_args(ownership)
+        )
+
+    @staticmethod
+    def _rule_present(rules: object, expected: list[str]) -> bool:
+        if not isinstance(rules, list):
+            return False
+        priority = int(expected[expected.index("pref") + 1])
+        table = expected[expected.index("lookup") + 1]
+        interface = (
+            expected[expected.index("iif") + 1]
+            if "iif" in expected
+            else None
+        )
+        source = (
+            expected[expected.index("from") + 1]
+            if "from" in expected
+            else ""
+        )
+        allowed_sources = {source}
+        if source.endswith("/32"):
+            allowed_sources.add(source.removesuffix("/32"))
+
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+            actual_source = str(rule.get("src", ""))
+            actual_length = rule.get("srclen")
+            if actual_source not in {"", "all"} and actual_length is not None:
+                actual_source = f"{actual_source}/{actual_length}"
+            if (
+                int(rule.get("priority", -1)) == priority
+                and str(rule.get("table", rule.get("lookup", ""))) == table
+                and (
+                    interface is None
+                    or str(rule.get("iifname", rule.get("iif", ""))) == interface
+                )
+                and (
+                    not source
+                    and actual_source in {"", "all"}
+                    or actual_source in allowed_sources
+                )
+            ):
+                return True
+        return False
+
+    @staticmethod
+    def _route_present(routes: object, expected: list[str]) -> bool:
+        if not isinstance(routes, list):
+            return False
+        destination = expected[0]
+        interface = expected[expected.index("dev") + 1]
+        source = expected[expected.index("src") + 1]
+        gateway = expected[expected.index("via") + 1] if "via" in expected else ""
+        descriptor = (destination, interface, source, gateway)
+        return any(
+            isinstance(route, dict)
+            and (
+                str(route.get("dst", "default")),
+                str(route.get("dev", "")),
+                str(route.get("prefsrc", route.get("src", ""))),
+                str(route.get("gateway", "")),
+            )
+            == descriptor
+            for route in routes
+        )
+
     def _rule_conflicts(self, downstream: str) -> list[str]:
         rules = self._read_json("ip", "-j", "rule", "show")
         conflicts: list[str] = []

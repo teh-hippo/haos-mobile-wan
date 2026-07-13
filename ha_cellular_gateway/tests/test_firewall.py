@@ -79,6 +79,43 @@ class FirewallTests(unittest.TestCase):
             commands,
         )
 
+    def test_installed_requires_owned_local_rules(self) -> None:
+        firewall = self.engine.firewall
+        existing = {
+            (
+                "iptables",
+                "DOCKER-USER",
+                tuple(
+                    firewall.netfilter.jump_rule(
+                        firewall.FORWARD_CHAIN,
+                        "ha-cellgw:jump",
+                    )
+                ),
+            ),
+            (
+                "iptables",
+                "INPUT",
+                tuple(
+                    firewall.netfilter.jump_rule(
+                        firewall.INPUT_CHAIN,
+                        "ha-cellgw:local-jump",
+                        ["-i", "enx001122334455"],
+                    )
+                ),
+            ),
+        }
+        firewall.netfilter.chain_exists = lambda family, chain: family == "iptables"
+        firewall.netfilter.rule_exists = (
+            lambda family, chain, rule, table_args=None: (
+                family,
+                chain,
+                tuple(rule),
+            )
+            in existing
+        )
+
+        self.assertFalse(firewall.installed("enx001122334455"))
+
 
 if __name__ == "__main__":
     unittest.main()

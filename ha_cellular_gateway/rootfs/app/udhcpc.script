@@ -1,0 +1,46 @@
+#!/bin/sh
+set -eu
+
+RUN_DIR=/run/ha-cellgw
+LEASE_PATH="$RUN_DIR/iphone-usb-lease.json"
+mkdir -p "$RUN_DIR"
+
+prefix_from_netmask() {
+  python3 - "$1" <<'PY'
+import ipaddress
+import sys
+print(ipaddress.IPv4Network(f"0.0.0.0/{sys.argv[1]}").prefixlen)
+PY
+}
+
+delete_default_routes() {
+  while ip route del default dev "$interface" >/dev/null 2>&1; do
+    :
+  done
+}
+
+case "${1:-}" in
+  deconfig)
+    ip -4 address flush dev "$interface" scope global || true
+    delete_default_routes
+    rm -f "$LEASE_PATH"
+    ;;
+  bound|renew)
+    prefix="$(prefix_from_netmask "${subnet:-255.255.255.0}")"
+    ip -4 address flush dev "$interface" scope global || true
+    ip -4 address add "$ip/$prefix" dev "$interface"
+    delete_default_routes
+    gateway=""
+    if [ -n "${router:-}" ]; then
+      set -- $router
+      gateway="$1"
+    fi
+    if [ -z "$gateway" ]; then
+      rm -f "$LEASE_PATH"
+      exit 0
+    fi
+    cat >"$LEASE_PATH" <<EOF
+{"interface":"$interface","address":"$ip/$prefix","gateway":"$gateway"}
+EOF
+    ;;
+esac

@@ -55,7 +55,7 @@ class GatewayEngineTests(unittest.TestCase):
             state_path=self.state_path,
         )
         engine.safety.find_downstream = lambda: "enx001122334455"
-        engine.safety.errors = lambda downstream=None, state_error=None: []
+        engine.safety.errors = lambda *args, **kwargs: []
         engine.firewall.installed = lambda downstream=None: engine.applied
         engine.dhcp.start = lambda downstream: setattr(
             engine.dhcp,
@@ -171,7 +171,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_manual_reconcile_does_not_run_external_health_probe(self) -> None:
         self.engine.startup_cleanup_pending = False
-        self.engine.safety.errors = lambda downstream=None, state_error=None: []
+        self.engine.safety.errors = lambda *args, **kwargs: []
         self.engine.reconcile()
         self.assertFalse(
             any(command and command[0] == "curl" for command in self.runner.commands)
@@ -182,15 +182,13 @@ class GatewayEngineTests(unittest.TestCase):
         engine.apply("active")
         self.assertEqual(engine.mode, "active")
 
-        engine.safety.errors = (
-            lambda downstream=None, state_error=None: ["Upstream unavailable"]
-        )
+        engine.safety.errors = lambda *args, **kwargs: ["Upstream unavailable"]
         engine.startup_cleanup_pending = False
         engine.reconcile()
         self.assertEqual(engine.mode, "disabled")
         self.assertEqual(engine.desired_mode, "active")
 
-        engine.safety.errors = lambda downstream=None, state_error=None: []
+        engine.safety.errors = lambda *args, **kwargs: []
         engine.reconcile()
         self.assertEqual(engine.mode, "active")
         self.assertTrue(engine.applied)
@@ -198,7 +196,7 @@ class GatewayEngineTests(unittest.TestCase):
     def test_activation_failure_is_cleaned_and_retried(self) -> None:
         engine = self._prepare_active_engine()
 
-        def fail_firewall(downstream: str) -> None:
+        def fail_firewall(downstream: str, upstream_interface: str | None = None) -> None:
             raise OSError("firewall unavailable")
 
         engine.firewall.apply = fail_firewall
@@ -207,7 +205,7 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertEqual(engine.mode, "disabled")
         self.assertEqual(engine.desired_mode, "active")
 
-        engine.firewall.apply = lambda downstream: None
+        engine.firewall.apply = lambda downstream, upstream_interface=None: None
         engine.startup_cleanup_pending = False
         engine.reconcile()
         self.assertEqual(engine.mode, "active")
@@ -461,7 +459,7 @@ class GatewayEngineTests(unittest.TestCase):
             state_path=self.state_path,
         )
         engine.safety.find_downstream = lambda: "enx001122334455"
-        engine.safety.errors = lambda downstream=None, state_error=None: []
+        engine.safety.errors = lambda *args, **kwargs: []
         engine.reconcile()
         self.assertEqual(engine.mode, "disabled")
         self.assertEqual(engine.desired_mode, "disabled")
@@ -470,7 +468,7 @@ class GatewayEngineTests(unittest.TestCase):
     def test_unexpected_reconcile_error_fails_closed(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply("active")
-        engine.safety.errors = lambda downstream=None, state_error=None: (_ for _ in ()).throw(
+        engine.safety.errors = lambda *args, **kwargs: (_ for _ in ()).throw(
             OSError("inspection failed")
         )
         engine.startup_cleanup_pending = False

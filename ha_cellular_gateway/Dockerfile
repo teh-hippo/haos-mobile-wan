@@ -15,10 +15,13 @@ RUN apk add --no-cache \
     dnsmasq \
     iproute2 \
     iptables \
-    python3
+    libimobiledevice \
+    python3 \
+    usbmuxd
 
 COPY rootfs /
 
 RUN chmod 0755 \
     /app/main.py \
+    /app/udhcpc.script \
     /etc/services.d/ha-cellular-gateway/run

@@ -13,7 +13,9 @@ The app is intentionally safe by default:
 ## Architecture
 
 - `end0`: unchanged Home Assistant management network;
-- `wlan0`: iPhone hotspot upstream, with no main-table default route;
+- `wlan0`: default iPhone hotspot upstream, with no main-table default route;
+- `ipheth`: optional experimental iPhone USB-tethering upstream, paired and
+  DHCP-managed by the app without using the management Ethernet;
 - USB Ethernet NIC: isolated downstream to a router WAN port;
 - policy routing table 201;
 - tagged `iptables-nft` rules through Docker's `DOCKER-USER`;
@@ -56,5 +58,6 @@ PYTHONDONTWRITEBYTECODE=1 python -m py_compile \
   custom_components/ha_cellular_gateway/*.py
 ```
 
-Do not disable dry-run until a supported USB3 NIC is attached and the
-documented management, routing, IPv6 and firewall safety gates pass.
+Do not disable dry-run until the documented management, routing, IPv6 and
+firewall safety gates pass. The optional iPhone USB mode also needs the app's
+`usb` and `udev` permissions plus an explicit Trust workflow on the phone.

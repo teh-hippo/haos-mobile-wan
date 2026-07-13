@@ -25,6 +25,12 @@ class GatewayConfigTests(unittest.TestCase):
             )
             config = GatewayConfig.from_path(path)
             self.assertEqual(config.transit_subnet, "192.168.80.0/24")
+            self.assertEqual(config.upstream_mode, "hotspot_wifi")
+
+    def test_rejects_invalid_upstream_mode(self) -> None:
+        config = make_config(upstream_mode="not-real")
+        with self.assertRaisesRegex(GatewayError, "Unsupported upstream mode"):
+            config.validate()
 
     def test_rejects_overlapping_networks(self) -> None:
         config = make_config(
@@ -53,6 +59,15 @@ class GatewayConfigTests(unittest.TestCase):
         config = make_config(downstream_mac="not-a-mac")
         with self.assertRaisesRegex(GatewayError, "MAC address"):
             config.validate()
+
+    def test_usb_mode_allows_dynamic_upstream_network(self) -> None:
+        config = make_config(
+            upstream_mode="iphone_usb",
+            upstream_interface="wlan0",
+            upstream_address="0.0.0.0/32",
+            upstream_gateway="0.0.0.0",
+        )
+        config.validate()
 
 
 if __name__ == "__main__":

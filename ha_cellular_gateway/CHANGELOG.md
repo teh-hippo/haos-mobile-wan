@@ -16,6 +16,12 @@
 - Add translated options and a complete HAOS commissioning guide.
 - Split the gateway engine into focused configuration, safety, policy,
   firewall, DHCP and persistent-state modules.
+- Keep Wi-Fi hotspot mode as the default while adding an experimental
+  `iphone_usb` upstream mode.
+- Add guided iPhone USB trust, `ipheth` discovery and DHCP preflight with
+  persistent pairing records under `/data/lockdown`.
+- Add `usb` and `udev` app permissions instead of `full_access`, and document
+  their security impact and hardware-validation limits.
 
 ## 0.1.1
 

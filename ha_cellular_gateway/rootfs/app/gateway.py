@@ -119,6 +119,7 @@ class GatewayEngine:
         *,
         preserve_desired: bool = False,
         preserve_trial_deadline: bool = False,
+        preserve_host_protection: bool = False,
         force: bool = False,
     ) -> None:
         with self.lock:
@@ -137,15 +138,17 @@ class GatewayEngine:
             self.firewall.cleanup()
 
             ownerships: list[dict[str, object]] = []
+            downstream = self.safety.find_downstream()
             if self.owned_state:
                 ownerships.append(self.owned_state)
-            downstream = self.safety.find_downstream()
             if downstream:
                 current = self.policy.ownership(downstream)
                 if current not in ownerships:
                     ownerships.append(current)
             for ownership in ownerships:
                 self.policy.cleanup(ownership)
+            if self._protectable_downstream(downstream) and preserve_host_protection:
+                self.firewall.protect_host(downstream)
 
             self.owned_state = None
             self.mode = "disabled"
@@ -156,6 +159,15 @@ class GatewayEngine:
                 self.trial_started_at = None
                 self.trial_deadline = None
             self._persist_state()
+
+    def _protectable_downstream(self, downstream: str | None) -> bool:
+        return bool(
+            downstream
+            and downstream not in {
+                self.config.management_interface,
+                self.config.upstream_interface,
+            }
+        )
 
     def _health_probe(self) -> tuple[bool, str | None]:
         try:
@@ -292,19 +304,33 @@ class GatewayEngine:
                     and self.trial_deadline
                     and time.time() >= self.trial_deadline
                 ):
-                    self.cleanup()
+                    self.cleanup(preserve_host_protection=True)
                     self.last_error = "Trial expired and was rolled back"
                     return
 
                 if self.desired_mode not in {"trial", "active"}:
                     if self.owned_state or self.applied or self.dhcp.running:
-                        self.cleanup(force=bool(self.owned_state or self.applied))
+                        self.cleanup(
+                            preserve_host_protection=self._protectable_downstream(
+                                downstream
+                            ),
+                            force=bool(self.owned_state or self.applied),
+                        )
+                    elif (
+                        not self.config.dry_run
+                        and self._protectable_downstream(downstream)
+                        and not self.firewall.host_protection_installed(downstream)
+                    ):
+                        self.firewall.protect_host(downstream)
                     return
 
                 if errors:
                     self.cleanup(
                         preserve_desired=True,
                         preserve_trial_deadline=True,
+                        preserve_host_protection=self._protectable_downstream(
+                            downstream
+                        ),
                     )
                     self.last_error = "; ".join(errors)
                     return
@@ -326,6 +352,9 @@ class GatewayEngine:
             self.cleanup(
                 preserve_desired=True,
                 preserve_trial_deadline=True,
+                preserve_host_protection=self._protectable_downstream(
+                    self.last_downstream,
+                ),
             )
         except (
             GatewayError,

@@ -69,6 +69,20 @@ class PolicyRoutingTests(unittest.TestCase):
             any(command[:3] == ["ip", "rule", "del"] for command in self.runner.commands)
         )
 
+    def test_foreign_rule_using_owned_table_is_reported(self) -> None:
+        self.runner.policy_rules = [
+            {
+                "priority": 10000,
+                "src": "10.0.0.0",
+                "srclen": 8,
+                "table": "201",
+            }
+        ]
+        self.assertEqual(
+            self.engine.policy.conflicts("enx001122334455"),
+            ["Routing table 201 already has a foreign policy rule"],
+        )
+
     def test_owned_rules_from_iproute_json_are_accepted(self) -> None:
         self.runner.policy_rules = [
             {

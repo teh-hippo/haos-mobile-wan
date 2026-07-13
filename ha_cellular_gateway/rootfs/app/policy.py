@@ -131,6 +131,13 @@ class PolicyRouting:
     def _rule_present(rules: object, expected: list[str]) -> bool:
         if not isinstance(rules, list):
             return False
+        return any(
+            isinstance(rule, dict) and PolicyRouting._rule_matches(rule, expected)
+            for rule in rules
+        )
+
+    @staticmethod
+    def _rule_matches(rule: dict[str, object], expected: list[str]) -> bool:
         priority = int(expected[expected.index("pref") + 1])
         table = expected[expected.index("lookup") + 1]
         interface = (
@@ -146,86 +153,70 @@ class PolicyRouting:
         allowed_sources = {source}
         if source.endswith("/32"):
             allowed_sources.add(source.removesuffix("/32"))
-
-        for rule in rules:
-            if not isinstance(rule, dict):
-                continue
-            actual_source = str(rule.get("src", ""))
-            actual_length = rule.get("srclen")
-            if actual_source not in {"", "all"} and actual_length is not None:
-                actual_source = f"{actual_source}/{actual_length}"
-            if (
-                int(rule.get("priority", -1)) == priority
-                and str(rule.get("table", rule.get("lookup", ""))) == table
-                and (
-                    interface is None
-                    or str(rule.get("iifname", rule.get("iif", ""))) == interface
-                )
-                and (
-                    not source
-                    and actual_source in {"", "all"}
-                    or actual_source in allowed_sources
-                )
-            ):
-                return True
-        return False
+        actual_source = str(rule.get("src", ""))
+        actual_length = rule.get("srclen")
+        if actual_source not in {"", "all"} and actual_length is not None:
+            actual_source = f"{actual_source}/{actual_length}"
+        return (
+            int(rule.get("priority", -1)) == priority
+            and str(rule.get("table", rule.get("lookup", ""))) == table
+            and (
+                interface is None
+                or str(rule.get("iifname", rule.get("iif", ""))) == interface
+            )
+            and (
+                not source
+                and actual_source in {"", "all"}
+                or actual_source in allowed_sources
+            )
+        )
 
     @staticmethod
     def _route_present(routes: object, expected: list[str]) -> bool:
         if not isinstance(routes, list):
             return False
+        return any(
+            isinstance(route, dict)
+            and PolicyRouting._route_matches(route, expected)
+            for route in routes
+        )
+
+    @staticmethod
+    def _route_matches(route: dict[str, object], expected: list[str]) -> bool:
         destination = expected[0]
         interface = expected[expected.index("dev") + 1]
         source = expected[expected.index("src") + 1]
         gateway = expected[expected.index("via") + 1] if "via" in expected else ""
-        descriptor = (destination, interface, source, gateway)
-        return any(
-            isinstance(route, dict)
-            and (
-                str(route.get("dst", "default")),
-                str(route.get("dev", "")),
-                str(route.get("prefsrc", route.get("src", ""))),
-                str(route.get("gateway", "")),
-            )
-            == descriptor
-            for route in routes
-        )
+        return (
+            str(route.get("dst", "default")),
+            str(route.get("dev", "")),
+            str(route.get("prefsrc", route.get("src", ""))),
+            str(route.get("gateway", "")),
+        ) == (destination, interface, source, gateway)
 
     def _rule_conflicts(self, downstream: str) -> list[str]:
         rules = self._read_json("ip", "-j", "rule", "show")
         conflicts: list[str] = []
         table = str(self.config.routing_table)
-        expected = {
-            20100: {"iifname": downstream},
-            20110: {"src": self.config.transit_subnet},
-            20120: {"src": f"{self.config.upstream_ip}/32"},
-        }
+        expected_rules = self.rule_args(self.ownership(downstream))
         for rule in rules if isinstance(rules, list) else []:
-            priority = int(rule.get("priority", -1))
-            if priority not in self.RULE_PRIORITIES:
+            if not isinstance(rule, dict):
                 continue
-            expected_fields = expected[priority]
-            source = str(rule.get("src", ""))
-            source_length = rule.get("srclen")
-            if source not in {"", "all"} and source_length is not None:
-                source = f"{source}/{source_length}"
-            expected_source = str(expected_fields.get("src", ""))
-            source_matches = not expected_source or source in {
-                expected_source,
-                expected_source.removesuffix("/32"),
-            }
-            interface_matches = (
-                "iifname" not in expected_fields
-                or str(rule.get("iifname", rule.get("iif", "")))
-                == expected_fields["iifname"]
-            )
+            priority = int(rule.get("priority", -1))
             rule_table = str(rule.get("table", rule.get("lookup", "")))
-            if (
-                rule_table != table
-                or not source_matches
-                or not interface_matches
+            if priority in self.RULE_PRIORITIES and not any(
+                self._rule_matches(rule, expected)
+                for expected in expected_rules
             ):
                 conflicts.append(f"Policy priority {priority} is already in use")
+                continue
+            if rule_table == table and not any(
+                self._rule_matches(rule, expected)
+                for expected in expected_rules
+            ):
+                conflicts.append(
+                    f"Routing table {self.config.routing_table} already has a foreign policy rule"
+                )
         return conflicts
 
     def _route_conflicts(self, downstream: str) -> list[str]:

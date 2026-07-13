@@ -141,6 +141,20 @@ class GatewayEngineTests(unittest.TestCase):
             any(command[:3] == ["ip", "route", "replace"] for command in reapplied)
         )
 
+    def test_disabled_mode_keeps_host_protection(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply("active")
+        before = len(engine.runner.commands)
+
+        engine.cleanup(preserve_host_protection=True)
+
+        commands = [" ".join(command) for command in engine.runner.commands[before:]]
+        self.assertIn(
+            "iptables -I INPUT 1 -i enx001122334455 -j HA_CELLGW_LOCAL "
+            "-m comment --comment ha-cellgw:local-jump",
+            commands,
+        )
+
     def test_trial_deadline_survives_restart(self) -> None:
         engine = self._prepare_active_engine("trial")
         engine.apply("trial")

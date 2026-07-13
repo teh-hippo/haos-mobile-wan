@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from pathlib import Path
 
 from rootfs.app.config import GatewayConfig
@@ -41,6 +42,8 @@ class FakeRunner:
         self.policy_rules: list[dict[str, object]] = []
         self.policy_routes: list[dict[str, object]] = []
         self.fail_ip_forward = False
+        self.chain_listings: dict[tuple[str, str], str] = {}
+        self.rule_checks: set[tuple[str, tuple[str, ...], tuple[str, ...]]] = set()
 
     def run(
         self,
@@ -52,14 +55,31 @@ class FakeRunner:
         self.commands.append(args)
         if args[:2] == ["iptables", "--version"]:
             return Result(stdout="iptables v1.8.13 (nf_tables)\n")
-        if args[:3] in (
-            ["iptables", "-S", "DOCKER-USER"],
-            ["iptables", "-S", "INPUT"],
-            ["ip6tables", "-S", "DOCKER-USER"],
-            ["ip6tables", "-S", "INPUT"],
+        family = args[0] if args else ""
+        action_index = 1
+        if len(args) >= 3 and args[1] == "-t":
+            action_index = 3
+        if len(args) > action_index + 1 and args[action_index] == "-S":
+            chain = args[action_index + 1]
+            listing = self.chain_listings.get((family, chain))
+            if listing is not None:
+                return Result(stdout=listing)
+        if (
+            len(args) > action_index + 1
+            and args[action_index] == "-S"
+            and (family, args[action_index + 1]) in {
+                ("iptables", "DOCKER-USER"),
+                ("iptables", "INPUT"),
+                ("ip6tables", "DOCKER-USER"),
+                ("ip6tables", "INPUT"),
+            }
         ):
             return Result()
-        if len(args) >= 3 and args[1] == "-S" and args[2].startswith("HA_CELL"):
+        if (
+            len(args) > action_index + 1
+            and args[action_index] == "-S"
+            and args[action_index + 1].startswith("HA_CELL")
+        ):
             return Result(returncode=1)
         if args[:4] == ["ip", "-4", "-j", "address"]:
             interface = args[-1]
@@ -114,10 +134,95 @@ class FakeRunner:
         if args[:3] in (["ip", "rule", "del"], ["ip", "route", "del"]):
             return Result(returncode=1)
         if "-C" in args:
+            index = args.index("-C")
+            if (
+                args[0],
+                tuple(args[1:index]),
+                tuple(args[index + 1 :]),
+            ) in self.rule_checks:
+                return Result()
             return Result(returncode=1)
+        if family in {"iptables", "ip6tables"} and len(args) > action_index:
+            action = args[action_index]
+            command = args[action_index + 1 :]
+            if action == "-N" and command:
+                self.chain_listings.setdefault((family, command[0]), f"-N {command[0]}")
+            elif action == "-F" and command:
+                self._flush_chain(family, command[0])
+            elif action == "-X" and command:
+                self.chain_listings.pop((family, command[0]), None)
+            elif action == "-A" and len(command) >= 2:
+                self._append_rule(family, command[0], command[1:])
+            elif action == "-I" and len(command) >= 3:
+                self._insert_rule(
+                    family,
+                    command[0],
+                    int(command[1]),
+                    command[2:],
+                )
+            elif action == "-D" and len(command) >= 1:
+                self._delete_rule(family, command[0], command[1:])
         if args and args[0] == "curl":
             return Result(stdout="ip=203.0.113.10\n")
         return Result()
+
+    def _chain_lines(self, family: str, chain: str) -> list[str]:
+        listing = self.chain_listings.get((family, chain))
+        return [] if not listing else listing.splitlines()
+
+    def _set_chain_lines(self, family: str, chain: str, lines: list[str]) -> None:
+        self.chain_listings[(family, chain)] = "\n".join(lines)
+
+    def _append_rule(self, family: str, chain: str, rule: list[str]) -> None:
+        lines = self._chain_lines(family, chain)
+        lines.append(self._rule_line(chain, rule))
+        self._set_chain_lines(family, chain, lines)
+
+    def _insert_rule(
+        self,
+        family: str,
+        chain: str,
+        position: int,
+        rule: list[str],
+    ) -> None:
+        lines = self._chain_lines(family, chain)
+        header = 1 if lines[:1] == [f"-N {chain}"] else 0
+        insert_at = min(header + max(position - 1, 0), len(lines))
+        lines.insert(insert_at, self._rule_line(chain, rule))
+        self._set_chain_lines(family, chain, lines)
+
+    def _delete_rule(self, family: str, chain: str, spec: list[str]) -> None:
+        lines = self._chain_lines(family, chain)
+        rule_indexes = [
+            index
+            for index, line in enumerate(lines)
+            if line.startswith(f"-A {chain} ")
+        ]
+        if not rule_indexes:
+            return
+        if len(spec) == 1 and spec[0].isdigit():
+            position = int(spec[0])
+            if 1 <= position <= len(rule_indexes):
+                del lines[rule_indexes[position - 1]]
+                self._set_chain_lines(family, chain, lines)
+            return
+        target = self._rule_line(chain, spec)
+        for index in rule_indexes:
+            if lines[index] == target:
+                del lines[index]
+                self._set_chain_lines(family, chain, lines)
+                return
+
+    def _flush_chain(self, family: str, chain: str) -> None:
+        lines = self._chain_lines(family, chain)
+        if lines[:1] == [f"-N {chain}"]:
+            self._set_chain_lines(family, chain, [lines[0]])
+            return
+        self._set_chain_lines(family, chain, [])
+
+    @staticmethod
+    def _rule_line(chain: str, rule: list[str]) -> str:
+        return shlex.join(["-A", chain, *rule])
 
 
 def make_config(**overrides: object) -> GatewayConfig:
@@ -144,6 +249,182 @@ def make_config(**overrides: object) -> GatewayConfig:
     }
     values.update(overrides)
     return GatewayConfig(**values)
+
+
+def install_realistic_firewall_state(runner: FakeRunner, firewall, downstream: str) -> None:
+    upstream = firewall.config.upstream_interface
+    subnet = firewall.config.transit_subnet
+    runner.rule_checks.update(
+        {
+            (
+                "iptables",
+                tuple(),
+                (
+                    "INPUT",
+                    *firewall.netfilter.jump_rule(
+                        firewall.INPUT_CHAIN,
+                        "ha-cellgw:local-jump",
+                        ["-i", downstream],
+                    ),
+                ),
+            ),
+            (
+                "iptables",
+                tuple(),
+                (
+                    "DOCKER-USER",
+                    *firewall.netfilter.jump_rule(
+                        firewall.FORWARD_CHAIN,
+                        "ha-cellgw:jump",
+                    ),
+                ),
+            ),
+            (
+                "iptables",
+                ("-t", "nat"),
+                ("POSTROUTING", *firewall._nat_rule()),
+            ),
+            *{
+                (
+                    "iptables",
+                    ("-t", "mangle"),
+                    ("FORWARD", *rule),
+                )
+                for rule in firewall._mss_rules(downstream)
+            },
+            (
+                "ip6tables",
+                tuple(),
+                (
+                    "INPUT",
+                    *firewall.netfilter.jump_rule(
+                        firewall.INPUT6_CHAIN,
+                        "ha-cellgw:v6-local-jump",
+                        ["-i", downstream],
+                    ),
+                ),
+            ),
+            (
+                "ip6tables",
+                tuple(),
+                (
+                    "DOCKER-USER",
+                    *firewall.netfilter.jump_rule(
+                        firewall.FORWARD6_CHAIN,
+                        "ha-cellgw:v6-jump",
+                    ),
+                ),
+            ),
+        }
+    )
+    runner.chain_listings.update(
+        {
+            (
+                "iptables",
+                "INPUT",
+            ): "\n".join(
+                (
+                    "-A INPUT "
+                    f"-i {downstream} -m comment --comment ha-cellgw:local-jump "
+                    f"-j {firewall.INPUT_CHAIN}",
+                )
+            ),
+            (
+                "iptables",
+                "DOCKER-USER",
+            ): "\n".join(
+                (
+                    "-A DOCKER-USER -m comment --comment ha-cellgw:jump "
+                    f"-j {firewall.FORWARD_CHAIN}",
+                )
+            ),
+            (
+                "iptables",
+                firewall.INPUT_CHAIN,
+            ): "\n".join(
+                (
+                    f"-N {firewall.INPUT_CHAIN}",
+                    "-A HA_CELLGW_LOCAL -m conntrack --ctstate RELATED,ESTABLISHED "
+                    "-m comment --comment ha-cellgw:local-established -j ACCEPT",
+                    "-A HA_CELLGW_LOCAL -p udp -m udp --sport 68 --dport 67 "
+                    "-m comment --comment ha-cellgw:dhcp-in -j ACCEPT",
+                    "-A HA_CELLGW_LOCAL -p icmp -m comment --comment ha-cellgw:icmp-in "
+                    "-j ACCEPT",
+                    "-A HA_CELLGW_LOCAL -m comment --comment ha-cellgw:local-drop -j DROP",
+                )
+            ),
+            (
+                "iptables",
+                firewall.FORWARD_CHAIN,
+            ): "\n".join(
+                (
+                    f"-N {firewall.FORWARD_CHAIN}",
+                    f"-A HA_CELLGW -i {downstream} -o {upstream} -s {subnet} "
+                    "-m conntrack --ctstate ESTABLISHED,NEW -m comment "
+                    "--comment ha-cellgw:out -j ACCEPT",
+                    f"-A HA_CELLGW -i {upstream} -o {downstream} -d {subnet} "
+                    "-m conntrack --ctstate RELATED,ESTABLISHED -m comment "
+                    "--comment ha-cellgw:in -j ACCEPT",
+                    f"-A HA_CELLGW -i {downstream} ! -o {upstream} -m comment "
+                    "--comment ha-cellgw:drop-out -j DROP",
+                    f"-A HA_CELLGW ! -i {upstream} -o {downstream} -m comment "
+                    "--comment ha-cellgw:drop-in -j DROP",
+                    "-A HA_CELLGW -j RETURN",
+                )
+            ),
+            (
+                "ip6tables",
+                "INPUT",
+            ): "\n".join(
+                (
+                    "-A INPUT "
+                    f"-i {downstream} -m comment --comment ha-cellgw:v6-local-jump "
+                    f"-j {firewall.INPUT6_CHAIN}",
+                )
+            ),
+            (
+                "ip6tables",
+                "DOCKER-USER",
+            ): "\n".join(
+                (
+                    "-A DOCKER-USER -m comment --comment ha-cellgw:v6-jump "
+                    f"-j {firewall.FORWARD6_CHAIN}",
+                )
+            ),
+            (
+                "ip6tables",
+                firewall.INPUT6_CHAIN,
+            ): "\n".join(
+                (
+                    f"-N {firewall.INPUT6_CHAIN}",
+                    "-A HA_CELLGW6_LOCAL -j DROP",
+                )
+            ),
+            (
+                "ip6tables",
+                firewall.FORWARD6_CHAIN,
+            ): "\n".join(
+                (
+                    f"-N {firewall.FORWARD6_CHAIN}",
+                    f"-A HA_CELLGW6 -i {downstream} -j DROP",
+                    f"-A HA_CELLGW6 -o {downstream} -j DROP",
+                    "-A HA_CELLGW6 -j RETURN",
+                )
+            ),
+        }
+    )
+
+
+def prepend_chain_rule(
+    runner: FakeRunner,
+    family: str,
+    chain: str,
+    rule: str,
+) -> None:
+    listing = runner.chain_listings.get((family, chain), "")
+    runner.chain_listings[(family, chain)] = (
+        f"{rule}\n{listing}" if listing else rule
+    )
 
 
 def sysctl_values() -> dict[Path, str]:

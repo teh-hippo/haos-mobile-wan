@@ -7,7 +7,14 @@ from pathlib import Path
 from rootfs.app.errors import GatewayError, SafetyError
 from rootfs.app.gateway import GatewayEngine
 
-from helpers import FakeProcess, FakeRunner, make_config, sysctl_values
+from helpers import (
+    FakeProcess,
+    FakeRunner,
+    install_realistic_firewall_state,
+    make_config,
+    prepend_chain_rule,
+    sysctl_values,
+)
 
 
 class GatewayEngineTests(unittest.TestCase):
@@ -27,6 +34,18 @@ class GatewayEngineTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.directory.cleanup()
 
+    def _restart_disabled_engine(self) -> GatewayEngine:
+        values = sysctl_values()
+        restarted = GatewayEngine(
+            make_config(mode="disabled", dry_run=False),
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        restarted.safety.find_downstream = lambda: "enx001122334455"
+        restarted.safety.errors = lambda downstream=None, state_error=None: []
+        return restarted
+
     def _prepare_active_engine(self, mode: str = "active") -> GatewayEngine:
         values = sysctl_values()
         engine = GatewayEngine(
@@ -44,6 +63,76 @@ class GatewayEngineTests(unittest.TestCase):
             FakeProcess(),
         )
         return engine
+
+    def _assert_disabled_restart_preserves_repairable_host_guard(
+        self,
+        ipv4_input_rules: tuple[str, ...],
+        ipv6_input_rules: tuple[str, ...],
+    ) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply("active")
+
+        restarted = self._restart_disabled_engine()
+        install_realistic_firewall_state(
+            restarted.runner,
+            restarted.firewall,
+            "enx001122334455",
+        )
+        restarted.runner.chain_listings[("iptables", "INPUT")] = "\n".join(
+            ipv4_input_rules
+        )
+        restarted.runner.chain_listings[("ip6tables", "INPUT")] = "\n".join(
+            ipv6_input_rules
+        )
+        before = len(restarted.runner.commands)
+
+        restarted.reconcile()
+
+        commands = restarted.runner.commands[before:]
+        guard_mutations = [
+            command
+            for command in commands
+            if command[0] in {"iptables", "ip6tables"}
+            and any(operation in command for operation in ("-F", "-X"))
+            and any(
+                chain in command
+                for chain in (
+                    restarted.firewall.INPUT_CHAIN,
+                    restarted.firewall.INPUT6_CHAIN,
+                )
+            )
+        ]
+        self.assertEqual(guard_mutations, [])
+        cleanup_hook_deletions = [
+            command
+            for command in commands
+            if command[0] in {"iptables", "ip6tables"}
+            and command[1:3] == ["-D", "INPUT"]
+            and (len(command) < 4 or not command[3].isdigit())
+        ]
+        self.assertEqual(cleanup_hook_deletions, [])
+        self.assertTrue(
+            restarted.firewall.netfilter.rule_is_first_unique(
+                "iptables",
+                "INPUT",
+                restarted.firewall.netfilter.jump_rule(
+                    restarted.firewall.INPUT_CHAIN,
+                    "ha-cellgw:local-jump",
+                    ["-i", "enx001122334455"],
+                ),
+            )
+        )
+        self.assertTrue(
+            restarted.firewall.netfilter.rule_is_first_unique(
+                "ip6tables",
+                "INPUT",
+                restarted.firewall.netfilter.jump_rule(
+                    restarted.firewall.INPUT6_CHAIN,
+                    "ha-cellgw:v6-local-jump",
+                    ["-i", "enx001122334455"],
+                ),
+            )
+        )
 
     def test_dry_run_refuses_mutation(self) -> None:
         with self.assertRaisesRegex(SafetyError, "dry_run"):
@@ -122,6 +211,219 @@ class GatewayEngineTests(unittest.TestCase):
         engine.startup_cleanup_pending = False
         engine.reconcile()
         self.assertEqual(engine.mode, "active")
+
+    def test_active_mode_reapplies_when_policy_state_is_missing(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply("active")
+        before = len(engine.runner.commands)
+
+        engine.startup_cleanup_pending = False
+        engine.policy.installed = lambda downstream: False
+        engine.firewall.installed = lambda downstream=None: True
+        engine.reconcile()
+
+        reapplied = engine.runner.commands[before:]
+        self.assertTrue(
+            any(command[:3] == ["ip", "rule", "add"] for command in reapplied)
+        )
+        self.assertTrue(
+            any(command[:3] == ["ip", "route", "replace"] for command in reapplied)
+        )
+
+    def test_active_mode_reconcile_does_not_reapply_realistic_firewall_state(self) -> None:
+        engine = self._prepare_active_engine()
+        install_realistic_firewall_state(engine.runner, engine.firewall, "enx001122334455")
+        engine.firewall.installed = engine.firewall.__class__.installed.__get__(
+            engine.firewall,
+            engine.firewall.__class__,
+        )
+        engine.mode = "active"
+        engine.desired_mode = "active"
+        engine.applied = True
+        engine.startup_cleanup_pending = False
+        engine.policy.installed = lambda downstream: True
+        engine.dhcp.process = FakeProcess()
+        before = len(engine.runner.commands)
+
+        engine.reconcile()
+
+        mutating_commands = [
+            command
+            for command in engine.runner.commands[before:]
+            if (
+                command[:3] == ["ip", "rule", "add"]
+                or command[:3] == ["ip", "route", "replace"]
+                or (
+                    command[0] in {"iptables", "ip6tables"}
+                    and any(
+                        operation in command
+                        for operation in ("-A", "-D", "-I", "-N", "-F", "-X")
+                    )
+                )
+            )
+        ]
+        self.assertEqual(mutating_commands, [])
+
+    def test_disabled_mode_preserves_live_host_protection(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply("active")
+        engine.firewall.netfilter.chain_exists = lambda family, chain: True
+        engine.safety.find_downstream = lambda: (_ for _ in ()).throw(
+            OSError("adapter probe failed")
+        )
+        before = len(engine.runner.commands)
+
+        engine.cleanup(preserve_host_protection=True)
+
+        commands = [" ".join(command) for command in engine.runner.commands[before:]]
+        self.assertTrue(
+            any(command == "iptables -F HA_CELLGW" for command in commands)
+        )
+        self.assertTrue(
+            any(command == "ip6tables -F HA_CELLGW6" for command in commands)
+        )
+        self.assertFalse(
+            any(
+                "HA_CELLGW_LOCAL" in command or "HA_CELLGW6_LOCAL" in command
+                for command in commands
+            )
+        )
+
+    def test_disabled_mode_reconcile_does_not_flush_realistic_host_guard(self) -> None:
+        values = sysctl_values()
+        engine = GatewayEngine(
+            make_config(mode="disabled", dry_run=False),
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda: "enx001122334455"
+        engine.safety.errors = lambda downstream=None, state_error=None: []
+        install_realistic_firewall_state(
+            engine.runner,
+            engine.firewall,
+            "enx001122334455",
+        )
+        engine.startup_cleanup_pending = False
+        before = len(engine.runner.commands)
+
+        engine.reconcile()
+
+        mutating_commands = [
+            command
+            for command in engine.runner.commands[before:]
+            if command[0] in {"iptables", "ip6tables"} and any(
+                operation in command
+                for operation in ("-A", "-D", "-I", "-N", "-F", "-X")
+            )
+        ]
+        self.assertEqual(mutating_commands, [])
+
+    def test_disabled_restart_cleanup_preserves_valid_host_guard(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply("active")
+
+        restarted = self._restart_disabled_engine()
+        install_realistic_firewall_state(
+            restarted.runner,
+            restarted.firewall,
+            "enx001122334455",
+        )
+        before = len(restarted.runner.commands)
+
+        restarted.reconcile()
+
+        guard_mutations = [
+            command
+            for command in restarted.runner.commands[before:]
+            if command[0] in {"iptables", "ip6tables"}
+            and any(operation in command for operation in ("-F", "-D", "-X"))
+            and any(
+                chain in command
+                for chain in (
+                    "INPUT",
+                    restarted.firewall.INPUT_CHAIN,
+                    restarted.firewall.INPUT6_CHAIN,
+                )
+            )
+        ]
+        self.assertEqual(guard_mutations, [])
+
+    def test_disabled_restart_preserves_duplicate_first_repairable_host_guard(
+        self,
+    ) -> None:
+        self._assert_disabled_restart_preserves_repairable_host_guard(
+            (
+                "-A INPUT -i enx001122334455 -m comment --comment ha-cellgw:local-jump -j HA_CELLGW_LOCAL",
+                "-A INPUT -j ACCEPT",
+                "-A INPUT -i enx001122334455 -m comment --comment ha-cellgw:local-jump -j HA_CELLGW_LOCAL",
+            ),
+            (
+                "-A INPUT -i enx001122334455 -m comment --comment ha-cellgw:v6-local-jump -j HA_CELLGW6_LOCAL",
+                "-A INPUT -j ACCEPT",
+                "-A INPUT -i enx001122334455 -m comment --comment ha-cellgw:v6-local-jump -j HA_CELLGW6_LOCAL",
+            ),
+        )
+
+    def test_disabled_restart_preserves_late_repairable_host_guard(self) -> None:
+        self._assert_disabled_restart_preserves_repairable_host_guard(
+            (
+                "-A INPUT -j ACCEPT",
+                "-A INPUT -i enx001122334455 -m comment --comment ha-cellgw:local-jump -j HA_CELLGW_LOCAL",
+            ),
+            (
+                "-A INPUT -j ACCEPT",
+                "-A INPUT -i enx001122334455 -m comment --comment ha-cellgw:v6-local-jump -j HA_CELLGW6_LOCAL",
+            ),
+        )
+
+    def test_disabled_mode_reconcile_repairs_late_parent_jumps_without_flushing_guard(
+        self,
+    ) -> None:
+        values = sysctl_values()
+        engine = GatewayEngine(
+            make_config(mode="disabled", dry_run=False),
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda: "enx001122334455"
+        engine.safety.errors = lambda downstream=None, state_error=None: []
+        install_realistic_firewall_state(
+            engine.runner,
+            engine.firewall,
+            "enx001122334455",
+        )
+        prepend_chain_rule(engine.runner, "iptables", "INPUT", "-A INPUT -j ACCEPT")
+        prepend_chain_rule(engine.runner, "ip6tables", "INPUT", "-A INPUT -j ACCEPT")
+        engine.startup_cleanup_pending = False
+        before = len(engine.runner.commands)
+
+        engine.reconcile()
+
+        guard_flushes = [
+            command
+            for command in engine.runner.commands[before:]
+            if command[:3] in (
+                ["iptables", "-F", engine.firewall.INPUT_CHAIN],
+                ["iptables", "-X", engine.firewall.INPUT_CHAIN],
+                ["ip6tables", "-F", engine.firewall.INPUT6_CHAIN],
+                ["ip6tables", "-X", engine.firewall.INPUT6_CHAIN],
+            )
+        ]
+        self.assertEqual(guard_flushes, [])
+        self.assertTrue(
+            any(
+                command[:4] == ["iptables", "-I", "INPUT", "1"]
+                for command in engine.runner.commands[before:]
+            )
+        )
+        self.assertTrue(
+            any(
+                command[:4] == ["ip6tables", "-I", "INPUT", "1"]
+                for command in engine.runner.commands[before:]
+            )
+        )
 
     def test_trial_deadline_survives_restart(self) -> None:
         engine = self._prepare_active_engine("trial")

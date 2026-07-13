@@ -4,6 +4,7 @@ import subprocess
 from collections.abc import Callable
 
 from .config import GatewayConfig
+from .firewall_rules import FirewallRules
 from .netfilter import Netfilter
 
 
@@ -20,6 +21,13 @@ class Firewall:
     def __init__(self, config: GatewayConfig, run: RunCommand) -> None:
         self.config = config
         self.netfilter = Netfilter(run, self.COMMENT_PREFIX)
+        rules = FirewallRules(config, self.COMMENT_PREFIX)
+        self._input_rules = rules.input_rules
+        self._forward_rules = rules.forward_rules
+        self._nat_rule = rules.nat_rule
+        self._mss_rules = rules.mss_rules
+        self._input6_rules = rules.input6_rules
+        self._forward6_rules = rules.forward6_rules
 
     def backend_ok(self) -> bool:
         return self.netfilter.backend_ok()
@@ -28,321 +36,243 @@ class Firewall:
         return self.netfilter.chain_exists(family, chain)
 
     def installed(self, downstream: str | None) -> bool:
-        if not downstream:
+        if not downstream or not self.host_protection_installed(downstream):
             return False
         if not all(
-            self.netfilter.chain_exists("iptables", chain)
-            for chain in (self.FORWARD_CHAIN, self.INPUT_CHAIN)
-        ):
-            return False
-        if not self.netfilter.rule_exists(
-            "iptables",
-            "DOCKER-USER",
-            self.netfilter.jump_rule(
-                self.FORWARD_CHAIN,
-                f"{self.COMMENT_PREFIX}:jump",
-            ),
-        ):
-            return False
-        if not self.netfilter.rule_exists(
-            "iptables",
-            "INPUT",
-            self.netfilter.jump_rule(
-                self.INPUT_CHAIN,
-                f"{self.COMMENT_PREFIX}:local-jump",
-                ["-i", downstream],
-            ),
+            (
+                self.netfilter.chain_exists("iptables", self.FORWARD_CHAIN),
+                self._jump_installed(
+                    "iptables",
+                    "DOCKER-USER",
+                    self.FORWARD_CHAIN,
+                    f"{self.COMMENT_PREFIX}:jump",
+                ),
+                self._chain_matches(
+                    "iptables",
+                    self.FORWARD_CHAIN,
+                    self._forward_rules(downstream),
+                ),
+                self.netfilter.rule_exists(
+                    "iptables",
+                    "POSTROUTING",
+                    self._nat_rule(),
+                    ["-t", "nat"],
+                ),
+                all(
+                    self.netfilter.rule_exists(
+                        "iptables",
+                        "FORWARD",
+                        rule,
+                        ["-t", "mangle"],
+                    )
+                    for rule in self._mss_rules(downstream)
+                ),
+            )
         ):
             return False
         if not self.netfilter.chain_exists("ip6tables", "DOCKER-USER"):
             return True
         return all(
             (
-                self.netfilter.chain_exists(
-                    "ip6tables",
-                    self.FORWARD6_CHAIN,
-                ),
-                self.netfilter.chain_exists("ip6tables", self.INPUT6_CHAIN),
-                self.netfilter.rule_exists(
+                self._ipv6_input_guard_installed(downstream),
+                self.netfilter.chain_exists("ip6tables", self.FORWARD6_CHAIN),
+                self._jump_installed(
                     "ip6tables",
                     "DOCKER-USER",
-                    self.netfilter.jump_rule(
-                        self.FORWARD6_CHAIN,
-                        f"{self.COMMENT_PREFIX}:v6-jump",
-                    ),
+                    self.FORWARD6_CHAIN,
+                    f"{self.COMMENT_PREFIX}:v6-jump",
                 ),
-                self.netfilter.rule_exists(
+                self._chain_matches(
                     "ip6tables",
-                    "INPUT",
-                    self.netfilter.jump_rule(
-                        self.INPUT6_CHAIN,
-                        f"{self.COMMENT_PREFIX}:v6-local-jump",
-                        ["-i", downstream],
-                    ),
+                    self.FORWARD6_CHAIN,
+                    self._forward6_rules(downstream),
                 ),
             )
         )
 
+    def host_protection_installed(self, downstream: str | None) -> bool:
+        return bool(
+            downstream
+            and self._input_guard_installed(downstream)
+            and (
+                not self.netfilter.chain_exists("ip6tables", "DOCKER-USER")
+                or self._ipv6_input_guard_installed(downstream)
+            )
+        )
+
+    def host_guard_chains_installed(self) -> bool:
+        return all(
+            (
+                self.netfilter.chain_exists("iptables", self.INPUT_CHAIN),
+                self._chain_matches(
+                    "iptables",
+                    self.INPUT_CHAIN,
+                    self._input_rules(),
+                ),
+            )
+        ) and (
+            not self.netfilter.chain_exists("ip6tables", "DOCKER-USER")
+            or all(
+                (
+                    self.netfilter.chain_exists("ip6tables", self.INPUT6_CHAIN),
+                    self._chain_matches(
+                        "ip6tables",
+                        self.INPUT6_CHAIN,
+                        self._input6_rules(),
+                    ),
+                )
+            )
+        )
+
+    def _chain_matches(self, family: str, chain: str, expected: tuple[list[str], ...]) -> bool:
+        return self.netfilter.chain_matches(family, chain, expected)
+
+    def _input_guard_installed(self, downstream: str) -> bool:
+        return all(
+            (
+                self.netfilter.chain_exists("iptables", self.INPUT_CHAIN),
+                self._jump_installed(
+                    "iptables",
+                    "INPUT",
+                    self.INPUT_CHAIN,
+                    f"{self.COMMENT_PREFIX}:local-jump",
+                    ["-i", downstream],
+                ),
+                self._chain_matches(
+                    "iptables",
+                    self.INPUT_CHAIN,
+                    self._input_rules(),
+                ),
+            )
+        )
+
+    def _ipv6_input_guard_installed(self, downstream: str) -> bool:
+        return all(
+            (
+                self.netfilter.chain_exists("ip6tables", self.INPUT6_CHAIN),
+                self._jump_installed(
+                    "ip6tables",
+                    "INPUT",
+                    self.INPUT6_CHAIN,
+                    f"{self.COMMENT_PREFIX}:v6-local-jump",
+                    ["-i", downstream],
+                ),
+                self._chain_matches(
+                    "ip6tables",
+                    self.INPUT6_CHAIN,
+                    self._input6_rules(),
+                ),
+            )
+        )
+
+    def _jump_installed(
+        self,
+        family: str,
+        parent: str,
+        child: str,
+        comment: str,
+        match: list[str] | None = None,
+    ) -> bool:
+        return self.netfilter.rule_is_first_unique(
+            family,
+            parent,
+            self.netfilter.jump_rule(child, comment, match),
+        )
     def apply(self, downstream: str) -> None:
         self._apply_input_guard(downstream)
         self._apply_forwarding(downstream)
         self._apply_nat_and_mss(downstream)
         self._apply_ipv6_block(downstream)
 
+    def protect_host(self, downstream: str) -> None:
+        self._apply_input_guard(downstream)
+        self._apply_ipv6_local_block(downstream)
+
     def _apply_input_guard(self, downstream: str) -> None:
-        tag = self.COMMENT_PREFIX
-        self.netfilter.ensure_chain("iptables", self.INPUT_CHAIN)
+        if not self._chain_matches("iptables", self.INPUT_CHAIN, self._input_rules()):
+            self.netfilter.ensure_chain("iptables", self.INPUT_CHAIN)
+            for rule in self._input_rules():
+                self.netfilter.run(
+                    "iptables",
+                    "-A",
+                    self.INPUT_CHAIN,
+                    *rule,
+                )
         self.netfilter.ensure_jump(
             "iptables",
             "INPUT",
             self.INPUT_CHAIN,
-            f"{tag}:local-jump",
+            f"{self.COMMENT_PREFIX}:local-jump",
             ["-i", downstream],
         )
-        for rule in (
-            [
-                "-m",
-                "conntrack",
-                "--ctstate",
-                "ESTABLISHED,RELATED",
-                "-j",
-                "ACCEPT",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:local-established",
-            ],
-            [
-                "-p",
-                "udp",
-                "--sport",
-                "68",
-                "--dport",
-                "67",
-                "-j",
-                "ACCEPT",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:dhcp-in",
-            ],
-            [
-                "-p",
-                "icmp",
-                "-j",
-                "ACCEPT",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:icmp-in",
-            ],
-            [
-                "-j",
-                "DROP",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:local-drop",
-            ],
-        ):
-            self.netfilter.run(
-                "iptables",
-                "-A",
-                self.INPUT_CHAIN,
-                *rule,
-            )
 
     def _apply_forwarding(self, downstream: str) -> None:
-        upstream = self.config.upstream_interface
-        subnet = self.config.transit_subnet
-        tag = self.COMMENT_PREFIX
-        self.netfilter.ensure_chain("iptables", self.FORWARD_CHAIN)
+        if not self._chain_matches("iptables", self.FORWARD_CHAIN, self._forward_rules(downstream)):
+            self.netfilter.ensure_chain("iptables", self.FORWARD_CHAIN)
+            for rule in self._forward_rules(downstream):
+                self.netfilter.run(
+                    "iptables",
+                    "-A",
+                    self.FORWARD_CHAIN,
+                    *rule,
+                )
         self.netfilter.ensure_jump(
             "iptables",
             "DOCKER-USER",
             self.FORWARD_CHAIN,
-            f"{tag}:jump",
+            f"{self.COMMENT_PREFIX}:jump",
         )
-        for rule in (
-            [
-                "-i",
-                downstream,
-                "-o",
-                upstream,
-                "-s",
-                subnet,
-                "-m",
-                "conntrack",
-                "--ctstate",
-                "NEW,ESTABLISHED",
-                "-j",
-                "ACCEPT",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:out",
-            ],
-            [
-                "-i",
-                upstream,
-                "-o",
-                downstream,
-                "-d",
-                subnet,
-                "-m",
-                "conntrack",
-                "--ctstate",
-                "ESTABLISHED,RELATED",
-                "-j",
-                "ACCEPT",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:in",
-            ],
-            [
-                "-i",
-                downstream,
-                "!",
-                "-o",
-                upstream,
-                "-j",
-                "DROP",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:drop-out",
-            ],
-            [
-                "!",
-                "-i",
-                upstream,
-                "-o",
-                downstream,
-                "-j",
-                "DROP",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:drop-in",
-            ],
-            ["-j", "RETURN"],
-        ):
-            self.netfilter.run(
-                "iptables",
-                "-A",
-                self.FORWARD_CHAIN,
-                *rule,
-            )
 
     def _apply_nat_and_mss(self, downstream: str) -> None:
-        upstream = self.config.upstream_interface
-        subnet = self.config.transit_subnet
-        tag = self.COMMENT_PREFIX
         self.netfilter.ensure_rule(
             "iptables",
             ["-t", "nat"],
             "POSTROUTING",
-            [
-                "-s",
-                subnet,
-                "-o",
-                upstream,
-                "-j",
-                "MASQUERADE",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:snat",
-            ],
+            self._nat_rule(),
         )
-        for direction in ("out", "in"):
-            match = (
-                ["-i", downstream, "-o", upstream, "-s", subnet]
-                if direction == "out"
-                else ["-i", upstream, "-o", downstream, "-d", subnet]
-            )
+        for rule in self._mss_rules(downstream):
             self.netfilter.ensure_rule(
                 "iptables",
                 ["-t", "mangle"],
                 "FORWARD",
-                [
-                    *match,
-                    "-p",
-                    "tcp",
-                    "--tcp-flags",
-                    "SYN,RST",
-                    "SYN",
-                    "-j",
-                    "TCPMSS",
-                    "--clamp-mss-to-pmtu",
-                    "-m",
-                    "comment",
-                    "--comment",
-                    f"{tag}:mss-{direction}",
-                ],
+                rule,
             )
 
     def _apply_ipv6_block(self, downstream: str) -> None:
+        self._apply_ipv6_local_block(downstream)
         if not self.netfilter.chain_exists("ip6tables", "DOCKER-USER"):
             return
-        tag = self.COMMENT_PREFIX
-        self.netfilter.ensure_chain("ip6tables", self.INPUT6_CHAIN)
-        self.netfilter.ensure_jump(
-            "ip6tables",
-            "INPUT",
-            self.INPUT6_CHAIN,
-            f"{tag}:v6-local-jump",
-            ["-i", downstream],
-        )
-        self.netfilter.run(
-            "ip6tables",
-            "-A",
-            self.INPUT6_CHAIN,
-            "-j",
-            "DROP",
-        )
-
-        self.netfilter.ensure_chain("ip6tables", self.FORWARD6_CHAIN)
+        if not self._chain_matches("ip6tables", self.FORWARD6_CHAIN, self._forward6_rules(downstream)):
+            self.netfilter.ensure_chain("ip6tables", self.FORWARD6_CHAIN)
+            for rule in self._forward6_rules(downstream):
+                self.netfilter.run("ip6tables", "-A", self.FORWARD6_CHAIN, *rule)
         self.netfilter.ensure_jump(
             "ip6tables",
             "DOCKER-USER",
             self.FORWARD6_CHAIN,
-            f"{tag}:v6-jump",
-        )
-        self.netfilter.run(
-            "ip6tables",
-            "-A",
-            self.FORWARD6_CHAIN,
-            "-i",
-            downstream,
-            "-j",
-            "DROP",
-        )
-        self.netfilter.run(
-            "ip6tables",
-            "-A",
-            self.FORWARD6_CHAIN,
-            "-o",
-            downstream,
-            "-j",
-            "DROP",
-        )
-        self.netfilter.run(
-            "ip6tables",
-            "-A",
-            self.FORWARD6_CHAIN,
-            "-j",
-            "RETURN",
+            f"{self.COMMENT_PREFIX}:v6-jump",
         )
 
-    def cleanup(self) -> None:
+    def _apply_ipv6_local_block(self, downstream: str) -> None:
+        if not self.netfilter.chain_exists("ip6tables", "DOCKER-USER"):
+            return
+        if not self._chain_matches("ip6tables", self.INPUT6_CHAIN, self._input6_rules()):
+            self.netfilter.ensure_chain("ip6tables", self.INPUT6_CHAIN)
+            for rule in self._input6_rules():
+                self.netfilter.run("ip6tables", "-A", self.INPUT6_CHAIN, *rule)
+        self.netfilter.ensure_jump(
+            "ip6tables",
+            "INPUT",
+            self.INPUT6_CHAIN,
+            f"{self.COMMENT_PREFIX}:v6-local-jump",
+            ["-i", downstream],
+        )
+
+    def cleanup(self, preserved_downstream: str | None = None) -> None:
         for family, table_args, chain in (
-            ("iptables", [], "INPUT"),
             ("iptables", [], "DOCKER-USER"),
             ("iptables", ["-t", "nat"], "POSTROUTING"),
             ("iptables", ["-t", "mangle"], "FORWARD"),
-            ("ip6tables", [], "INPUT"),
             ("ip6tables", [], "DOCKER-USER"),
         ):
             self.netfilter.delete_tagged_rules(
@@ -350,11 +280,11 @@ class Firewall:
                 chain,
                 table_args,
             )
-        self.netfilter.remove_chains(
-            "iptables",
-            (self.FORWARD_CHAIN, self.INPUT_CHAIN),
-        )
-        self.netfilter.remove_chains(
-            "ip6tables",
-            (self.FORWARD6_CHAIN, self.INPUT6_CHAIN),
-        )
+        self.netfilter.remove_chains("iptables", (self.FORWARD_CHAIN,))
+        self.netfilter.remove_chains("ip6tables", (self.FORWARD6_CHAIN,))
+        if preserved_downstream:
+            return
+        for family, chain in (("iptables", "INPUT"), ("ip6tables", "INPUT")):
+            self.netfilter.delete_tagged_rules(family, chain)
+        self.netfilter.remove_chains("iptables", (self.INPUT_CHAIN,))
+        self.netfilter.remove_chains("ip6tables", (self.INPUT6_CHAIN,))

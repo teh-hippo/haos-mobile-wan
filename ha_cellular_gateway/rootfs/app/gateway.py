@@ -9,11 +9,7 @@ from pathlib import Path
 from typing import Callable
 
 from .command import CommandRunner
-from .config import (
-    STATE_PATH,
-    TOKEN_PATH,
-    GatewayConfig,
-)
+from .config import STATE_PATH, TOKEN_PATH, GatewayConfig
 from .dhcp import DnsmasqService
 from .errors import GatewayError, SafetyError
 from .firewall import Firewall
@@ -49,9 +45,7 @@ class GatewayEngine:
         self.state_store = StateStore(state_path or STATE_PATH)
 
         self.mode = "disabled"
-        self.desired_mode = (
-            config.mode if config.mode in {"trial", "active"} else "disabled"
-        )
+        self.desired_mode = config.mode if config.mode in {"trial", "active"} else "disabled"
         self.last_error: str | None = None
         self.last_reconcile: float | None = None
         self.last_health_probe: float | None = None
@@ -108,17 +102,14 @@ class GatewayEngine:
         return self.runner.run(list(args), check=check, timeout=timeout)
 
     def _persist_state(self) -> None:
-        self.state_store.save(
-            owned=self.owned_state,
-            trial_started_at=self.trial_started_at,
-            trial_deadline=self.trial_deadline,
-        )
+        self.state_store.save(owned=self.owned_state, trial_started_at=self.trial_started_at, trial_deadline=self.trial_deadline)
 
     def cleanup(
         self,
         *,
         preserve_desired: bool = False,
         preserve_trial_deadline: bool = False,
+        preserve_host_protection: bool = False,
         force: bool = False,
     ) -> None:
         with self.lock:
@@ -133,17 +124,26 @@ class GatewayEngine:
                 self._persist_state()
                 return
 
+            downstream = None
+            try:
+                downstream = self.safety.find_downstream()
+            except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
+                pass
+            preserved_downstream = downstream
+            if not self._protectable_downstream(preserved_downstream) and isinstance(self.owned_state, dict):
+                candidate = self.owned_state.get("downstream")
+                preserved_downstream = candidate if isinstance(candidate, str) else None
+            if not preserve_host_protection or not self._protectable_downstream(preserved_downstream):
+                preserved_downstream = None
             self.dhcp.stop()
-            self.firewall.cleanup()
+            self.firewall.cleanup(preserved_downstream)
 
             ownerships: list[dict[str, object]] = []
             if self.owned_state:
                 ownerships.append(self.owned_state)
-            downstream = self.safety.find_downstream()
             if downstream:
                 current = self.policy.ownership(downstream)
-                if current not in ownerships:
-                    ownerships.append(current)
+                if current not in ownerships: ownerships.append(current)
             for ownership in ownerships:
                 self.policy.cleanup(ownership)
 
@@ -156,6 +156,12 @@ class GatewayEngine:
                 self.trial_started_at = None
                 self.trial_deadline = None
             self._persist_state()
+
+    def _protectable_downstream(self, downstream: str | None) -> bool:
+        return bool(downstream) and downstream not in {
+            self.config.management_interface,
+            self.config.upstream_interface,
+        }
 
     def _health_probe(self) -> tuple[bool, str | None]:
         try:
@@ -186,10 +192,7 @@ class GatewayEngine:
         with self.lock:
             last_probe = self.last_health_probe
         now = time.time()
-        if (
-            last_probe is not None
-            and now - last_probe < self.HEALTH_PROBE_INTERVAL
-        ):
+        if last_probe is not None and now - last_probe < self.HEALTH_PROBE_INTERVAL:
             return
         healthy, public_ip = self._health_probe()
         with self.lock:
@@ -264,9 +267,25 @@ class GatewayEngine:
             with self.lock:
                 self.last_reconcile = time.time()
                 if self.startup_cleanup_pending:
+                    preserve_host_protection = False
+                    if self.desired_mode == "disabled" and not self.config.dry_run:
+                        candidates: list[str] = []
+                        try:
+                            downstream = self.safety.find_downstream()
+                        except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
+                            downstream = None
+                        if self._protectable_downstream(downstream):
+                            candidates.append(downstream)
+                        owned_downstream = self.owned_state.get("downstream") if isinstance(self.owned_state, dict) else None
+                        if isinstance(owned_downstream, str) and self._protectable_downstream(owned_downstream) and owned_downstream not in candidates:
+                            candidates.append(owned_downstream)
+                        preserve_host_protection = bool(
+                            candidates and self.firewall.host_guard_chains_installed()
+                        )
                     self.cleanup(
                         preserve_desired=True,
                         preserve_trial_deadline=True,
+                        preserve_host_protection=preserve_host_protection,
                         force=bool(self.owned_state),
                     )
                     self.state_load_error = None
@@ -292,25 +311,40 @@ class GatewayEngine:
                     and self.trial_deadline
                     and time.time() >= self.trial_deadline
                 ):
-                    self.cleanup()
+                    self.cleanup(preserve_host_protection=True)
                     self.last_error = "Trial expired and was rolled back"
                     return
 
                 if self.desired_mode not in {"trial", "active"}:
                     if self.owned_state or self.applied or self.dhcp.running:
-                        self.cleanup(force=bool(self.owned_state or self.applied))
+                        self.cleanup(
+                            preserve_host_protection=self._protectable_downstream(
+                                downstream
+                            ),
+                            force=bool(self.owned_state or self.applied),
+                        )
+                    elif (
+                        not self.config.dry_run
+                        and self._protectable_downstream(downstream)
+                        and not self.firewall.host_protection_installed(downstream)
+                    ):
+                        self.firewall.protect_host(downstream)
                     return
 
                 if errors:
                     self.cleanup(
                         preserve_desired=True,
                         preserve_trial_deadline=True,
+                        preserve_host_protection=self._protectable_downstream(
+                            downstream
+                        ),
                     )
                     self.last_error = "; ".join(errors)
                     return
 
                 if (
                     self.mode != self.desired_mode
+                    or not self.policy.installed(downstream)
                     or not self.firewall.installed(downstream)
                     or not self.dhcp.running
                 ):
@@ -325,6 +359,9 @@ class GatewayEngine:
             self.cleanup(
                 preserve_desired=True,
                 preserve_trial_deadline=True,
+                preserve_host_protection=self._protectable_downstream(
+                    self.last_downstream,
+                ),
             )
         except (
             GatewayError,
@@ -364,21 +401,14 @@ class GatewayEngine:
                 "last_health_probe": self.last_health_probe,
                 "last_error": self.last_error,
                 "safety_errors": list(self.last_safety_errors),
-                "config": {
-                    key: value
-                    for key, value in asdict(self.config).items()
-                    if key not in {"dns_servers"}
-                },
+                "config": {key: value for key, value in asdict(self.config).items() if key != "dns_servers"},
             }
 
     def health(self) -> dict[str, object]:
         with self.lock:
             last_activity = self.last_reconcile or self.started_at
             maximum_age = max(30, self.config.reconcile_seconds * 3)
-            return {
-                "ok": time.time() - last_activity <= maximum_age,
-                "last_reconcile": self.last_reconcile,
-            }
+            return {"ok": time.time() - last_activity <= maximum_age, "last_reconcile": self.last_reconcile}
 
     def run_loop(self) -> None:
         while not self.stop_event.is_set():
@@ -396,9 +426,7 @@ class GatewayEngine:
 
     def stop(self) -> None:
         self.stop_event.set()
-        preserve_trial = (
-            self.desired_mode == "trial" and self.trial_deadline is not None
-        )
+        preserve_trial = self.desired_mode == "trial" and self.trial_deadline is not None
         self.cleanup(
             preserve_desired=True,
             preserve_trial_deadline=preserve_trial,
@@ -411,7 +439,6 @@ def load_or_create_token(path: Path = TOKEN_PATH) -> str:
         path.chmod(0o600)
         return path.read_text(encoding="utf-8").strip()
     path.parent.mkdir(parents=True, exist_ok=True)
-    token = secrets.token_urlsafe(32)
-    path.write_text(token, encoding="utf-8")
+    path.write_text(token := secrets.token_urlsafe(32), encoding="utf-8")
     path.chmod(0o600)
     return token

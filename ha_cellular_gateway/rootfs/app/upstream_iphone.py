@@ -51,6 +51,7 @@ class IPhoneUsbUpstream:
         self.popen = popen or subprocess.Popen
         self.which = which or shutil.which
         self.usbmuxd_pid = self.run_dir / "usbmuxd.pid"
+        self.usbmuxd_log = self.run_dir / "usbmuxd.log"
         self.lease_path = self.run_dir / "iphone-usb-lease.json"
         self.usbmuxd_process: subprocess.Popen[str] | None = None
         self.udhcpc_process: subprocess.Popen[str] | None = None
@@ -212,31 +213,36 @@ class IPhoneUsbUpstream:
             return
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.lockdown_dir.mkdir(parents=True, exist_ok=True)
-        self.usbmuxd_process = self.popen(
-            [
-                "usbmuxd",
-                "--foreground",
-                "--pidfile",
-                str(self.usbmuxd_pid),
-            ],
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        if self.usbmuxd_process.poll() is None:
+        self.usbmuxd_log.write_text("", encoding="utf-8")
+        with self.usbmuxd_log.open("a", encoding="utf-8") as log_file:
+            self.usbmuxd_process = self.popen(
+                [
+                    "usbmuxd",
+                    "--foreground",
+                    "--pidfile",
+                    str(self.usbmuxd_pid),
+                ],
+                text=True,
+                stdout=log_file,
+                stderr=log_file,
+            )
+        try:
+            self.usbmuxd_process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
             return
-        stdout, stderr = self.usbmuxd_process.communicate(timeout=1)
         self.usbmuxd_process = None
-        detail = "; ".join(
-            part.strip()
-            for part in (stdout, stderr)
-            if part and part.strip()
-        ) or "process exited immediately"
+        detail = self._usbmuxd_log_detail()
         raise GatewayError(f"usbmuxd failed to start: {detail}")
 
     def _stop_usbmuxd(self) -> None:
         self._stop_process(self.usbmuxd_process)
         self.usbmuxd_process = None
+
+    def _usbmuxd_log_detail(self) -> str:
+        text = self.usbmuxd_log.read_text(encoding="utf-8").strip()
+        if not text:
+            return "process exited immediately"
+        return "; ".join(line.strip() for line in text.splitlines() if line.strip())
 
     def _ensure_dhcp(self, interface: str) -> None:
         if (

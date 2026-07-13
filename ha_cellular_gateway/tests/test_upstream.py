@@ -1,5 +1,6 @@
 import json
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -185,14 +186,16 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         self._add_ipheth_interface()
         self._add_apple_usb_device()
 
+        def popen(*args, **kwargs):
+            kwargs["stdout"].write("socket bind failed\n")
+            kwargs["stdout"].flush()
+            kwargs["stderr"].write("permission denied\n")
+            kwargs["stderr"].flush()
+            return FakeProcess(running=False, returncode=1)
+
         upstream, errors = self._manager(
             runner,
-            popen=lambda *args, **kwargs: FakeProcess(
-                running=False,
-                returncode=1,
-                stdout="socket bind failed",
-                stderr="permission denied",
-            ),
+            popen=popen,
         ).resolve(allow_mutation=True)
 
         self.assertIsNone(upstream)
@@ -200,6 +203,52 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
             errors,
             ["usbmuxd failed to start: socket bind failed; permission denied"],
         )
+
+    def test_usbmuxd_running_process_uses_log_file_not_pipes(self) -> None:
+        runner = FakeRunner()
+        self._add_apple_usb_device()
+        self._add_ipheth_interface()
+        captured: dict[str, object] = {}
+
+        def popen(*args, **kwargs):
+            captured["stdout"] = kwargs["stdout"]
+            captured["stderr"] = kwargs["stderr"]
+            kwargs["stdout"].write("x" * 131072)
+            kwargs["stdout"].flush()
+            return FakeProcess()
+
+        manager = self._manager(runner, popen=popen)
+        manager._ipheth_driver_active = lambda: True
+
+        upstream, errors = manager.resolve(allow_mutation=True)
+
+        self.assertIsNone(upstream)
+        self.assertEqual(
+            errors,
+            ["Connect a single trusted iPhone with Personal Hotspot enabled"],
+        )
+        self.assertIs(captured["stdout"], captured["stderr"])
+        self.assertNotEqual(captured["stdout"], subprocess.PIPE)
+        self.assertGreaterEqual(len(manager.usbmuxd_log.read_text(encoding="utf-8")), 131072)
+
+    def test_usbmuxd_delayed_early_exit_surfaces_output(self) -> None:
+        runner = FakeRunner()
+        self._add_apple_usb_device()
+
+        class DelayedExitProcess(FakeProcess):
+            def wait(self, timeout: int = 5) -> int:
+                self.running = False
+                return self.returncode
+
+        def popen(*args, **kwargs):
+            kwargs["stdout"].write("late startup failure\n")
+            kwargs["stdout"].flush()
+            return DelayedExitProcess(returncode=1)
+
+        upstream, errors = self._manager(runner, popen=popen).resolve(allow_mutation=True)
+
+        self.assertIsNone(upstream)
+        self.assertEqual(errors, ["usbmuxd failed to start: late startup failure"])
 
     def test_disconnect_and_reconnect_updates_interface_and_address(self) -> None:
         runner = FakeRunner()

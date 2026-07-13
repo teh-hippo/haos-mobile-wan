@@ -4,6 +4,7 @@ import subprocess
 from collections.abc import Callable
 
 from .config import GatewayConfig
+from .firewall_rules import FirewallRules
 from .netfilter import Netfilter
 
 
@@ -20,6 +21,13 @@ class Firewall:
     def __init__(self, config: GatewayConfig, run: RunCommand) -> None:
         self.config = config
         self.netfilter = Netfilter(run, self.COMMENT_PREFIX)
+        rules = FirewallRules(config, self.COMMENT_PREFIX)
+        self._input_rules = rules.input_rules
+        self._forward_rules = rules.forward_rules
+        self._nat_rule = rules.nat_rule
+        self._mss_rules = rules.mss_rules
+        self._input6_rules = rules.input6_rules
+        self._forward6_rules = rules.forward6_rules
 
     def backend_ok(self) -> bool:
         return self.netfilter.backend_ok()
@@ -170,198 +178,6 @@ class Firewall:
             parent,
             self.netfilter.jump_rule(child, comment, match),
         )
-    def _input_rules(self) -> tuple[list[str], ...]:
-        tag = self.COMMENT_PREFIX
-        return (
-            [
-                "-m",
-                "conntrack",
-                "--ctstate",
-                "ESTABLISHED,RELATED",
-                "-j",
-                "ACCEPT",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:local-established",
-            ],
-            [
-                "-p",
-                "udp",
-                "--sport",
-                "68",
-                "--dport",
-                "67",
-                "-j",
-                "ACCEPT",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:dhcp-in",
-            ],
-            [
-                "-p",
-                "icmp",
-                "-j",
-                "ACCEPT",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:icmp-in",
-            ],
-            [
-                "-j",
-                "DROP",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:local-drop",
-            ],
-        )
-
-    def _forward_rules(self, downstream: str) -> tuple[list[str], ...]:
-        upstream = self.config.upstream_interface
-        subnet = self.config.transit_subnet
-        tag = self.COMMENT_PREFIX
-        return (
-            [
-                "-i",
-                downstream,
-                "-o",
-                upstream,
-                "-s",
-                subnet,
-                "-m",
-                "conntrack",
-                "--ctstate",
-                "NEW,ESTABLISHED",
-                "-j",
-                "ACCEPT",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:out",
-            ],
-            [
-                "-i",
-                upstream,
-                "-o",
-                downstream,
-                "-d",
-                subnet,
-                "-m",
-                "conntrack",
-                "--ctstate",
-                "ESTABLISHED,RELATED",
-                "-j",
-                "ACCEPT",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:in",
-            ],
-            [
-                "-i",
-                downstream,
-                "!",
-                "-o",
-                upstream,
-                "-j",
-                "DROP",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:drop-out",
-            ],
-            [
-                "!",
-                "-i",
-                upstream,
-                "-o",
-                downstream,
-                "-j",
-                "DROP",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:drop-in",
-            ],
-            ["-j", "RETURN"],
-        )
-
-    def _nat_rule(self) -> list[str]:
-        return [
-            "-s",
-            self.config.transit_subnet,
-            "-o",
-            self.config.upstream_interface,
-            "-j",
-            "MASQUERADE",
-            "-m",
-            "comment",
-            "--comment",
-            f"{self.COMMENT_PREFIX}:snat",
-        ]
-
-    def _mss_rules(self, downstream: str) -> tuple[list[str], ...]:
-        upstream = self.config.upstream_interface
-        subnet = self.config.transit_subnet
-        tag = self.COMMENT_PREFIX
-        return (
-            [
-                "-i",
-                downstream,
-                "-o",
-                upstream,
-                "-s",
-                subnet,
-                "-p",
-                "tcp",
-                "--tcp-flags",
-                "SYN,RST",
-                "SYN",
-                "-j",
-                "TCPMSS",
-                "--clamp-mss-to-pmtu",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:mss-out",
-            ],
-            [
-                "-i",
-                upstream,
-                "-o",
-                downstream,
-                "-d",
-                subnet,
-                "-p",
-                "tcp",
-                "--tcp-flags",
-                "SYN,RST",
-                "SYN",
-                "-j",
-                "TCPMSS",
-                "--clamp-mss-to-pmtu",
-                "-m",
-                "comment",
-                "--comment",
-                f"{tag}:mss-in",
-            ],
-        )
-
-    @staticmethod
-    def _input6_rules() -> tuple[list[str], ...]:
-        return (["-j", "DROP"],)
-
-    @staticmethod
-    def _forward6_rules(downstream: str) -> tuple[list[str], ...]:
-        return (
-            ["-i", downstream, "-j", "DROP"],
-            ["-o", downstream, "-j", "DROP"],
-            ["-j", "RETURN"],
-        )
-
     def apply(self, downstream: str) -> None:
         self._apply_input_guard(downstream)
         self._apply_forwarding(downstream)

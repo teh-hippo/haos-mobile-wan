@@ -108,6 +108,33 @@ class Netfilter:
             and normalized_expected == normalized_actual
         )
 
+    def rule_is_first_unique(
+        self,
+        family: str,
+        chain: str,
+        rule: list[str],
+        table_args: list[str] | None = None,
+    ) -> bool:
+        rule_indexes = self._matching_rule_indexes(family, chain, rule, table_args)
+        return len(rule_indexes) == 1 and rule_indexes[0] == 0
+
+    def _matching_rule_indexes(
+        self,
+        family: str,
+        chain: str,
+        rule: list[str],
+        table_args: list[str] | None = None,
+    ) -> list[int]:
+        actual = self.chain_rules(family, chain, table_args)
+        normalized_rule = self._normalize_rule(rule)
+        if actual is None or normalized_rule is None:
+            return []
+        matches: list[int] = []
+        for index, actual_rule in enumerate(actual):
+            if self._normalize_rule(actual_rule) == normalized_rule:
+                matches.append(index)
+        return matches
+
     def _normalize_rule(
         self,
         rule: list[str],
@@ -176,8 +203,26 @@ class Netfilter:
         match: list[str] | None = None,
     ) -> None:
         rule = self.jump_rule(child, comment, match)
+        if self.rule_is_first_unique(family, parent, rule):
+            return
         if not self.rule_exists(family, parent, rule):
             self.run(family, "-I", parent, "1", *rule)
+        elif not self._matching_rule_indexes(family, parent, rule)[:1] == [0]:
+            self.run(family, "-I", parent, "1", *rule)
+        rules = self.chain_rules(family, parent)
+        if rules is None:
+            return
+        normalized_rule = self._normalize_rule(rule)
+        if normalized_rule is None:
+            return
+        seen_first = False
+        for existing in rules:
+            if self._normalize_rule(existing) != normalized_rule:
+                continue
+            if not seen_first:
+                seen_first = True
+                continue
+            self.run(family, "-D", parent, *existing, check=False)
 
     def ensure_rule(
         self,

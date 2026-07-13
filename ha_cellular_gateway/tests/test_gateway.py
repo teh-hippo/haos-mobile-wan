@@ -12,6 +12,7 @@ from helpers import (
     FakeRunner,
     install_realistic_firewall_state,
     make_config,
+    prepend_chain_rule,
     sysctl_values,
 )
 
@@ -235,6 +236,92 @@ class GatewayEngineTests(unittest.TestCase):
             )
         ]
         self.assertEqual(mutating_commands, [])
+
+    def test_disabled_restart_cleanup_preserves_valid_host_guard(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply("active")
+
+        values = sysctl_values()
+        restarted = GatewayEngine(
+            make_config(mode="disabled", dry_run=False),
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        restarted.safety.find_downstream = lambda: "enx001122334455"
+        restarted.safety.errors = lambda downstream=None, state_error=None: []
+        install_realistic_firewall_state(
+            restarted.runner,
+            restarted.firewall,
+            "enx001122334455",
+        )
+        before = len(restarted.runner.commands)
+
+        restarted.reconcile()
+
+        guard_mutations = [
+            command
+            for command in restarted.runner.commands[before:]
+            if command[0] in {"iptables", "ip6tables"}
+            and any(operation in command for operation in ("-F", "-D", "-X"))
+            and any(
+                chain in command
+                for chain in (
+                    "INPUT",
+                    restarted.firewall.INPUT_CHAIN,
+                    restarted.firewall.INPUT6_CHAIN,
+                )
+            )
+        ]
+        self.assertEqual(guard_mutations, [])
+
+    def test_disabled_mode_reconcile_repairs_late_parent_jumps_without_flushing_guard(
+        self,
+    ) -> None:
+        values = sysctl_values()
+        engine = GatewayEngine(
+            make_config(mode="disabled", dry_run=False),
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda: "enx001122334455"
+        engine.safety.errors = lambda downstream=None, state_error=None: []
+        install_realistic_firewall_state(
+            engine.runner,
+            engine.firewall,
+            "enx001122334455",
+        )
+        prepend_chain_rule(engine.runner, "iptables", "INPUT", "-A INPUT -j ACCEPT")
+        prepend_chain_rule(engine.runner, "ip6tables", "INPUT", "-A INPUT -j ACCEPT")
+        engine.startup_cleanup_pending = False
+        before = len(engine.runner.commands)
+
+        engine.reconcile()
+
+        guard_flushes = [
+            command
+            for command in engine.runner.commands[before:]
+            if command[:3] in (
+                ["iptables", "-F", engine.firewall.INPUT_CHAIN],
+                ["iptables", "-X", engine.firewall.INPUT_CHAIN],
+                ["ip6tables", "-F", engine.firewall.INPUT6_CHAIN],
+                ["ip6tables", "-X", engine.firewall.INPUT6_CHAIN],
+            )
+        ]
+        self.assertEqual(guard_flushes, [])
+        self.assertTrue(
+            any(
+                command[:4] == ["iptables", "-I", "INPUT", "1"]
+                for command in engine.runner.commands[before:]
+            )
+        )
+        self.assertTrue(
+            any(
+                command[:4] == ["ip6tables", "-I", "INPUT", "1"]
+                for command in engine.runner.commands[before:]
+            )
+        )
 
     def test_trial_deadline_survives_restart(self) -> None:
         engine = self._prepare_active_engine("trial")

@@ -8,6 +8,7 @@ from helpers import (
     FakeRunner,
     install_realistic_firewall_state,
     make_config,
+    prepend_chain_rule,
     sysctl_values,
 )
 
@@ -146,6 +147,174 @@ class FirewallTests(unittest.TestCase):
         install_realistic_firewall_state(self.runner, firewall, "enx001122334455")
 
         self.assertTrue(firewall.host_protection_installed("enx001122334455"))
+
+    def test_host_protection_rejects_bypass_rule_before_parent_jump(self) -> None:
+        firewall = self.engine.firewall
+        install_realistic_firewall_state(self.runner, firewall, "enx001122334455")
+        prepend_chain_rule(
+            self.runner,
+            "iptables",
+            "INPUT",
+            "-A INPUT -j ACCEPT",
+        )
+        prepend_chain_rule(
+            self.runner,
+            "ip6tables",
+            "INPUT",
+            "-A INPUT -j ACCEPT",
+        )
+
+        self.assertFalse(firewall.host_protection_installed("enx001122334455"))
+
+    def test_installed_rejects_bypass_rule_before_forward_jump(self) -> None:
+        firewall = self.engine.firewall
+        install_realistic_firewall_state(self.runner, firewall, "enx001122334455")
+        prepend_chain_rule(
+            self.runner,
+            "iptables",
+            "DOCKER-USER",
+            "-A DOCKER-USER -j RETURN",
+        )
+        prepend_chain_rule(
+            self.runner,
+            "ip6tables",
+            "DOCKER-USER",
+            "-A DOCKER-USER -j RETURN",
+        )
+
+        self.assertFalse(firewall.installed("enx001122334455"))
+
+    def test_protect_host_repairs_parent_jump_without_flushing_live_guard(self) -> None:
+        firewall = self.engine.firewall
+        install_realistic_firewall_state(self.runner, firewall, "enx001122334455")
+        prepend_chain_rule(
+            self.runner,
+            "iptables",
+            "INPUT",
+            "-A INPUT -j ACCEPT",
+        )
+        prepend_chain_rule(
+            self.runner,
+            "ip6tables",
+            "INPUT",
+            "-A INPUT -j ACCEPT",
+        )
+        before = len(self.runner.commands)
+
+        firewall.protect_host("enx001122334455")
+
+        commands = self.runner.commands[before:]
+        self.assertFalse(
+            any(
+                command[:3] in (
+                    ["iptables", "-F", firewall.INPUT_CHAIN],
+                    ["iptables", "-X", firewall.INPUT_CHAIN],
+                    ["ip6tables", "-F", firewall.INPUT6_CHAIN],
+                    ["ip6tables", "-X", firewall.INPUT6_CHAIN],
+                )
+                for command in commands
+            )
+        )
+        self.assertIn(
+            [
+                "iptables",
+                "-I",
+                "INPUT",
+                "1",
+                "-i",
+                "enx001122334455",
+                "-j",
+                firewall.INPUT_CHAIN,
+                "-m",
+                "comment",
+                "--comment",
+                "ha-cellgw:local-jump",
+            ],
+            commands,
+        )
+        self.assertIn(
+            [
+                "ip6tables",
+                "-I",
+                "INPUT",
+                "1",
+                "-i",
+                "enx001122334455",
+                "-j",
+                firewall.INPUT6_CHAIN,
+                "-m",
+                "comment",
+                "--comment",
+                "ha-cellgw:v6-local-jump",
+            ],
+            commands,
+        )
+
+    def test_apply_repairs_forward_jump_without_flushing_live_chains(self) -> None:
+        firewall = self.engine.firewall
+        install_realistic_firewall_state(self.runner, firewall, "enx001122334455")
+        prepend_chain_rule(
+            self.runner,
+            "iptables",
+            "DOCKER-USER",
+            "-A DOCKER-USER -j RETURN",
+        )
+        prepend_chain_rule(
+            self.runner,
+            "ip6tables",
+            "DOCKER-USER",
+            "-A DOCKER-USER -j RETURN",
+        )
+        before = len(self.runner.commands)
+
+        firewall.apply("enx001122334455")
+
+        commands = self.runner.commands[before:]
+        self.assertFalse(
+            any(
+                command[:3] in (
+                    ["iptables", "-F", firewall.INPUT_CHAIN],
+                    ["iptables", "-X", firewall.INPUT_CHAIN],
+                    ["iptables", "-F", firewall.FORWARD_CHAIN],
+                    ["iptables", "-X", firewall.FORWARD_CHAIN],
+                    ["ip6tables", "-F", firewall.INPUT6_CHAIN],
+                    ["ip6tables", "-X", firewall.INPUT6_CHAIN],
+                    ["ip6tables", "-F", firewall.FORWARD6_CHAIN],
+                    ["ip6tables", "-X", firewall.FORWARD6_CHAIN],
+                )
+                for command in commands
+            )
+        )
+        self.assertIn(
+            [
+                "iptables",
+                "-I",
+                "DOCKER-USER",
+                "1",
+                "-j",
+                firewall.FORWARD_CHAIN,
+                "-m",
+                "comment",
+                "--comment",
+                "ha-cellgw:jump",
+            ],
+            commands,
+        )
+        self.assertIn(
+            [
+                "ip6tables",
+                "-I",
+                "DOCKER-USER",
+                "1",
+                "-j",
+                firewall.FORWARD6_CHAIN,
+                "-m",
+                "comment",
+                "--comment",
+                "ha-cellgw:v6-jump",
+            ],
+            commands,
+        )
 
 
 if __name__ == "__main__":

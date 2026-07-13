@@ -54,6 +54,10 @@ class FakeRunner:
         self.commands.append(args)
         if args[:2] == ["iptables", "--version"]:
             return Result(stdout="iptables v1.8.13 (nf_tables)\n")
+        if len(args) == 3 and args[1] == "-S":
+            listing = self.chain_listings.get((args[0], args[2]))
+            if listing is not None:
+                return Result(stdout=listing)
         if args[:3] in (
             ["iptables", "-S", "DOCKER-USER"],
             ["iptables", "-S", "INPUT"],
@@ -61,10 +65,6 @@ class FakeRunner:
             ["ip6tables", "-S", "INPUT"],
         ):
             return Result()
-        if len(args) == 3 and args[1] == "-S":
-            listing = self.chain_listings.get((args[0], args[2]))
-            if listing is not None:
-                return Result(stdout=listing)
         if len(args) >= 3 and args[1] == "-S" and args[2].startswith("HA_CELL"):
             return Result(returncode=1)
         if args[:4] == ["ip", "-4", "-j", "address"]:
@@ -229,6 +229,25 @@ def install_realistic_firewall_state(runner: FakeRunner, firewall, downstream: s
         {
             (
                 "iptables",
+                "INPUT",
+            ): "\n".join(
+                (
+                    "-A INPUT "
+                    f"-i {downstream} -m comment --comment ha-cellgw:local-jump "
+                    f"-j {firewall.INPUT_CHAIN}",
+                )
+            ),
+            (
+                "iptables",
+                "DOCKER-USER",
+            ): "\n".join(
+                (
+                    "-A DOCKER-USER -m comment --comment ha-cellgw:jump "
+                    f"-j {firewall.FORWARD_CHAIN}",
+                )
+            ),
+            (
+                "iptables",
                 firewall.INPUT_CHAIN,
             ): "\n".join(
                 (
@@ -263,6 +282,25 @@ def install_realistic_firewall_state(runner: FakeRunner, firewall, downstream: s
             ),
             (
                 "ip6tables",
+                "INPUT",
+            ): "\n".join(
+                (
+                    "-A INPUT "
+                    f"-i {downstream} -m comment --comment ha-cellgw:v6-local-jump "
+                    f"-j {firewall.INPUT6_CHAIN}",
+                )
+            ),
+            (
+                "ip6tables",
+                "DOCKER-USER",
+            ): "\n".join(
+                (
+                    "-A DOCKER-USER -m comment --comment ha-cellgw:v6-jump "
+                    f"-j {firewall.FORWARD6_CHAIN}",
+                )
+            ),
+            (
+                "ip6tables",
                 firewall.INPUT6_CHAIN,
             ): "\n".join(
                 (
@@ -282,6 +320,18 @@ def install_realistic_firewall_state(runner: FakeRunner, firewall, downstream: s
                 )
             ),
         }
+    )
+
+
+def prepend_chain_rule(
+    runner: FakeRunner,
+    family: str,
+    chain: str,
+    rule: str,
+) -> None:
+    listing = runner.chain_listings.get((family, chain), "")
+    runner.chain_listings[(family, chain)] = (
+        f"{rule}\n{listing}" if listing else rule
     )
 
 

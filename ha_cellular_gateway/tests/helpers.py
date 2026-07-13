@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shlex
+import subprocess
 from pathlib import Path
 
 from rootfs.app.config import GatewayConfig
@@ -43,6 +44,8 @@ class FakeProcess:
         self.running = False
 
     def wait(self, timeout: int = 5) -> int:
+        if self.running:
+            raise subprocess.TimeoutExpired("fake-process", timeout)
         return self.returncode
 
     def communicate(self, timeout: int = 1) -> tuple[str, str]:

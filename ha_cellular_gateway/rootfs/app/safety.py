@@ -9,6 +9,7 @@ from .config import GatewayConfig
 from .errors import GatewayError
 from .firewall import Firewall
 from .policy import PolicyRouting
+from .upstream import ResolvedUpstream
 
 
 RunCommand = Callable[..., subprocess.CompletedProcess[str]]
@@ -94,12 +95,20 @@ class SafetyInspector:
         self,
         downstream: str | None = None,
         *,
+        upstream: ResolvedUpstream | None = None,
+        upstream_errors: list[str] | None = None,
         state_error: str | None = None,
     ) -> list[str]:
         downstream = downstream or self.find_downstream()
         errors: list[str] = []
+        current_upstream = upstream
+        upstream_interface = (
+            current_upstream.interface if current_upstream else self.config.upstream_interface
+        )
         if state_error:
             errors.append(state_error)
+        if upstream_errors:
+            errors.extend(upstream_errors)
 
         try:
             management_addresses = self.interface_addresses(
@@ -120,7 +129,7 @@ class SafetyInspector:
             "all",
             "default",
             self.config.management_interface,
-            self.config.upstream_interface,
+            upstream_interface,
         ):
             try:
                 if self._rp_filter(interface) == 1:
@@ -137,11 +146,12 @@ class SafetyInspector:
             errors.append("Cannot inspect the host firewall backend")
 
         try:
-            upstream_addresses = self.interface_addresses(
-                self.config.upstream_interface
-            )
-            if self.config.upstream_address not in upstream_addresses:
-                errors.append("Upstream interface/address is not active")
+            if current_upstream is None:
+                errors.append("Upstream interface is unavailable")
+            else:
+                upstream_addresses = self.interface_addresses(current_upstream.interface)
+                if current_upstream.address not in upstream_addresses:
+                    errors.append("Upstream interface/address is not active")
         except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
             errors.append("Upstream interface is unavailable")
 
@@ -157,7 +167,7 @@ class SafetyInspector:
                     "Unexpected main-table default route: "
                     + ",".join(sorted(unexpected_defaults))
                 )
-            if self.config.upstream_interface in default_interfaces:
+            if upstream_interface in default_interfaces:
                 errors.append("Mobile upstream has a main-table default route")
         except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
             errors.append("Cannot inspect main-table default routes")
@@ -165,9 +175,9 @@ class SafetyInspector:
         if downstream is None:
             errors.append("Configured downstream NIC is not present")
         else:
-            errors.extend(self._downstream_errors(downstream))
+            errors.extend(self._downstream_errors(downstream, upstream_interface))
             try:
-                errors.extend(self.policy.conflicts(downstream))
+                errors.extend(self.policy.conflicts(downstream, current_upstream))
             except (
                 GatewayError,
                 OSError,
@@ -178,7 +188,7 @@ class SafetyInspector:
 
         try:
             if self.interface_addresses(
-                self.config.upstream_interface,
+                upstream_interface,
                 family=6,
             ):
                 errors.append("IPv6 is active on mobile upstream")
@@ -187,11 +197,11 @@ class SafetyInspector:
 
         return errors
 
-    def _downstream_errors(self, downstream: str) -> list[str]:
+    def _downstream_errors(self, downstream: str, upstream_interface: str) -> list[str]:
         errors: list[str] = []
         if downstream in {
             self.config.management_interface,
-            self.config.upstream_interface,
+            upstream_interface,
         }:
             errors.append(
                 "Downstream NIC must differ from management and upstream interfaces"

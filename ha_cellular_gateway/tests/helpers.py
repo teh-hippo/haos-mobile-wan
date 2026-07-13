@@ -41,6 +41,15 @@ class FakeRunner:
         self.policy_rules: list[dict[str, object]] = []
         self.policy_routes: list[dict[str, object]] = []
         self.fail_ip_forward = False
+        self.idevice_udids: list[str] = []
+        self.idevice_pair_result = Result(returncode=1, stdout="ERROR: Please accept the trust dialog\n")
+        self.idevice_validate_result = Result(returncode=1, stdout="ERROR: Device is not paired\n")
+        self.main_default_routes = [{"dst": "default", "gateway": "192.168.1.1", "dev": "end0"}]
+        self.interface_addresses = {
+            "end0": ("192.168.1.2", 24),
+            "wlan0": ("172.20.10.4", 28),
+            "enx001122334455": ("192.168.80.1", 24),
+        }
 
     def run(
         self,
@@ -63,13 +72,7 @@ class FakeRunner:
             return Result(returncode=1)
         if args[:4] == ["ip", "-4", "-j", "address"]:
             interface = args[-1]
-            mapping = {
-                "end0": "192.168.1.2",
-                "wlan0": "172.20.10.4",
-                "enx001122334455": "192.168.80.1",
-            }
-            address = mapping[interface]
-            prefix = 28 if interface == "wlan0" else 24
+            address, prefix = self.interface_addresses[interface]
             return Result(
                 stdout=json.dumps(
                     [
@@ -96,9 +99,7 @@ class FakeRunner:
             "table",
             "main",
         ]:
-            return Result(
-                stdout='[{"dst":"default","gateway":"192.168.1.1","dev":"end0"}]'
-            )
+            return Result(stdout=json.dumps(self.main_default_routes))
         if args[:7] == [
             "ip",
             "-4",
@@ -112,7 +113,25 @@ class FakeRunner:
         if args[:4] == ["ip", "-j", "rule", "show"]:
             return Result(stdout=json.dumps(self.policy_rules))
         if args[:3] in (["ip", "rule", "del"], ["ip", "route", "del"]):
+            if args[:5] == ["ip", "route", "del", "default", "dev"]:
+                interface = args[5]
+                removed = False
+                remaining = []
+                for route in self.main_default_routes:
+                    if route.get("dev") == interface and route.get("dst") == "default" and not removed:
+                        removed = True
+                        continue
+                    remaining.append(route)
+                self.main_default_routes = remaining
+                return Result(returncode=0 if removed else 1)
             return Result(returncode=1)
+        if args[:2] == ["idevice_id", "--list"]:
+            return Result(stdout="\n".join(self.idevice_udids) + ("\n" if self.idevice_udids else ""))
+        if args and args[0] == "idevicepair" and "--udid" in args:
+            if args[-1] == "validate":
+                return self.idevice_validate_result
+            if args[-1] == "pair":
+                return self.idevice_pair_result
         if "-C" in args:
             return Result(returncode=1)
         if args and args[0] == "curl":
@@ -126,6 +145,7 @@ def make_config(**overrides: object) -> GatewayConfig:
         "dry_run": True,
         "management_interface": "end0",
         "management_address": "192.168.1.2/24",
+        "upstream_mode": "hotspot_wifi",
         "upstream_interface": "wlan0",
         "upstream_ssid": "MobileHotspot",
         "upstream_address": "172.20.10.4/28",
@@ -153,5 +173,6 @@ def sysctl_values() -> dict[Path, str]:
         Path("/proc/sys/net/ipv4/conf/default/rp_filter"): "2",
         Path("/proc/sys/net/ipv4/conf/end0/rp_filter"): "2",
         Path("/proc/sys/net/ipv4/conf/wlan0/rp_filter"): "2",
+        Path("/proc/sys/net/ipv4/conf/eth0/rp_filter"): "2",
         Path("/proc/sys/net/ipv4/conf/enx001122334455/rp_filter"): "2",
     }

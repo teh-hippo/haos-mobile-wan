@@ -9,17 +9,14 @@ from pathlib import Path
 from typing import Callable
 
 from .command import CommandRunner
-from .config import (
-    STATE_PATH,
-    TOKEN_PATH,
-    GatewayConfig,
-)
+from .config import STATE_PATH, TOKEN_PATH, GatewayConfig
 from .dhcp import DnsmasqService
 from .errors import GatewayError, SafetyError
 from .firewall import Firewall
 from .policy import PolicyRouting
 from .safety import SafetyInspector
 from .state import StateStore
+from .upstream import IPhoneUsbUpstream, ResolvedUpstream, configured_upstream
 
 
 class GatewayEngine:
@@ -47,6 +44,7 @@ class GatewayEngine:
             self.policy,
         )
         self.state_store = StateStore(state_path or STATE_PATH)
+        self.upstream = IPhoneUsbUpstream(config, self._run)
 
         self.mode = "disabled"
         self.desired_mode = (
@@ -57,6 +55,7 @@ class GatewayEngine:
         self.last_health_probe: float | None = None
         self.last_safety_errors = ["Safety checks have not run yet"]
         self.last_downstream: str | None = None
+        self.last_upstream: ResolvedUpstream | None = None
         self.upstream_healthy = False
         self.public_ip: str | None = None
         self.dhcp = DnsmasqService(config, self._run)
@@ -157,14 +156,21 @@ class GatewayEngine:
                 self.trial_deadline = None
             self._persist_state()
 
-    def _health_probe(self) -> tuple[bool, str | None]:
+    def _resolve_upstream(self) -> tuple[ResolvedUpstream | None, list[str]]:
+        if self.config.upstream_mode == "iphone_usb":
+            return self.upstream.resolve(allow_mutation=not self.config.dry_run)
+        return configured_upstream(self.config), []
+
+    def _health_probe(self, upstream: ResolvedUpstream | None) -> tuple[bool, str | None]:
+        if upstream is None:
+            return False, None
         try:
             result = self._run(
                 "curl",
                 "-4",
                 "-fsS",
                 "--interface",
-                self.config.upstream_ip,
+                upstream.ip,
                 "--max-time",
                 "10",
                 "https://www.cloudflare.com/cdn-cgi/trace",
@@ -185,13 +191,14 @@ class GatewayEngine:
     def _refresh_health_if_due(self) -> None:
         with self.lock:
             last_probe = self.last_health_probe
+            upstream = self.last_upstream
         now = time.time()
         if (
             last_probe is not None
             and now - last_probe < self.HEALTH_PROBE_INTERVAL
         ):
             return
-        healthy, public_ip = self._health_probe()
+        healthy, public_ip = self._health_probe(upstream)
         with self.lock:
             self.upstream_healthy = healthy
             self.public_ip = public_ip
@@ -216,11 +223,15 @@ class GatewayEngine:
                     self.trial_deadline = None
 
             downstream = self.safety.find_downstream()
+            upstream, upstream_errors = self._resolve_upstream()
             errors = self.safety.errors(
                 downstream,
+                upstream=upstream,
+                upstream_errors=upstream_errors,
                 state_error=self.state_load_error,
             )
             self.last_downstream = downstream
+            self.last_upstream = upstream
             self.last_safety_errors = errors
             if errors:
                 self.cleanup(
@@ -230,16 +241,17 @@ class GatewayEngine:
                 self.last_error = "; ".join(errors)
                 raise SafetyError(self.last_error)
             assert downstream is not None
+            assert upstream is not None
 
             self.cleanup(
                 preserve_desired=True,
                 preserve_trial_deadline=mode == "trial",
             )
-            self.owned_state = self.policy.ownership(downstream)
+            self.owned_state = self.policy.ownership(downstream, upstream)
             self._persist_state()
             try:
-                self.policy.apply(downstream)
-                self.firewall.apply(downstream)
+                self.policy.apply(downstream, upstream)
+                self.firewall.apply(downstream, upstream.interface)
                 self.dhcp.start(downstream)
             except (
                 GatewayError,
@@ -272,9 +284,12 @@ class GatewayEngine:
                     self.state_load_error = None
                     self.startup_cleanup_pending = False
                 downstream = self.safety.find_downstream()
+                upstream, upstream_errors = self._resolve_upstream()
                 try:
                     errors = self.safety.errors(
                         downstream,
+                        upstream=upstream,
+                        upstream_errors=upstream_errors,
                         state_error=self.state_load_error,
                     )
                 except (
@@ -285,6 +300,7 @@ class GatewayEngine:
                 ) as err:
                     errors = [f"Safety inspection failed: {err}"]
                 self.last_downstream = downstream
+                self.last_upstream = upstream
                 self.last_safety_errors = errors
 
                 if (
@@ -311,7 +327,10 @@ class GatewayEngine:
 
                 if (
                     self.mode != self.desired_mode
-                    or not self.firewall.installed(downstream)
+                    or not self.firewall.installed(
+                        downstream,
+                        upstream.interface if upstream else None,
+                    )
                     or not self.dhcp.running
                 ):
                     self.apply(self.desired_mode, recovering=True)
@@ -345,13 +364,24 @@ class GatewayEngine:
 
     def status(self) -> dict[str, object]:
         with self.lock:
+            upstream = self.last_upstream
+            upstream_status = self.upstream.runtime_status()
             return {
                 "mode": self.mode,
                 "desired_mode": self.desired_mode,
                 "configured_mode": self.config.mode,
                 "dry_run": self.config.dry_run,
                 "management_interface": self.config.management_interface,
-                "upstream_interface": self.config.upstream_interface,
+                "upstream_mode": self.config.upstream_mode,
+                "configured_upstream_interface": self.config.upstream_interface,
+                "upstream_interface": (
+                    upstream.interface
+                    if upstream
+                    else upstream_status["upstream_runtime_interface"]
+                    or self.config.upstream_interface
+                ),
+                "upstream_address": upstream.address if upstream else None,
+                "upstream_gateway": upstream.gateway if upstream else None,
                 "downstream_interface": self.last_downstream,
                 "downstream_present": self.last_downstream is not None,
                 "rules_installed": self.applied,
@@ -364,6 +394,7 @@ class GatewayEngine:
                 "last_health_probe": self.last_health_probe,
                 "last_error": self.last_error,
                 "safety_errors": list(self.last_safety_errors),
+                **upstream_status,
                 "config": {
                     key: value
                     for key, value in asdict(self.config).items()
@@ -404,6 +435,7 @@ class GatewayEngine:
             preserve_trial_deadline=preserve_trial,
             force=bool(self.owned_state or self.applied),
         )
+        self.upstream.cleanup()
 
 
 def load_or_create_token(path: Path = TOKEN_PATH) -> str:

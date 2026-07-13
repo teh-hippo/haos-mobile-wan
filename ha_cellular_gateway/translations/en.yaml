@@ -18,18 +18,28 @@ configuration:
   management_address:
     name: Management IPv4 address
     description: Expected static management address in CIDR notation.
+  upstream_mode:
+    name: Upstream mode
+    description: >-
+      hotspot_wifi keeps the existing static Wi-Fi hotspot path. iphone_usb is
+      an experimental iPhone USB-tethering path that pairs with the phone and
+      acquires DHCP without using the management Ethernet.
   upstream_interface:
     name: Mobile upstream interface
-    description: Wi-Fi interface associated with the phone hotspot.
+    description: >-
+      Wi-Fi hotspot interface for hotspot_wifi mode. iphone_usb discovers the
+      ipheth interface dynamically and does not rely on this value.
   upstream_ssid:
     name: Mobile hotspot name
-    description: Informational SSID expected on the upstream Wi-Fi interface.
+    description: Informational SSID expected only in hotspot_wifi mode.
   upstream_address:
     name: Mobile upstream IPv4 address
-    description: Static hotspot address in CIDR notation.
+    description: Static hotspot address in CIDR notation for hotspot_wifi mode.
   upstream_gateway:
     name: Mobile upstream gateway
-    description: Phone hotspot gateway used only in the dedicated policy table.
+    description: >-
+      Phone hotspot gateway used only in the dedicated policy table for
+      hotspot_wifi mode.
   downstream_mac:
     name: Downstream USB Ethernet MAC
     description: >-

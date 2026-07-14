@@ -588,6 +588,21 @@ class GatewayIntegrationTests(unittest.TestCase):
         with self.assertRaises(self.api.GatewayApiConnectionError):
             asyncio.run(api.status())
 
+    def test_auth_rejection_with_non_json_body_raises_auth_error(self) -> None:
+        class NonJsonAuthResponse:
+            status = 401
+
+            async def json(self):
+                raise ValueError("not JSON")
+
+        class NonJsonAuthSession:
+            async def request(self, *args, **kwargs):
+                return NonJsonAuthResponse()
+
+        api = self.api.GatewayApi(NonJsonAuthSession(), "http://gateway.local:8099", "abc")
+        with self.assertRaises(self.api.GatewayApiAuthError):
+            asyncio.run(api.status())
+
     def test_coordinator_raises_auth_failed_for_invalid_auth(self) -> None:
         coordinator = self.coordinator.GatewayCoordinator(
             SimpleNamespace(),

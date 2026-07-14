@@ -5,6 +5,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 README = REPO_ROOT / "README.md"
+WORKFLOW = REPO_ROOT / ".github" / "workflows" / "validate.yml"
 MANIFEST = REPO_ROOT / "custom_components" / "ha_cellular_gateway" / "manifest.json"
 HACS = REPO_ROOT / "hacs.json"
 QUALITY_SCALE = (
@@ -70,6 +71,20 @@ class DistributionMetadataTests(unittest.TestCase):
             "### Troubleshooting",
         ):
             self.assertIn(heading, text)
+
+    def test_readme_validation_matches_ci_checks(self) -> None:
+        text = README.read_text(encoding="utf-8")
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        for snippet in (
+            "--cov-report=json",
+            "coverage.json",
+            "Each integration module must exceed",
+            'python -c "import app.main"',
+            'custom_components/ha_cellular_gateway/strings.json',
+            'ha_cellular_gateway/Dockerfile',
+        ):
+            self.assertIn(snippet, workflow)
+            self.assertIn(snippet, text)
 
 
 if __name__ == "__main__":

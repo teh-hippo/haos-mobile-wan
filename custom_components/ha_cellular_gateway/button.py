@@ -3,7 +3,7 @@ from __future__ import annotations
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import GatewayConfigEntry
 from .coordinator import GatewayCoordinator
@@ -25,7 +25,7 @@ DESCRIPTIONS = (
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: GatewayConfigEntry,
-    async_add_entities: AddConfigEntryEntitiesCallback,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
     async_add_entities(
         GatewayButton(entry.runtime_data, entry.entry_id, description)

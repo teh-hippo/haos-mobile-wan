@@ -3,9 +3,10 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
-from custom_components.ha_cellular_gateway.api import GatewayApiError
+from custom_components.ha_cellular_gateway.api import GatewayApiAuthError, GatewayApiError
 from custom_components.ha_cellular_gateway.coordinator import GatewayCoordinator
 
 
@@ -27,4 +28,16 @@ async def test_coordinator_wraps_gateway_errors(hass) -> None:
     coordinator = GatewayCoordinator(hass, api)
 
     with pytest.raises(UpdateFailed, match="offline"):
+        await coordinator._async_update_data()
+
+
+async def test_coordinator_raises_auth_failed_for_auth_error(hass) -> None:
+    api = type(
+        "Api",
+        (),
+        {"status": AsyncMock(side_effect=GatewayApiAuthError("bad token"))},
+    )()
+    coordinator = GatewayCoordinator(hass, api)
+
+    with pytest.raises(ConfigEntryAuthFailed):
         await coordinator._async_update_data()

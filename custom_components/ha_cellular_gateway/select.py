@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from homeassistant.components.select import SelectEntity
+
+from .api import GatewayApiError
 from . import GatewayConfigEntry
 from .entity import GatewayEntity
 
@@ -24,5 +26,8 @@ class GatewayModeSelect(GatewayEntity, SelectEntity):
         return mode if mode in self.options else None
 
     async def async_select_option(self, option: str) -> None:
-        await self.coordinator.api.set_mode(option)
+        try:
+            await self.coordinator.api.set_mode(option)
+        except GatewayApiError as err:
+            raise self._action_exception(err) from err
         await self.coordinator.async_request_refresh()

@@ -153,7 +153,10 @@
           "waiting_for_device": "Waiting for device",
           "multiple_devices": "Multiple devices",
           "waiting_for_interface": "Waiting for interface",
-          "ownership_conflict": "Ownership conflict"
+          "ownership_conflict": "Ownership conflict",
+          "waiting_for_trust": "Waiting for trust",
+          "waiting_for_unlock": "Waiting for unlock",
+          "pairing_failed": "Pairing failed"
         }
       },
       "downstream_interface": {

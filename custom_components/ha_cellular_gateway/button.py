@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 
+from .api import GatewayApiError
 from . import GatewayConfigEntry
 from .entity import GatewayEntity
 
@@ -32,5 +33,8 @@ class GatewayButton(GatewayEntity, ButtonEntity):
         self._attr_name = description.name
 
     async def async_press(self) -> None:
-        await self.coordinator.api.reconcile()
+        try:
+            await self.coordinator.api.reconcile()
+        except GatewayApiError as err:
+            raise self._action_exception(err) from err
         await self.coordinator.async_request_refresh()

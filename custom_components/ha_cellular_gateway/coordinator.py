@@ -3,10 +3,11 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import GatewayApi, GatewayApiError
+from .api import GatewayApi, GatewayApiAuthError, GatewayApiError
 from .const import DOMAIN
 
 
@@ -23,5 +24,7 @@ class GatewayCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         try:
             return await self.api.status()
+        except GatewayApiAuthError as err:
+            raise ConfigEntryAuthFailed(str(err)) from err
         except GatewayApiError as err:
             raise UpdateFailed(str(err)) from err

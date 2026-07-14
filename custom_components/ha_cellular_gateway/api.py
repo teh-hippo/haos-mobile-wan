@@ -10,6 +10,14 @@ class GatewayApiError(RuntimeError):
     pass
 
 
+class GatewayApiAuthError(GatewayApiError):
+    pass
+
+
+class GatewayApiConnectionError(GatewayApiError):
+    pass
+
+
 class GatewayApi:
     def __init__(
         self,
@@ -36,8 +44,16 @@ class GatewayApi:
                     json=payload,
                 )
                 data = await response.json()
-        except (aiohttp.ClientError, TimeoutError, ValueError) as err:
-            raise GatewayApiError("Unable to communicate with gateway app") from err
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise GatewayApiConnectionError(
+                "Unable to communicate with gateway app"
+            ) from err
+        except ValueError as err:
+            raise GatewayApiError("Invalid response from gateway app") from err
+        if response.status in {401, 403}:
+            raise GatewayApiAuthError(
+                str(data.get("error", "Authentication rejected by gateway app"))
+            )
         if response.status >= 400:
             raise GatewayApiError(str(data.get("error", f"HTTP {response.status}")))
         return data

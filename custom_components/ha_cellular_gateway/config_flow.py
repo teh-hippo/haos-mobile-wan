@@ -193,17 +193,21 @@ class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
             await self._validate(url, token)
         except GatewayApiError as err:
             return self.async_abort(reason=self._error_key(err))
-        if entry := self._entry_for_url(url):
+        unique_id_entry = self._entry_for_unique_id(discovery_info.uuid)
+        url_entry = self._entry_for_url(url)
+        if unique_id_entry is not None:
+            if url_entry is not None and url_entry.entry_id != unique_id_entry.entry_id:
+                return self.async_abort(reason="single_instance_allowed")
             return self.async_update_reload_and_abort(
-                entry,
-                unique_id=discovery_info.uuid,
+                unique_id_entry,
                 data_updates={CONF_URL: url, CONF_TOKEN: token},
                 reload_even_if_entry_is_unchanged=False,
                 reason="already_configured",
             )
-        if entry := self._entry_for_unique_id(discovery_info.uuid):
+        if url_entry is not None:
             return self.async_update_reload_and_abort(
-                entry,
+                url_entry,
+                unique_id=discovery_info.uuid,
                 data_updates={CONF_URL: url, CONF_TOKEN: token},
                 reload_even_if_entry_is_unchanged=False,
                 reason="already_configured",

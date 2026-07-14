@@ -19,8 +19,8 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Install validation dependency
-        run: python -m pip install --disable-pip-version-check pyyaml
+      - name: Install validation dependencies
+        run: python -m pip install --disable-pip-version-check mypy pyyaml
 
       - name: Run unit tests
         env:
@@ -36,6 +36,11 @@ jobs:
             ha_cellular_gateway/rootfs/app/*.py \
             custom_components/ha_cellular_gateway/*.py
           PYTHONPATH=ha_cellular_gateway/rootfs python -c "import app.main"
+
+      - name: Run integration type checks
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -m mypy --config-file mypy.ini
 
       - name: Validate JSON and YAML
         run: |
@@ -60,9 +65,17 @@ jobs:
               ).read_text(encoding="utf-8")
           )
           assert app["version"] == integration["version"]
-          assert not Path(
-              "custom_components/ha_cellular_gateway/strings.json"
-          ).exists()
+          strings = json.loads(
+              Path(
+                  "custom_components/ha_cellular_gateway/strings.json"
+              ).read_text(encoding="utf-8")
+          )
+          runtime_translations = json.loads(
+              Path(
+                  "custom_components/ha_cellular_gateway/translations/en.json"
+              ).read_text(encoding="utf-8")
+          )
+          assert strings == runtime_translations
           assert Path("ha_cellular_gateway/DOCS.md").exists()
           assert Path("ha_cellular_gateway/translations/en.yaml").exists()
 

@@ -1,0 +1,173 @@
+rules:
+  # Self-assessment for the optional custom integration shipped in this mixed
+  # repository. It documents current coverage only and is not a formal Home
+  # Assistant Core tier claim.
+  # Bronze
+  action-setup:
+    status: exempt
+    comment: The integration does not register custom actions or services.
+  appropriate-polling:
+    status: done
+    comment: The coordinator polls the local gateway API every 30 seconds.
+  brands:
+    status: done
+    comment: Local icon and logo assets are shipped with the integration for HA 2026.3+ custom brands support.
+  common-modules:
+    status: done
+    comment: Shared API, coordinator, entity, and diagnostics logic are split into dedicated modules.
+  config-flow-test-coverage:
+    status: done
+    comment: Unit tests cover manual and Supervisor-discovered config flow branches.
+  config-flow:
+    status: done
+    comment: The integration is configured through a UI config flow.
+  dependency-transparency:
+    status: done
+    comment: The manifest declares its dependency on hassio and has no hidden Python requirements.
+  docs-actions:
+    status: exempt
+    comment: The integration does not expose custom actions or services.
+  docs-conditions:
+    status: exempt
+    comment: The integration does not expose custom conditions.
+  docs-high-level-description:
+    status: done
+    comment: The README explains the companion integration and when to install it.
+  docs-installation-instructions:
+    status: done
+    comment: The README now documents separate HACS installation steps for the optional integration.
+  docs-removal-instructions:
+    status: done
+    comment: The README documents how to remove the config entry and uninstall the HACS package.
+  docs-triggers:
+    status: exempt
+    comment: The integration does not expose custom triggers.
+  entity-event-setup:
+    status: exempt
+    comment: Entities rely on coordinator refreshes rather than direct event subscriptions.
+  entity-unique-id:
+    status: done
+    comment: Every entity uses a config-entry-scoped unique ID.
+  has-entity-name:
+    status: done
+    comment: Base entities set has_entity_name for all platforms.
+  runtime-data:
+    status: done
+    comment: Runtime state is stored on ConfigEntry.runtime_data.
+  test-before-configure:
+    status: done
+    comment: Both config flow paths validate the gateway API before creating or updating an entry.
+  test-before-setup:
+    status: done
+    comment: Entry setup performs an initial refresh and raises ConfigEntryNotReady on failure.
+  unique-config-entry:
+    status: done
+    comment: The flow prevents multiple distinct gateway entries and deduplicates by normalized URL.
+
+  # Silver
+  action-exceptions:
+    status: exempt
+    comment: The integration does not expose custom actions or services.
+  config-entry-unloading:
+    status: done
+    comment: The integration unloads all forwarded platforms cleanly.
+  docs-configuration-parameters:
+    status: done
+    comment: The README documents the manual config-flow URL and token parameters.
+  docs-installation-parameters:
+    status: done
+    comment: The README documents the HACS repository URL, category, and discovery expectations.
+  entity-unavailable:
+    status: done
+    comment: CoordinatorEntity availability follows coordinator refresh success.
+  integration-owner:
+    status: done
+    comment: The manifest declares a code owner.
+  log-when-unavailable:
+    status: done
+    comment: Update failures are surfaced through Home Assistant coordinator logging.
+  parallel-updates:
+    status: todo
+    comment: Platform modules do not yet declare explicit parallel update limits.
+  reauthentication-flow:
+    status: exempt
+    comment: Credentials are a local app token supplied by Supervisor discovery or re-entered via the same config flow.
+  test-coverage:
+    status: done
+    comment: The repository already carries focused unit tests for the integration and gateway logic.
+
+  # Gold
+  devices:
+    status: done
+    comment: Entities attach to a single device entry for the gateway.
+  diagnostics:
+    status: done
+    comment: Diagnostics export redacted entry and runtime data.
+  discovery-update-info:
+    status: done
+    comment: Supervisor discovery refreshes the stored URL and token for an existing entry.
+  discovery:
+    status: done
+    comment: The integration supports Supervisor discovery from the HAOS app.
+  docs-data-update:
+    status: done
+    comment: The README documents 30-second polling and immediate refresh after control actions.
+  docs-examples:
+    status: done
+    comment: The README includes automation examples.
+  docs-known-limitations:
+    status: done
+    comment: The README documents current limits and unsupported paths.
+  docs-supported-devices:
+    status: done
+    comment: The README lists supported and unsupported hardware/topologies.
+  docs-supported-functions:
+    status: done
+    comment: The README includes entity and function reference tables.
+  docs-troubleshooting:
+    status: done
+    comment: The README includes targeted troubleshooting guidance.
+  docs-use-cases:
+    status: done
+    comment: The README includes concrete companion-integration use cases.
+  dynamic-devices:
+    status: exempt
+    comment: The integration represents one fixed gateway device per config entry.
+  entity-category:
+    status: todo
+    comment: Diagnostic and control entities are not yet explicitly categorized.
+  entity-device-class:
+    status: todo
+    comment: Relevant binary sensors do not yet declare device classes.
+  entity-disabled-by-default:
+    status: todo
+    comment: Diagnostic-heavy entities are still enabled by default.
+  entity-translations:
+    status: todo
+    comment: Entity names still rely on inline English strings instead of translation keys.
+  exception-translations:
+    status: todo
+    comment: Runtime control errors are not yet translated through dedicated exception keys.
+  icon-translations:
+    status: exempt
+    comment: The integration does not define state-based translated icons.
+  reconfiguration-flow:
+    status: todo
+    comment: Updating an installed entry still relies on rerunning the initial flow rather than a dedicated reconfigure step.
+  repair-issues:
+    status: exempt
+    comment: The integration does not currently raise Home Assistant Repairs issues.
+  stale-devices:
+    status: exempt
+    comment: The integration exposes one fixed gateway device and does not orphan extra devices.
+
+  # Platinum
+  async-dependency:
+    status: done
+    comment: The integration uses asyncio-native I/O only.
+  inject-websession:
+    status: done
+    comment: HTTP requests use Home Assistant's injected aiohttp client session.
+  strict-typing:
+    status: todo
+    comment: The repository does not yet enforce strict static type checking for the custom integration.

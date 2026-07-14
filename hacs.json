@@ -1,0 +1,5 @@
+{
+  "name": "HAOS Mobile WAN",
+  "domains": ["ha_cellular_gateway"],
+  "content_in_root": false
+}

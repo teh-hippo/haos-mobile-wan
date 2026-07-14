@@ -5,6 +5,8 @@ import time
 from dataclasses import asdict
 from typing import TYPE_CHECKING
 
+from .status_issues import build_status_issues
+
 if TYPE_CHECKING:
     from .gateway import GatewayEngine
 
@@ -56,6 +58,11 @@ def status(engine: GatewayEngine) -> dict[str, object]:
     with engine.lock:
         upstream = engine.last_upstream
         upstream_status = engine.upstream.runtime_status()
+        issues = build_status_issues(
+            engine.last_safety_errors,
+            engine.last_error,
+            upstream_status,
+        )
         return {
             "mode": engine.mode,
             "desired_mode": engine.desired_mode,
@@ -84,6 +91,7 @@ def status(engine: GatewayEngine) -> dict[str, object]:
             "last_health_probe": engine.last_health_probe,
             "last_error": engine.last_error,
             "safety_errors": list(engine.last_safety_errors),
+            "issues": issues,
             **upstream_status,
             "config": {
                 key: value

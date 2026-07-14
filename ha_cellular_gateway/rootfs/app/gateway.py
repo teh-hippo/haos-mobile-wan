@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 import subprocess
 import threading
 import time
@@ -7,7 +8,7 @@ from pathlib import Path
 from typing import Callable
 
 from .command import CommandRunner
-from .config import STATE_PATH, GatewayConfig
+from .config import STATE_PATH, TOKEN_PATH, GatewayConfig
 from .dhcp import DnsmasqService
 from .errors import GatewayError
 from .firewall import Firewall
@@ -198,3 +199,13 @@ class GatewayEngine:
 
     def stop(self) -> None:
         stop(self)
+
+
+def load_or_create_token(path: Path = TOKEN_PATH) -> str:
+    if path.exists():
+        path.chmod(0o600)
+        return path.read_text(encoding="utf-8").strip()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(token := secrets.token_urlsafe(32), encoding="utf-8")
+    path.chmod(0o600)
+    return token

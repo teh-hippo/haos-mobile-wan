@@ -3,28 +3,16 @@ from __future__ import annotations
 
 import json
 import os
-import secrets
 import signal
 import threading
 import urllib.error
 import urllib.request
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 
-from .config import TOKEN_PATH, GatewayConfig
+from .config import GatewayConfig
 from .errors import GatewayError
-from .gateway import GatewayEngine
-
-
-def load_or_create_token(path: Path = TOKEN_PATH) -> str:
-    if path.exists():
-        path.chmod(0o600)
-        return path.read_text(encoding="utf-8").strip()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(token := secrets.token_urlsafe(32), encoding="utf-8")
-    path.chmod(0o600)
-    return token
+from .gateway import GatewayEngine, load_or_create_token
 
 
 class GatewayHandler(BaseHTTPRequestHandler):

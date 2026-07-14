@@ -557,6 +557,9 @@ class GatewayIntegrationTests(unittest.TestCase):
                 self.status = status
                 self._payload = payload
 
+            async def release(self):
+                pass
+
             async def json(self):
                 return self._payload
 
@@ -571,6 +574,19 @@ class GatewayIntegrationTests(unittest.TestCase):
         class ConnectionSession:
             async def request(self, *args, **kwargs):
                 raise client_error("offline")
+
+        class BodyReadErrorSession:
+            async def request(self, *args, **kwargs):
+                class DropResponse:
+                    status = 200
+
+                    async def release(self):
+                        pass
+
+                    async def json(self):
+                        raise client_error("connection dropped during read")
+
+                return DropResponse()
 
         api = self.api.GatewayApi(AuthSession(), "http://gateway.local:8099", "abc")
         with self.assertRaises(self.api.GatewayApiAuthError):
@@ -588,9 +604,16 @@ class GatewayIntegrationTests(unittest.TestCase):
         with self.assertRaises(self.api.GatewayApiConnectionError):
             asyncio.run(api.status())
 
+        api = self.api.GatewayApi(BodyReadErrorSession(), "http://gateway.local:8099", "abc")
+        with self.assertRaises(self.api.GatewayApiConnectionError):
+            asyncio.run(api.status())
+
     def test_auth_rejection_with_non_json_body_raises_auth_error(self) -> None:
         class NonJsonAuthResponse:
             status = 401
+
+            async def release(self):
+                pass
 
             async def json(self):
                 raise ValueError("not JSON")

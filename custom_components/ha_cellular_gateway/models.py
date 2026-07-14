@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, TypeAlias, TypedDict
+from typing import Literal, NotRequired, TypeAlias, TypedDict
 
 GatewayMode: TypeAlias = Literal["disabled", "trial", "active"]
 GatewaySelectableMode: TypeAlias = Literal["disabled", "trial"]
@@ -17,8 +17,19 @@ GatewayPairingState: TypeAlias = Literal[
     "multiple_devices",
     "waiting_for_interface",
     "ownership_conflict",
+    "waiting_for_trust",
+    "waiting_for_unlock",
+    "pairing_failed",
 ]
 GatewayLeaseOwner: TypeAlias = Literal["app", "external"]
+
+
+class GatewayIssue(TypedDict):
+    id: str
+    translation_key: str | None
+    repairable: bool
+    transient: bool
+    message: str
 
 
 class GatewayRuntimeConfig(TypedDict):
@@ -73,3 +84,4 @@ class GatewayStatus(TypedDict):
     upstream_lockdown_path: str
     upstream_lease_owner: GatewayLeaseOwner | None
     config: GatewayRuntimeConfig
+    issues: NotRequired[list[GatewayIssue]]

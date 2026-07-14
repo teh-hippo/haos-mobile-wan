@@ -247,17 +247,21 @@ automation:
 ## Development validation
 
 ```sh
+python -m pip install --disable-pip-version-check -r requirements-test.txt pyyaml
+
 PYTHONDONTWRITEBYTECODE=1 \
   PYTHONPATH=ha_cellular_gateway \
   python -m unittest discover -s ha_cellular_gateway/tests -v
 
+PYTHONDONTWRITEBYTECODE=1 \
+  pytest tests \
+  --cov=custom_components/ha_cellular_gateway \
+  --cov-report=term-missing \
+  --cov-report=json
+
 PYTHONDONTWRITEBYTECODE=1 python -m py_compile \
   ha_cellular_gateway/rootfs/app/*.py \
   custom_components/ha_cellular_gateway/*.py
-
-PYTHONDONTWRITEBYTECODE=1 \
-  PYTHONPATH=ha_cellular_gateway/rootfs \
-  python -c "import app.main"
 ```
 
 Do not disable dry-run until the documented management, routing, IPv6 and

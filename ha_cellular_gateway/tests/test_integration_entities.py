@@ -172,6 +172,38 @@ class GatewayIntegrationTests(unittest.TestCase):
         manifest = json.loads((PACKAGE_PATH / "manifest.json").read_text(encoding="utf-8"))
         self.assertNotIn("single_config_entry", manifest)
 
+    def test_manual_flow_shows_form_without_input(self) -> None:
+        flow = self.make_flow()
+        flow._async_current_entries = lambda include_ignore=True: []
+
+        result = asyncio.run(flow.async_step_user())
+
+        self.assertEqual(result["step_id"], "user")
+        self.assertEqual(result["errors"], {})
+
+    def test_manual_flow_creates_entry_for_first_gateway(self) -> None:
+        flow = self.make_flow()
+        flow._async_current_entries = lambda include_ignore=True: []
+        flow._validate = AsyncMock()
+        seen: list[str] = []
+
+        async def set_unique_id(value: str) -> None:
+            seen.append(value)
+
+        flow.async_set_unique_id = set_unique_id
+
+        result = asyncio.run(
+            flow.async_step_user({"url": "http://gateway.local:8099/", "token": "abc"})
+        )
+
+        flow._validate.assert_awaited_once_with("http://gateway.local:8099", "abc")
+        self.assertEqual(seen, ["http://gateway.local:8099"])
+        self.assertEqual(result["title"], "HAOS Mobile WAN")
+        self.assertEqual(
+            result["data"],
+            {"url": "http://gateway.local:8099", "token": "abc"},
+        )
+
     def test_manual_entry_deduplicates_normalized_url(self) -> None:
         flow = self.make_flow()
         entry = SimpleNamespace(data={"url": "http://gateway.local:8099"})

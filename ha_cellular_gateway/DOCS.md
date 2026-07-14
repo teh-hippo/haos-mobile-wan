@@ -245,8 +245,10 @@ not currently offer a separate hotspot-only package.
 
 The enforced AppArmor profile is limited to the app payload, its own `/data`
 state, `/run/ha-cellgw`, the `usbmuxd` runtime socket, the required `ip`,
-`iptables`, `dnsmasq`, `curl`, `usbmuxd`, `idevice*` and `udhcpc` executables,
-the specific `/proc/sys/net/ipv4` checks, `/sys/class/net`, `ipheth` USB sysfs
+`iptables`, `dnsmasq`, `curl`, `usbmuxd`, `idevice*`, `udhcpc` and `/bin/sh`
+executables (the shell is required by the udhcpc DHCP callback script), the
+specific `/proc/sys/net/ipv4` checks, `/sys/class/net`, `/sys/devices` (sysfs
+symlink traversal for ipheth network interface detection), `ipheth` USB sysfs
 inspection and `/dev/bus/usb`.
 
 The API binds to the Supervisor-side host address and requires a generated

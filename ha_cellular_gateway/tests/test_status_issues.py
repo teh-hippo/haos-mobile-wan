@@ -157,6 +157,82 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertTrue(issue["repairable"])
         self.assertFalse(issue["transient"])
 
+    def test_required_command_unavailable_is_repairable(self) -> None:
+        result = build_status_issues(
+            ["Required command is unavailable: usbmuxd"],
+            None,
+            {},
+        )
+        self.assertEqual(len(result), 1)
+        issue = result[0]
+        self.assertEqual(issue["id"], "upstream_required_command_unavailable")
+        self.assertEqual(issue["translation_key"], "upstream_configuration")
+        self.assertTrue(issue["repairable"])
+        self.assertFalse(issue["transient"])
+
+    def test_udhcpc_script_unavailable_is_repairable(self) -> None:
+        result = build_status_issues(
+            ["Required udhcpc helper script is unavailable"],
+            None,
+            {},
+        )
+        self.assertEqual(len(result), 1)
+        issue = result[0]
+        self.assertEqual(issue["id"], "upstream_udhcpc_script_unavailable")
+        self.assertEqual(issue["translation_key"], "upstream_configuration")
+        self.assertTrue(issue["repairable"])
+
+    def test_usb_access_unavailable_is_repairable(self) -> None:
+        result = build_status_issues(
+            ["USB device access is unavailable; enable the app usb permission"],
+            None,
+            {},
+        )
+        self.assertEqual(len(result), 1)
+        issue = result[0]
+        self.assertEqual(issue["id"], "upstream_usb_access_unavailable")
+        self.assertEqual(issue["translation_key"], "upstream_configuration")
+        self.assertTrue(issue["repairable"])
+
+    def test_waiting_for_trust_is_transient(self) -> None:
+        result = build_status_issues(
+            [],
+            None,
+            {"upstream_pairing_state": "waiting_for_trust"},
+        )
+        self.assertEqual(len(result), 1)
+        issue = result[0]
+        self.assertEqual(issue["id"], "upstream_waiting_for_trust")
+        self.assertIsNone(issue["translation_key"])
+        self.assertFalse(issue["repairable"])
+        self.assertTrue(issue["transient"])
+
+    def test_waiting_for_unlock_is_transient(self) -> None:
+        result = build_status_issues(
+            [],
+            None,
+            {"upstream_pairing_state": "waiting_for_unlock"},
+        )
+        self.assertEqual(len(result), 1)
+        issue = result[0]
+        self.assertEqual(issue["id"], "upstream_waiting_for_unlock")
+        self.assertIsNone(issue["translation_key"])
+        self.assertFalse(issue["repairable"])
+        self.assertTrue(issue["transient"])
+
+    def test_pairing_failed_is_repairable(self) -> None:
+        result = build_status_issues(
+            [],
+            None,
+            {"upstream_pairing_state": "pairing_failed"},
+        )
+        self.assertEqual(len(result), 1)
+        issue = result[0]
+        self.assertEqual(issue["id"], "upstream_pairing_failed")
+        self.assertEqual(issue["translation_key"], "upstream_configuration")
+        self.assertTrue(issue["repairable"])
+        self.assertFalse(issue["transient"])
+
 
 if __name__ == "__main__":
     unittest.main()

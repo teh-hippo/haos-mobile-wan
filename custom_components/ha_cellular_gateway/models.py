@@ -17,6 +17,9 @@ GatewayPairingState: TypeAlias = Literal[
     "multiple_devices",
     "waiting_for_interface",
     "ownership_conflict",
+    "waiting_for_trust",
+    "waiting_for_unlock",
+    "pairing_failed",
 ]
 GatewayLeaseOwner: TypeAlias = Literal["app", "external"]
 

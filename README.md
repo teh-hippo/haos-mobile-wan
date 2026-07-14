@@ -247,17 +247,82 @@ automation:
 ## Development validation
 
 ```sh
+python -m pip install --disable-pip-version-check -r requirements-test.txt pyyaml
+
 PYTHONDONTWRITEBYTECODE=1 \
   PYTHONPATH=ha_cellular_gateway \
   python -m unittest discover -s ha_cellular_gateway/tests -v
 
-PYTHONDONTWRITEBYTECODE=1 python -m py_compile \
+PYTHONDONTWRITEBYTECODE=1 \
+  python -m py_compile \
   ha_cellular_gateway/rootfs/app/*.py \
   custom_components/ha_cellular_gateway/*.py
 
 PYTHONDONTWRITEBYTECODE=1 \
   PYTHONPATH=ha_cellular_gateway/rootfs \
   python -c "import app.main"
+
+PYTHONDONTWRITEBYTECODE=1 \
+  pytest tests \
+  --cov=custom_components/ha_cellular_gateway \
+  --cov-report=term-missing \
+  --cov-report=json
+
+python - <<'PY'
+from pathlib import Path
+import json
+
+threshold = 95
+report = json.loads(Path("coverage.json").read_text(encoding="utf-8"))
+files = sorted(
+    path
+    for path in report["files"]
+    if path.startswith("custom_components/ha_cellular_gateway/")
+)
+assert files, "No integration coverage files found"
+failures = []
+for path in files:
+    percent = report["files"][path]["summary"]["percent_covered"]
+    if percent <= threshold:
+        failures.append(f"{path}: {percent:.2f}%")
+if failures:
+    raise SystemExit(
+        f"Each integration module must exceed {threshold}% coverage:\n"
+        + "\n".join(failures)
+    )
+PY
+
+python - <<'PY'
+from pathlib import Path
+import json
+import yaml
+
+app = yaml.safe_load(Path("ha_cellular_gateway/config.yaml").read_text(encoding="utf-8"))
+integration = json.loads(
+    Path("custom_components/ha_cellular_gateway/manifest.json").read_text(
+        encoding="utf-8"
+    )
+)
+assert app["version"] == integration["version"]
+assert not Path("custom_components/ha_cellular_gateway/strings.json").exists()
+assert Path("ha_cellular_gateway/DOCS.md").exists()
+assert Path("ha_cellular_gateway/translations/en.yaml").exists()
+
+for path in Path(".").rglob("*.json"):
+    json.loads(path.read_text(encoding="utf-8"))
+
+for pattern in ("*.yaml", "*.yml"):
+    for path in Path(".").rglob(pattern):
+        yaml.safe_load(path.read_text(encoding="utf-8"))
+
+for path in Path("ha_cellular_gateway/rootfs/app").glob("*.py"):
+    line_count = len(path.read_text(encoding="utf-8").splitlines())
+    assert line_count <= 300, f"{path} has {line_count} lines"
+
+dockerfile = Path("ha_cellular_gateway/Dockerfile").read_text(encoding="utf-8")
+assert "ARG BUILD_FROM" not in dockerfile
+assert dockerfile.startswith("FROM ghcr.io/home-assistant/base:")
+PY
 ```
 
 Do not disable dry-run until the documented management, routing, IPv6 and

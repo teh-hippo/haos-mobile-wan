@@ -4,10 +4,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 
 from custom_components.ha_cellular_gateway import async_setup_entry
-from custom_components.ha_cellular_gateway.api import GatewayApiError
+from custom_components.ha_cellular_gateway.api import GatewayApiAuthError, GatewayApiError
 from custom_components.ha_cellular_gateway.const import DOMAIN
 
 
@@ -65,7 +65,7 @@ async def test_async_setup_entry_raises_not_ready(hass, mock_config_entry) -> No
         ),
         patch(
             "custom_components.ha_cellular_gateway.GatewayCoordinator.async_config_entry_first_refresh",
-            AsyncMock(side_effect=GatewayApiError("offline")),
+            AsyncMock(side_effect=ConfigEntryNotReady("offline")),
         ),
     ):
         with pytest.raises(ConfigEntryNotReady):
@@ -86,3 +86,16 @@ async def test_reload_entry(hass, mock_config_entry, status_payload: dict[str, o
 
     assert mock_config_entry.state is ConfigEntryState.LOADED
     assert DOMAIN in hass.config.components
+
+
+async def test_setup_entry_triggers_reauth_on_auth_failure(hass, mock_config_entry) -> None:
+    mock_config_entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.ha_cellular_gateway.api.GatewayApi.status",
+        AsyncMock(side_effect=GatewayApiAuthError("bad token")),
+    ):
+        assert not await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert mock_config_entry.state is ConfigEntryState.SETUP_ERROR

@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import ipaddress
 import subprocess
-from collections.abc import Callable
 from pathlib import Path
 
+from .command import RunCommand, stop_process
 from .config import LEASE_PATH, RUN_DIR, GatewayConfig
-
-
-RunCommand = Callable[..., subprocess.CompletedProcess[str]]
 
 
 class DnsmasqService:
@@ -72,11 +69,5 @@ class DnsmasqService:
         )
 
     def stop(self) -> None:
-        if self.process and self.process.poll() is None:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait(timeout=5)
+        stop_process(self.process)
         self.process = None

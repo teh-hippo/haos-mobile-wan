@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-import subprocess
-from collections.abc import Callable
-
+from .command import RunCommand
 from .config import GatewayConfig
 from .firewall_rules import FirewallRules
 from .netfilter import Netfilter
-
-
-RunCommand = Callable[..., subprocess.CompletedProcess[str]]
 
 
 class Firewall:
@@ -52,7 +47,7 @@ class Firewall:
                     self.FORWARD_CHAIN,
                     f"{self.COMMENT_PREFIX}:jump",
                 ),
-                self._chain_matches(
+                self.netfilter.chain_matches(
                     "iptables",
                     self.FORWARD_CHAIN,
                     self._forward_rules(downstream, upstream),
@@ -87,7 +82,7 @@ class Firewall:
                     self.FORWARD6_CHAIN,
                     f"{self.COMMENT_PREFIX}:v6-jump",
                 ),
-                self._chain_matches(
+                self.netfilter.chain_matches(
                     "ip6tables",
                     self.FORWARD6_CHAIN,
                     self._forward6_rules(downstream),
@@ -109,7 +104,7 @@ class Firewall:
         return all(
             (
                 self.netfilter.chain_exists("iptables", self.INPUT_CHAIN),
-                self._chain_matches(
+                self.netfilter.chain_matches(
                     "iptables",
                     self.INPUT_CHAIN,
                     self._input_rules(),
@@ -120,7 +115,7 @@ class Firewall:
             or all(
                 (
                     self.netfilter.chain_exists("ip6tables", self.INPUT6_CHAIN),
-                    self._chain_matches(
+                    self.netfilter.chain_matches(
                         "ip6tables",
                         self.INPUT6_CHAIN,
                         self._input6_rules(),
@@ -129,8 +124,17 @@ class Firewall:
             )
         )
 
-    def _chain_matches(self, family: str, chain: str, expected: tuple[list[str], ...]) -> bool:
-        return self.netfilter.chain_matches(family, chain, expected)
+    def _ensure_chain_rules(
+        self,
+        family: str,
+        chain: str,
+        rules: tuple[list[str], ...],
+    ) -> None:
+        if self.netfilter.chain_matches(family, chain, rules):
+            return
+        self.netfilter.ensure_chain(family, chain)
+        for rule in rules:
+            self.netfilter.run(family, "-A", chain, *rule)
 
     def _input_guard_installed(self, downstream: str) -> bool:
         return all(
@@ -143,7 +147,7 @@ class Firewall:
                     f"{self.COMMENT_PREFIX}:local-jump",
                     ["-i", downstream],
                 ),
-                self._chain_matches(
+                self.netfilter.chain_matches(
                     "iptables",
                     self.INPUT_CHAIN,
                     self._input_rules(),
@@ -162,7 +166,7 @@ class Firewall:
                     f"{self.COMMENT_PREFIX}:v6-local-jump",
                     ["-i", downstream],
                 ),
-                self._chain_matches(
+                self.netfilter.chain_matches(
                     "ip6tables",
                     self.INPUT6_CHAIN,
                     self._input6_rules(),
@@ -196,15 +200,11 @@ class Firewall:
         self._apply_ipv6_local_block(downstream)
 
     def _apply_input_guard(self, downstream: str) -> None:
-        if not self._chain_matches("iptables", self.INPUT_CHAIN, self._input_rules()):
-            self.netfilter.ensure_chain("iptables", self.INPUT_CHAIN)
-            for rule in self._input_rules():
-                self.netfilter.run(
-                    "iptables",
-                    "-A",
-                    self.INPUT_CHAIN,
-                    *rule,
-                )
+        self._ensure_chain_rules(
+            "iptables",
+            self.INPUT_CHAIN,
+            self._input_rules(),
+        )
         self.netfilter.ensure_jump(
             "iptables",
             "INPUT",
@@ -214,19 +214,11 @@ class Firewall:
         )
 
     def _apply_forwarding(self, downstream: str, upstream: str) -> None:
-        if not self._chain_matches(
+        self._ensure_chain_rules(
             "iptables",
             self.FORWARD_CHAIN,
             self._forward_rules(downstream, upstream),
-        ):
-            self.netfilter.ensure_chain("iptables", self.FORWARD_CHAIN)
-            for rule in self._forward_rules(downstream, upstream):
-                self.netfilter.run(
-                    "iptables",
-                    "-A",
-                    self.FORWARD_CHAIN,
-                    *rule,
-                )
+        )
         self.netfilter.ensure_jump(
             "iptables",
             "DOCKER-USER",
@@ -253,10 +245,11 @@ class Firewall:
         self._apply_ipv6_local_block(downstream)
         if not self.netfilter.chain_exists("ip6tables", "DOCKER-USER"):
             return
-        if not self._chain_matches("ip6tables", self.FORWARD6_CHAIN, self._forward6_rules(downstream)):
-            self.netfilter.ensure_chain("ip6tables", self.FORWARD6_CHAIN)
-            for rule in self._forward6_rules(downstream):
-                self.netfilter.run("ip6tables", "-A", self.FORWARD6_CHAIN, *rule)
+        self._ensure_chain_rules(
+            "ip6tables",
+            self.FORWARD6_CHAIN,
+            self._forward6_rules(downstream),
+        )
         self.netfilter.ensure_jump(
             "ip6tables",
             "DOCKER-USER",
@@ -267,10 +260,11 @@ class Firewall:
     def _apply_ipv6_local_block(self, downstream: str) -> None:
         if not self.netfilter.chain_exists("ip6tables", "DOCKER-USER"):
             return
-        if not self._chain_matches("ip6tables", self.INPUT6_CHAIN, self._input6_rules()):
-            self.netfilter.ensure_chain("ip6tables", self.INPUT6_CHAIN)
-            for rule in self._input6_rules():
-                self.netfilter.run("ip6tables", "-A", self.INPUT6_CHAIN, *rule)
+        self._ensure_chain_rules(
+            "ip6tables",
+            self.INPUT6_CHAIN,
+            self._input6_rules(),
+        )
         self.netfilter.ensure_jump(
             "ip6tables",
             "INPUT",

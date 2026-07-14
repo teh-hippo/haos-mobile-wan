@@ -7,7 +7,7 @@ from pathlib import Path
 
 from rootfs.app.errors import GatewayError, SafetyError
 from rootfs.app.gateway import GatewayEngine
-from rootfs.app.upstream import IPhoneUsbUpstream
+from rootfs.app.upstream_iphone import IPhoneUsbUpstream
 from rootfs.app.upstream_models import ResolvedUpstream
 
 from helpers import (

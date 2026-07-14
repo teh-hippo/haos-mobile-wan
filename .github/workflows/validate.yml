@@ -68,7 +68,7 @@ jobs:
 
           for path in Path("ha_cellular_gateway/rootfs/app").glob("*.py"):
               line_count = len(path.read_text(encoding="utf-8").splitlines())
-              assert line_count <= 450, f"{path} has {line_count} lines"
+              assert line_count <= 300, f"{path} has {line_count} lines"
 
           dockerfile = Path(
               "ha_cellular_gateway/Dockerfile"

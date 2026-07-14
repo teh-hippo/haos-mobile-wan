@@ -46,6 +46,17 @@ async def test_gateway_api_requests(
     )
 
 
+async def test_gateway_api_raises_error_for_non_dict_response() -> None:
+    response = AsyncMock(status=200)
+    response.json = AsyncMock(return_value=["not", "a", "dict"])
+    session = AsyncMock()
+    session.request.return_value = response
+    api = GatewayApi(session, "http://gateway.local:8099", "secret")
+
+    with pytest.raises(GatewayApiError, match="invalid response"):
+        await api.status()
+
+
 async def test_gateway_api_raises_error_for_http_failure() -> None:
     response = AsyncMock(status=500)
     response.json = AsyncMock(return_value={"error": "boom"})

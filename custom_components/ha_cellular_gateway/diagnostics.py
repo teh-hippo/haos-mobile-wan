@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.const import CONF_URL
+from homeassistant.core import HomeAssistant
 
 from . import GatewayConfigEntry
 from .const import CONF_TOKEN
 
 
-TO_REDACT = {
+TO_REDACT: set[str] = {
     CONF_TOKEN,
     CONF_URL,
     "public_ip",
@@ -30,7 +31,10 @@ TO_REDACT = {
 }
 
 
-async def async_get_config_entry_diagnostics(hass, entry: GatewayConfigEntry):
+async def async_get_config_entry_diagnostics(
+    hass: HomeAssistant,
+    entry: GatewayConfigEntry,
+) -> dict[str, dict[str, object]]:
     return {
         "entry": async_redact_data(dict(entry.data), TO_REDACT),
         "status": async_redact_data(dict(entry.runtime_data.data), TO_REDACT),

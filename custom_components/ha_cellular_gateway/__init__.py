@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_URL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -15,7 +16,7 @@ type GatewayConfigEntry = ConfigEntry[GatewayCoordinator]
 async def async_setup_entry(hass: HomeAssistant, entry: GatewayConfigEntry) -> bool:
     api = GatewayApi(
         async_get_clientsession(hass),
-        entry.data["url"],
+        entry.data[CONF_URL],
         entry.data[CONF_TOKEN],
     )
     coordinator = GatewayCoordinator(hass, api)
@@ -27,4 +28,5 @@ async def async_setup_entry(hass: HomeAssistant, entry: GatewayConfigEntry) -> b
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: GatewayConfigEntry) -> bool:
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    return bool(unloaded)

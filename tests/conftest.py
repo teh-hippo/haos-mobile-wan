@@ -25,7 +25,7 @@ def status_payload() -> dict[str, object]:
     return {
         "mode": "active",
         "desired_mode": "trial",
-        "upstream_mode": "wifi",
+        "upstream_mode": "hotspot_wifi",
         "upstream_pairing_state": "paired",
         "downstream_interface": "eth1",
         "public_ip": "203.0.113.10",

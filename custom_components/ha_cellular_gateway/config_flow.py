@@ -80,7 +80,9 @@ class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     def _context_entry(self) -> ConfigEntry:
-        return self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        assert entry is not None
+        return entry
 
     async def _validate(self, url: str, token: str) -> None:
         api = GatewayApi(async_get_clientsession(self.hass), url, token)

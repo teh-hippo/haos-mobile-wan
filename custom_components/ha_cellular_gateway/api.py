@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, cast
 
 import aiohttp
+
+from .models import GatewaySelectableMode, GatewayStatus
 
 
 class GatewayApiError(RuntimeError):
@@ -34,7 +36,7 @@ class GatewayApi:
         method: str,
         path: str,
         payload: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         try:
             async with asyncio.timeout(10):
                 response = await self._session.request(
@@ -53,15 +55,17 @@ class GatewayApi:
             ) from err
         except ValueError as err:
             raise GatewayApiError("Invalid response from gateway app") from err
+        if not isinstance(data, dict):
+            raise GatewayApiError("Gateway app returned an invalid response")
         if response.status >= 400:
             raise GatewayApiError(str(data.get("error", f"HTTP {response.status}")))
-        return data
+        return cast(dict[str, object], data)
 
-    async def status(self) -> dict[str, Any]:
-        return await self._request("GET", "/v1/status")
+    async def status(self) -> GatewayStatus:
+        return cast(GatewayStatus, await self._request("GET", "/v1/status"))
 
-    async def reconcile(self) -> dict[str, Any]:
+    async def reconcile(self) -> dict[str, object]:
         return await self._request("POST", "/v1/reconcile")
 
-    async def set_mode(self, mode: str) -> dict[str, Any]:
+    async def set_mode(self, mode: GatewaySelectableMode) -> dict[str, object]:
         return await self._request("POST", "/v1/mode", {"mode": mode})

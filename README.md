@@ -49,7 +49,7 @@ address has been configured for the target HAOS host. Then follow the
 ## Development validation
 
 ```sh
-python -m pip install --disable-pip-version-check -r requirements-test.txt pyyaml
+python -m pip install --disable-pip-version-check -r requirements-test.txt mypy pyyaml
 
 PYTHONDONTWRITEBYTECODE=1 \
   PYTHONPATH=ha_cellular_gateway \
@@ -64,6 +64,8 @@ PYTHONDONTWRITEBYTECODE=1 \
 PYTHONDONTWRITEBYTECODE=1 python -m py_compile \
   ha_cellular_gateway/rootfs/app/*.py \
   custom_components/ha_cellular_gateway/*.py
+
+PYTHONDONTWRITEBYTECODE=1 python -m mypy --config-file mypy.ini
 ```
 
 Do not disable dry-run until the documented management, routing, IPv6 and

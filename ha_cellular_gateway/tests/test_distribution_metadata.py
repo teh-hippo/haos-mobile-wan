@@ -71,6 +71,15 @@ class DistributionMetadataTests(unittest.TestCase):
         ):
             self.assertIn(heading, text)
 
+    def test_readme_validation_matches_ci_checks(self) -> None:
+        text = README.read_text(encoding="utf-8")
+        for snippet in (
+            'python -c "import app.main"',
+            'custom_components/ha_cellular_gateway/strings.json',
+            'ha_cellular_gateway/Dockerfile',
+        ):
+            self.assertIn(snippet, text)
+
 
 if __name__ == "__main__":
     unittest.main()

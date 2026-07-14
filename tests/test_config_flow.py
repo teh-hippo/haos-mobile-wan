@@ -36,6 +36,7 @@ async def test_user_step_shows_form(hass) -> None:
 
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "user"
+    assert result["errors"] == {}
 
 
 async def test_user_step_creates_entry(hass) -> None:
@@ -56,6 +57,7 @@ async def test_user_step_creates_entry(hass) -> None:
         CONF_TOKEN: "token",
     }
     created_entry = hass.config_entries.async_entries(DOMAIN)[0]
+    assert created_entry.unique_id == "http://gateway.local:8099"
     assert await hass.config_entries.async_unload(created_entry.entry_id)
     await hass.async_block_till_done()
 
@@ -173,6 +175,42 @@ async def test_hassio_step_aborts_when_validation_fails(hass) -> None:
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "cannot_connect"
+
+
+async def test_hassio_step_validation_failure_does_not_update_existing_entry(hass) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_URL: "http://gateway.local:8099", CONF_TOKEN: "old-token"},
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.ha_cellular_gateway.api.GatewayApi.status",
+            AsyncMock(side_effect=GatewayApiError("offline")),
+        ),
+        patch.object(hass.config_entries, "async_reload", AsyncMock(return_value=True)) as reload_entry,
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": SOURCE_HASSIO},
+            data=HassioServiceInfo(
+                config={"host": "gateway.local", "port": 8099, "token": "new-token"},
+                name="Gateway",
+                slug="ha-cellular-gateway",
+                uuid="gateway-uuid",
+            ),
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "cannot_connect"
+    assert entry.unique_id is None
+    assert entry.data == {
+        CONF_URL: "http://gateway.local:8099",
+        CONF_TOKEN: "old-token",
+    }
+    reload_entry.assert_not_awaited()
 
 
 async def test_hassio_step_updates_existing_manual_entry(hass) -> None:

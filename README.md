@@ -266,6 +266,38 @@ PYTHONDONTWRITEBYTECODE=1 python -m py_compile \
 PYTHONDONTWRITEBYTECODE=1 \
   PYTHONPATH=ha_cellular_gateway/rootfs \
   python -c "import app.main"
+
+python - <<'PY'
+from pathlib import Path
+import json
+import yaml
+
+app = yaml.safe_load(Path("ha_cellular_gateway/config.yaml").read_text(encoding="utf-8"))
+integration = json.loads(
+    Path("custom_components/ha_cellular_gateway/manifest.json").read_text(
+        encoding="utf-8"
+    )
+)
+assert app["version"] == integration["version"]
+assert not Path("custom_components/ha_cellular_gateway/strings.json").exists()
+assert Path("ha_cellular_gateway/DOCS.md").exists()
+assert Path("ha_cellular_gateway/translations/en.yaml").exists()
+
+for path in Path(".").rglob("*.json"):
+    json.loads(path.read_text(encoding="utf-8"))
+
+for pattern in ("*.yaml", "*.yml"):
+    for path in Path(".").rglob(pattern):
+        yaml.safe_load(path.read_text(encoding="utf-8"))
+
+for path in Path("ha_cellular_gateway/rootfs/app").glob("*.py"):
+    line_count = len(path.read_text(encoding="utf-8").splitlines())
+    assert line_count <= 300, f"{path} has {line_count} lines"
+
+dockerfile = Path("ha_cellular_gateway/Dockerfile").read_text(encoding="utf-8")
+assert "ARG BUILD_FROM" not in dockerfile
+assert dockerfile.startswith("FROM ghcr.io/home-assistant/base:")
+PY
 ```
 
 Do not disable dry-run until the documented management, routing, IPv6 and

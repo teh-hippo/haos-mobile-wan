@@ -175,6 +175,60 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertTrue(status["upstream_healthy"])
         self.assertEqual(status["public_ip"], "203.0.113.10")
 
+    def test_status_reports_structured_repairable_issues(self) -> None:
+        self.engine.last_safety_errors = [
+            "Strict rp_filter is enabled on wlan0",
+            "Configured downstream NIC is not present",
+        ]
+
+        status = self.engine.status()
+
+        self.assertEqual(
+            status["issues"],
+            [
+                {
+                    "id": "strict_rp_filter_enabled",
+                    "translation_key": "host_configuration",
+                    "repairable": True,
+                    "transient": False,
+                    "message": "Strict rp_filter is enabled on a required interface",
+                },
+                {
+                    "id": "downstream_missing",
+                    "translation_key": "downstream_configuration",
+                    "repairable": True,
+                    "transient": False,
+                    "message": "The configured downstream NIC is not present",
+                },
+            ],
+        )
+
+    def test_status_marks_transient_upstream_connectivity_issues(self) -> None:
+        engine = GatewayEngine(
+            make_config(upstream_mode="iphone_usb"),
+            runner=self.runner,
+            read_text=lambda path: self.values[path],
+            state_path=self.state_path,
+        )
+        engine.last_safety_errors = ["Connect a single trusted iPhone with Personal Hotspot enabled"]
+        engine.upstream.pairing_state = "waiting_for_device"
+        engine.upstream.pairing_message = engine.last_safety_errors[0]
+
+        status = engine.status()
+
+        self.assertEqual(
+            status["issues"],
+            [
+                {
+                    "id": "upstream_waiting_for_device",
+                    "translation_key": None,
+                    "repairable": False,
+                    "transient": True,
+                    "message": "Waiting for an iPhone USB upstream",
+                }
+            ],
+        )
+
     def test_manual_reconcile_does_not_run_external_health_probe(self) -> None:
         self.engine.startup_cleanup_pending = False
         self.engine.safety.errors = lambda *args, **kwargs: []

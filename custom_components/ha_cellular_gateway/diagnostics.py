@@ -27,6 +27,10 @@ TO_REDACT = {
     "downstream_interface",
     "api_bind",
     "last_error",
+    "safety_errors",
+    "upstream_pairing_message",
+    "upstream_runtime_interface",
+    "upstream_lockdown_path",
 }
 
 

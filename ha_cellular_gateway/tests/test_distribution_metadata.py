@@ -10,8 +10,8 @@ HACS = REPO_ROOT / "hacs.json"
 QUALITY_SCALE = (
     REPO_ROOT / "custom_components" / "ha_cellular_gateway" / "quality_scale.yaml"
 )
-ICON = REPO_ROOT / "custom_components" / "ha_cellular_gateway" / "icon.png"
-LOGO = REPO_ROOT / "custom_components" / "ha_cellular_gateway" / "logo.png"
+ICON = REPO_ROOT / "custom_components" / "ha_cellular_gateway" / "brand" / "icon.png"
+LOGO = REPO_ROOT / "custom_components" / "ha_cellular_gateway" / "brand" / "logo.png"
 
 
 class DistributionMetadataTests(unittest.TestCase):
@@ -33,8 +33,8 @@ class DistributionMetadataTests(unittest.TestCase):
     def test_hacs_metadata_targets_optional_integration(self) -> None:
         metadata = json.loads(HACS.read_text(encoding="utf-8"))
         self.assertEqual(metadata["name"], "HAOS Mobile WAN")
-        self.assertEqual(metadata["domains"], ["ha_cellular_gateway"])
         self.assertFalse(metadata["content_in_root"])
+        self.assertNotIn("domains", metadata)
 
     def test_quality_scale_lists_current_rules(self) -> None:
         text = QUALITY_SCALE.read_text(encoding="utf-8")

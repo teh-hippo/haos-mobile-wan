@@ -57,6 +57,7 @@ class AddonSecurityTests(unittest.TestCase):
             "/proc/sys/net/ipv4/** r,",
             "/dev/bus/usb/** rw,",
             "/sys/class/net/** r,",
+            "/sys/devices/** r,",
             "/sys/bus/usb/devices/** r,",
             "/sys/bus/usb/drivers/ipheth/** r,",
             "/sys/module/ipheth/** r,",
@@ -70,6 +71,7 @@ class AddonSecurityTests(unittest.TestCase):
             "/sbin/iptables rix,",
             "/sbin/ip6tables rix,",
             "/sbin/udhcpc rix,",
+            "/bin/sh ix,",
         ):
             self.assertIn(fragment, self.profile)
 

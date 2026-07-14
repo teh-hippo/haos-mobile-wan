@@ -1,18 +1,15 @@
 from __future__ import annotations
 
-import json
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
+from .command import RunCommand, run_json
 from .config import GatewayConfig
 from .errors import GatewayError
 from .firewall import Firewall
 from .policy import PolicyRouting
-from .upstream import ResolvedUpstream
-
-
-RunCommand = Callable[..., subprocess.CompletedProcess[str]]
+from .upstream_models import ResolvedUpstream
 
 
 class SafetyInspector:
@@ -30,12 +27,9 @@ class SafetyInspector:
         self.firewall = firewall
         self.policy = policy
 
-    def _read_json(self, *args: str) -> object:
-        result = self.run(*args)
-        return json.loads(result.stdout or "[]")
-
     def interface_addresses(self, interface: str, family: int = 4) -> set[str]:
-        data = self._read_json(
+        data = run_json(
+            self.run,
             "ip",
             f"-{family}",
             "-j",
@@ -70,7 +64,8 @@ class SafetyInspector:
         return None
 
     def _main_default_interfaces(self) -> set[str]:
-        routes = self._read_json(
+        routes = run_json(
+            self.run,
             "ip",
             "-4",
             "-j",

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from helpers import FakeProcess, FakeRunner, make_config
-from rootfs.app.upstream import IPhoneUsbUpstream
+from rootfs.app.upstream_iphone import IPhoneUsbUpstream
 
 
 class IPhoneUsbUpstreamTests(unittest.TestCase):
@@ -229,7 +229,10 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         )
         self.assertIs(captured["stdout"], captured["stderr"])
         self.assertNotEqual(captured["stdout"], subprocess.PIPE)
-        self.assertGreaterEqual(len(manager.usbmuxd_log.read_text(encoding="utf-8")), 131072)
+        self.assertGreaterEqual(
+            len(manager.runtime.usbmuxd_log.read_text(encoding="utf-8")),
+            131072,
+        )
 
     def test_usbmuxd_delayed_early_exit_surfaces_output(self) -> None:
         runner = FakeRunner()

@@ -10,8 +10,13 @@ from typing import Callable
 from .command import CommandRunner
 from .config import STATE_PATH, TOKEN_PATH, GatewayConfig
 from .dhcp import DnsmasqService
-from .errors import GatewayError, SafetyError
+from .errors import GatewayError
 from .firewall import Firewall
+from .gateway_reconcile import (
+    apply as apply_gateway,
+    cleanup as cleanup_gateway,
+    reconcile as reconcile_gateway,
+)
 from .gateway_runtime import (
     fail_closed,
     health,
@@ -23,7 +28,8 @@ from .gateway_runtime import (
 from .policy import PolicyRouting
 from .safety import SafetyInspector
 from .state import StateStore
-from .upstream import IPhoneUsbUpstream, ResolvedUpstream, configured_upstream
+from .upstream_iphone import IPhoneUsbUpstream
+from .upstream_models import ResolvedUpstream, configured_upstream
 
 
 class GatewayEngine:
@@ -124,53 +130,13 @@ class GatewayEngine:
         preserve_host_protection: bool = False,
         force: bool = False,
     ) -> None:
-        with self.operation_lock:
-            with self.lock:
-                if self.config.dry_run and not force:
-                    self.mode = "disabled"
-                    self.applied = False
-                    if not preserve_desired:
-                        self.desired_mode = "disabled"
-                    if not preserve_trial_deadline:
-                        self.trial_started_at = None
-                        self.trial_deadline = None
-                    self._persist_state()
-                    return
-                owned_state = self.owned_state
-
-            downstream = None
-            try:
-                downstream = self.safety.find_downstream()
-            except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
-                pass
-            preserved_downstream = downstream
-            if not self._protectable_downstream(preserved_downstream) and isinstance(self.owned_state, dict):
-                candidate = self.owned_state.get("downstream")
-                preserved_downstream = candidate if isinstance(candidate, str) else None
-            if not preserve_host_protection or not self._protectable_downstream(preserved_downstream):
-                preserved_downstream = None
-            self.dhcp.stop()
-            self.firewall.cleanup(preserved_downstream)
-
-            ownerships: list[dict[str, object]] = []
-            if owned_state:
-                ownerships.append(owned_state)
-            if downstream:
-                current = self.policy.ownership(downstream)
-                if current not in ownerships: ownerships.append(current)
-            for ownership in ownerships:
-                self.policy.cleanup(ownership)
-
-            with self.lock:
-                self.owned_state = None
-                self.mode = "disabled"
-                self.applied = False
-                if not preserve_desired:
-                    self.desired_mode = "disabled"
-                if not preserve_trial_deadline:
-                    self.trial_started_at = None
-                    self.trial_deadline = None
-                self._persist_state()
+        cleanup_gateway(
+            self,
+            preserve_desired=preserve_desired,
+            preserve_trial_deadline=preserve_trial_deadline,
+            preserve_host_protection=preserve_host_protection,
+            force=force,
+        )
 
     def _protectable_downstream(self, downstream: str | None) -> bool:
         return bool(downstream) and downstream not in {
@@ -214,202 +180,10 @@ class GatewayEngine:
         refresh_health_if_due(self)
 
     def apply(self, mode: str, *, recovering: bool = False) -> None:
-        if mode not in {"trial", "active"}:
-            raise GatewayError("Mode must be trial or active")
-        if self.config.dry_run:
-            raise SafetyError("Mutation is disabled while dry_run is true")
-
-        with self.operation_lock:
-            with self.lock:
-                if not recovering:
-                    self.desired_mode = mode
-                    if mode == "trial":
-                        self.trial_started_at = time.time()
-                        self.trial_deadline = (
-                            self.trial_started_at + self.config.trial_seconds
-                        )
-                    else:
-                        self.trial_started_at = None
-                        self.trial_deadline = None
-
-            downstream = self.safety.find_downstream()
-            upstream, upstream_errors = self._resolve_upstream()
-            errors = self.safety.errors(
-                downstream,
-                upstream=upstream,
-                upstream_errors=upstream_errors,
-                state_error=self.state_load_error,
-            )
-            with self.lock:
-                self.last_downstream = downstream
-                self.last_upstream = upstream
-                self.last_safety_errors = errors
-            if errors:
-                self.cleanup(
-                    preserve_desired=True,
-                    preserve_trial_deadline=recovering or mode == "trial",
-                )
-                message = "; ".join(errors)
-                with self.lock:
-                    self.last_error = message
-                raise SafetyError(message)
-            assert downstream is not None
-            assert upstream is not None
-
-            self.cleanup(
-                preserve_desired=True,
-                preserve_trial_deadline=mode == "trial",
-            )
-            with self.lock:
-                self.owned_state = self.policy.ownership(downstream, upstream)
-                self._persist_state()
-            try:
-                self.policy.apply(downstream, upstream)
-                self.firewall.apply(downstream, upstream.interface)
-                self.dhcp.start(downstream)
-            except (
-                GatewayError,
-                OSError,
-                subprocess.SubprocessError,
-                ValueError,
-            ) as err:
-                self.cleanup(
-                    preserve_desired=True,
-                    preserve_trial_deadline=mode == "trial",
-                )
-                message = f"Activation failed: {err}"
-                with self.lock:
-                    self.last_error = message
-                raise GatewayError(message) from err
-
-            with self.lock:
-                self.mode = mode
-                self.applied = True
-                self.last_error = None
-                self._persist_state()
+        apply_gateway(self, mode, recovering=recovering)
 
     def reconcile(self, *, refresh_health: bool = False) -> None:
-        try:
-            with self.operation_lock:
-                with self.lock:
-                    self.last_reconcile = time.time()
-                    startup_cleanup_pending = self.startup_cleanup_pending
-                    owned_state = bool(self.owned_state)
-                    desired_mode = self.desired_mode
-                    trial_deadline = self.trial_deadline
-                    state_load_error = self.state_load_error
-
-                if startup_cleanup_pending:
-                    preserve_host_protection = False
-                    if desired_mode == "disabled" and not self.config.dry_run:
-                        candidates: list[str] = []
-                        try:
-                            downstream = self.safety.find_downstream()
-                        except (
-                            GatewayError,
-                            OSError,
-                            subprocess.SubprocessError,
-                            ValueError,
-                        ):
-                            downstream = None
-                        if self._protectable_downstream(downstream):
-                            candidates.append(downstream)
-                        owned_downstream = (
-                            self.owned_state.get("downstream")
-                            if isinstance(self.owned_state, dict)
-                            else None
-                        )
-                        if (
-                            isinstance(owned_downstream, str)
-                            and self._protectable_downstream(owned_downstream)
-                            and owned_downstream not in candidates
-                        ):
-                            candidates.append(owned_downstream)
-                        preserve_host_protection = bool(
-                            candidates and self.firewall.host_guard_chains_installed()
-                        )
-                    self.cleanup(
-                        preserve_desired=True,
-                        preserve_trial_deadline=True,
-                        preserve_host_protection=preserve_host_protection,
-                        force=owned_state,
-                    )
-                    with self.lock:
-                        self.state_load_error = None
-                        self.startup_cleanup_pending = False
-                        state_load_error = None
-                downstream = self.safety.find_downstream()
-                upstream, upstream_errors = self._resolve_upstream()
-                try:
-                    errors = self.safety.errors(
-                        downstream,
-                        upstream=upstream,
-                        upstream_errors=upstream_errors,
-                        state_error=state_load_error,
-                    )
-                except (
-                    GatewayError,
-                    OSError,
-                    subprocess.SubprocessError,
-                    ValueError,
-                ) as err:
-                    errors = [f"Safety inspection failed: {err}"]
-                with self.lock:
-                    self.last_downstream = downstream
-                    self.last_upstream = upstream
-                    self.last_safety_errors = errors
-
-                if (
-                    desired_mode == "trial"
-                    and trial_deadline
-                    and time.time() >= trial_deadline
-                ):
-                    self.cleanup(preserve_host_protection=True)
-                    with self.lock:
-                        self.last_error = "Trial expired and was rolled back"
-                    return
-
-                if desired_mode not in {"trial", "active"}:
-                    if self.owned_state or self.applied or self.dhcp.running:
-                        self.cleanup(
-                            preserve_host_protection=self._protectable_downstream(
-                                downstream
-                            ),
-                            force=bool(self.owned_state or self.applied),
-                        )
-                    elif (
-                        not self.config.dry_run
-                        and self._protectable_downstream(downstream)
-                        and not self.firewall.host_protection_installed(downstream)
-                    ):
-                        self.firewall.protect_host(downstream)
-                    return
-
-                if errors:
-                    self.cleanup(
-                        preserve_desired=True,
-                        preserve_trial_deadline=True,
-                        preserve_host_protection=self._protectable_downstream(
-                            downstream
-                        ),
-                    )
-                    with self.lock:
-                        self.last_error = "; ".join(errors)
-                    return
-
-                if (
-                    self.mode != desired_mode
-                    or not self.policy.installed(downstream, upstream)
-                    or not self.firewall.installed(
-                        downstream,
-                        upstream.interface if upstream else None,
-                    )
-                    or not self.dhcp.running
-                ):
-                    self.apply(desired_mode, recovering=True)
-        finally:
-            if refresh_health:
-                self._refresh_health_if_due()
+        reconcile_gateway(self, refresh_health=refresh_health)
 
     def _fail_closed(self, error: Exception) -> None:
         fail_closed(self, error)

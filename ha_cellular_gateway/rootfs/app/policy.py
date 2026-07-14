@@ -1,16 +1,11 @@
 from __future__ import annotations
 
 import ipaddress
-import json
-import subprocess
-from collections.abc import Callable
 
+from .command import RunCommand, run_json
 from .config import GatewayConfig
 from .errors import GatewayError
-from .upstream import ResolvedUpstream, configured_upstream
-
-
-RunCommand = Callable[..., subprocess.CompletedProcess[str]]
+from .upstream_models import ResolvedUpstream, configured_upstream
 
 
 class PolicyRouting:
@@ -19,10 +14,6 @@ class PolicyRouting:
     def __init__(self, config: GatewayConfig, run: RunCommand) -> None:
         self.config = config
         self.run = run
-
-    def _read_json(self, *args: str) -> object:
-        result = self.run(*args)
-        return json.loads(result.stdout or "[]")
 
     def ownership(
         self,
@@ -112,9 +103,7 @@ class PolicyRouting:
         upstream: ResolvedUpstream | None = None,
     ) -> list[str]:
         ownership = self.ownership(downstream, upstream)
-        conflicts = self._rule_conflicts(downstream, ownership)
-        conflicts.extend(self._route_conflicts(downstream, ownership))
-        return conflicts
+        return self._rule_conflicts(ownership) + self._route_conflicts(ownership)
 
     def installed(
         self,
@@ -124,8 +113,9 @@ class PolicyRouting:
         if not downstream:
             return False
         ownership = self.ownership(downstream, upstream)
-        rules = self._read_json("ip", "-j", "rule", "show")
-        routes = self._read_json(
+        rules = run_json(self.run, "ip", "-j", "rule", "show")
+        routes = run_json(
+            self.run,
             "ip",
             "-4",
             "-j",
@@ -135,11 +125,9 @@ class PolicyRouting:
             str(self.config.routing_table),
         )
         return all(
-            self._rule_present(rules, rule)
-            for rule in self.rule_args(ownership)
+            self._rule_present(rules, rule) for rule in self.rule_args(ownership)
         ) and all(
-            self._route_present(routes, route)
-            for route in self.route_args(ownership)
+            self._route_present(routes, route) for route in self.route_args(ownership)
         )
 
     @staticmethod
@@ -211,10 +199,9 @@ class PolicyRouting:
 
     def _rule_conflicts(
         self,
-        downstream: str,
         ownership: dict[str, object],
     ) -> list[str]:
-        rules = self._read_json("ip", "-j", "rule", "show")
+        rules = run_json(self.run, "ip", "-j", "rule", "show")
         conflicts: list[str] = []
         table = self._value(ownership, "routing_table")
         expected_rules = self.rule_args(ownership)
@@ -240,10 +227,10 @@ class PolicyRouting:
 
     def _route_conflicts(
         self,
-        downstream: str,
         ownership: dict[str, object],
     ) -> list[str]:
-        routes = self._read_json(
+        routes = run_json(
+            self.run,
             "ip",
             "-4",
             "-j",
@@ -252,31 +239,14 @@ class PolicyRouting:
             "table",
             self._value(ownership, "routing_table"),
         )
-        upstream = ResolvedUpstream(
-            mode=self.config.upstream_mode,
-            interface=self._value(ownership, "upstream_interface"),
-            address=self._value(ownership, "upstream_address"),
-            gateway=self._value(ownership, "upstream_gateway"),
-        )
         expected = {
             (
-                upstream.network,
-                upstream.interface,
-                upstream.ip,
-                "",
-            ),
-            (
-                self.config.downstream_network,
-                downstream,
-                self.config.downstream_ip,
-                "",
-            ),
-            (
-                "default",
-                upstream.interface,
-                upstream.ip,
-                upstream.gateway,
-            ),
+                route[0],
+                route[route.index("dev") + 1],
+                route[route.index("src") + 1],
+                route[route.index("via") + 1] if "via" in route else "",
+            )
+            for route in self.route_args(ownership)
         }
         conflicts: list[str] = []
         for route in routes if isinstance(routes, list) else []:

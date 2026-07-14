@@ -3,9 +3,13 @@ from __future__ import annotations
 import subprocess
 import time
 from dataclasses import asdict
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .gateway import GatewayEngine
 
 
-def refresh_health_if_due(engine) -> None:
+def refresh_health_if_due(engine: GatewayEngine) -> None:
     with engine.lock:
         last_probe = engine.last_health_probe
         upstream = engine.last_upstream
@@ -19,7 +23,7 @@ def refresh_health_if_due(engine) -> None:
         engine.last_health_probe = time.time()
 
 
-def fail_closed(engine, error: Exception) -> None:
+def fail_closed(engine: GatewayEngine, error: Exception) -> None:
     with engine.operation_lock:
         cleanup_error: Exception | None = None
         try:
@@ -48,7 +52,7 @@ def fail_closed(engine, error: Exception) -> None:
             engine.last_safety_errors = [engine.last_error]
 
 
-def status(engine) -> dict[str, object]:
+def status(engine: GatewayEngine) -> dict[str, object]:
     with engine.lock:
         upstream = engine.last_upstream
         upstream_status = engine.upstream.runtime_status()
@@ -89,7 +93,7 @@ def status(engine) -> dict[str, object]:
         }
 
 
-def health(engine) -> dict[str, object]:
+def health(engine: GatewayEngine) -> dict[str, object]:
     with engine.lock:
         last_activity = engine.last_reconcile or engine.started_at
         maximum_age = max(30, engine.config.reconcile_seconds * 3)
@@ -99,7 +103,7 @@ def health(engine) -> dict[str, object]:
         }
 
 
-def run_loop(engine) -> None:
+def run_loop(engine: GatewayEngine) -> None:
     while not engine.stop_event.is_set():
         try:
             engine.reconcile(refresh_health=True)
@@ -114,7 +118,7 @@ def run_loop(engine) -> None:
             break
 
 
-def stop(engine) -> None:
+def stop(engine: GatewayEngine) -> None:
     with engine.operation_lock:
         engine.stop_event.set()
         with engine.lock:

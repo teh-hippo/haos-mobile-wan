@@ -10,12 +10,9 @@ import urllib.request
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from .gateway import (
-    GatewayConfig,
-    GatewayEngine,
-    GatewayError,
-    load_or_create_token,
-)
+from .config import GatewayConfig
+from .errors import GatewayError
+from .gateway import GatewayEngine, load_or_create_token
 
 
 class GatewayHandler(BaseHTTPRequestHandler):

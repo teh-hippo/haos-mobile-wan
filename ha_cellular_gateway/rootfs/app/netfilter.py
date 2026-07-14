@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 import shlex
-import subprocess
-from collections.abc import Callable
 
-
-RunCommand = Callable[..., subprocess.CompletedProcess[str]]
+from .command import RunCommand
 
 
 class Netfilter:

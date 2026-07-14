@@ -29,6 +29,7 @@ class DistributionMetadataTests(unittest.TestCase):
             manifest["loggers"],
             ["custom_components.ha_cellular_gateway"],
         )
+        self.assertNotIn("single_config_entry", manifest)
 
     def test_hacs_metadata_targets_optional_integration(self) -> None:
         metadata = json.loads(HACS.read_text(encoding="utf-8"))

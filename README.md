@@ -262,6 +262,10 @@ PYTHONDONTWRITEBYTECODE=1 \
 PYTHONDONTWRITEBYTECODE=1 python -m py_compile \
   ha_cellular_gateway/rootfs/app/*.py \
   custom_components/ha_cellular_gateway/*.py
+
+PYTHONDONTWRITEBYTECODE=1 \
+  PYTHONPATH=ha_cellular_gateway/rootfs \
+  python -c "import app.main"
 ```
 
 Do not disable dry-run until the documented management, routing, IPv6 and

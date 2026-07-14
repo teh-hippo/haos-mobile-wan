@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import entity_registry as er
 
 from custom_components.ha_cellular_gateway import async_setup_entry
 from custom_components.ha_cellular_gateway.api import GatewayApiError
@@ -38,6 +39,12 @@ async def test_setup_entry_and_unload(
     assert mock_config_entry.runtime_data.data == status_payload
     assert hass.states.get("sensor.haos_mobile_wan_mode").state == "active"
     assert hass.states.get("binary_sensor.haos_mobile_wan_safety_checks").state == "on"
+    registry = er.async_get(hass)
+    unique_ids = {entry.unique_id for entry in registry.entities.values()}
+    assert f"{mock_config_entry.entry_id}_mode" in unique_ids
+    assert f"{mock_config_entry.entry_id}_mode_control" in unique_ids
+    assert f"{mock_config_entry.entry_id}_safety_checks" in unique_ids
+    assert f"{mock_config_entry.entry_id}_reconcile" in unique_ids
 
     assert await hass.config_entries.async_unload(mock_config_entry.entry_id)
     await hass.async_block_till_done()

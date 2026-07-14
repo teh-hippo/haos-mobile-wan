@@ -200,6 +200,16 @@ def _issue_from_error(error: str) -> dict[str, Any] | None:
             "downstream_configuration",
             "The gateway could not verify downstream IPv6 state",
         ),
+        "IPv6 is active on mobile upstream": _issue(
+            "upstream_ipv6_active",
+            "host_configuration",
+            "IPv6 is active on the mobile upstream",
+        ),
+        "Cannot verify upstream IPv6 state": _issue(
+            "upstream_ipv6_unverified",
+            "host_configuration",
+            "The gateway could not verify mobile upstream IPv6 state",
+        ),
         "Cannot inspect policy-routing ownership": _issue(
             "policy_ownership_unavailable",
             "policy_configuration",

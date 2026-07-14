@@ -84,6 +84,28 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["id"], "policy_priority_conflict")
 
+    def test_upstream_ipv6_active_maps_to_host_configuration_issue(self) -> None:
+        result = build_status_issues(
+            ["IPv6 is active on mobile upstream"], None, {}
+        )
+        self.assertEqual(len(result), 1)
+        issue = result[0]
+        self.assertEqual(issue["id"], "upstream_ipv6_active")
+        self.assertEqual(issue["translation_key"], "host_configuration")
+        self.assertTrue(issue["repairable"])
+        self.assertFalse(issue["transient"])
+
+    def test_upstream_ipv6_unverified_maps_to_host_configuration_issue(self) -> None:
+        result = build_status_issues(
+            ["Cannot verify upstream IPv6 state"], None, {}
+        )
+        self.assertEqual(len(result), 1)
+        issue = result[0]
+        self.assertEqual(issue["id"], "upstream_ipv6_unverified")
+        self.assertEqual(issue["translation_key"], "host_configuration")
+        self.assertTrue(issue["repairable"])
+        self.assertFalse(issue["transient"])
+
     def test_upstream_driver_inactive_from_pairing_message(self) -> None:
         result = build_status_issues(
             [],

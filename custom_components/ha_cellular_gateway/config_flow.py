@@ -36,6 +36,12 @@ class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
                 return entry
         return None
 
+    def _entry_for_unique_id(self, unique_id: str) -> ConfigEntry | None:
+        for entry in self._async_current_entries(include_ignore=True):
+            if entry.unique_id == unique_id:
+                return entry
+        return None
+
     @staticmethod
     def _error_key(err: GatewayApiError) -> str:
         if isinstance(err, GatewayApiAuthError):
@@ -195,12 +201,19 @@ class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
                 reload_even_if_entry_is_unchanged=False,
                 reason="already_configured",
             )
-        if self._existing_entry() is not None:
-            return self.async_abort(reason="single_instance_allowed")
+        if entry := self._entry_for_unique_id(discovery_info.uuid):
+            return self.async_update_reload_and_abort(
+                entry,
+                data_updates={CONF_URL: url, CONF_TOKEN: token},
+                reload_even_if_entry_is_unchanged=False,
+                reason="already_configured",
+            )
         await self.async_set_unique_id(discovery_info.uuid)
         self._abort_if_unique_id_configured(
             updates={CONF_URL: url, CONF_TOKEN: token}
         )
+        if self._existing_entry() is not None:
+            return self.async_abort(reason="single_instance_allowed")
         return self.async_create_entry(
             title=discovery_info.name or DEFAULT_NAME,
             data={CONF_URL: url, CONF_TOKEN: token},

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import aiohttp
 import pytest
@@ -59,7 +59,9 @@ async def test_gateway_api_raises_error_for_http_failure() -> None:
 
 @pytest.mark.parametrize("status", [401, 403])
 async def test_gateway_api_raises_auth_error_for_auth_status(status: int) -> None:
-    response = AsyncMock(status=status)
+    response = Mock(status=status)
+    response.release = Mock()
+    response.json = AsyncMock()
     session = AsyncMock()
     session.request.return_value = response
     api = GatewayApi(session, "http://gateway.local:8099", "secret")
@@ -67,9 +69,13 @@ async def test_gateway_api_raises_auth_error_for_auth_status(status: int) -> Non
     with pytest.raises(GatewayApiAuthError):
         await api.status()
 
+    response.release.assert_called_once_with()
+    response.json.assert_not_awaited()
+
 
 async def test_gateway_api_raises_auth_error_for_non_json_401() -> None:
-    response = AsyncMock(status=401)
+    response = Mock(status=401)
+    response.release = Mock()
     response.json = AsyncMock(side_effect=ValueError("not JSON"))
     session = AsyncMock()
     session.request.return_value = response
@@ -77,6 +83,8 @@ async def test_gateway_api_raises_auth_error_for_non_json_401() -> None:
 
     with pytest.raises(GatewayApiAuthError):
         await api.status()
+
+    response.release.assert_called_once_with()
 
 
 @pytest.mark.parametrize(

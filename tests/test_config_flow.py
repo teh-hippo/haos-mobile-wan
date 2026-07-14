@@ -211,6 +211,42 @@ async def test_hassio_step_updates_existing_manual_entry(hass) -> None:
     reload_entry.assert_awaited_once_with(entry.entry_id)
 
 
+async def test_hassio_step_updates_existing_discovered_entry_when_uuid_matches(hass) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="gateway-uuid",
+        data={CONF_URL: "http://old-gateway.local:8099", CONF_TOKEN: "old-token"},
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.ha_cellular_gateway.api.GatewayApi.status",
+            AsyncMock(return_value={}),
+        ),
+        patch.object(hass.config_entries, "async_reload", AsyncMock(return_value=True)) as reload_entry,
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": SOURCE_HASSIO},
+            data=HassioServiceInfo(
+                config={"host": "gateway.local", "port": 8099, "token": "new-token"},
+                name="Gateway",
+                slug="ha-cellular-gateway",
+                uuid="gateway-uuid",
+            ),
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    assert entry.data == {
+        CONF_URL: "http://gateway.local:8099",
+        CONF_TOKEN: "new-token",
+    }
+    reload_entry.assert_awaited_once_with(entry.entry_id)
+
+
 async def test_hassio_step_rejects_second_distinct_gateway(hass) -> None:
     entry = MockConfigEntry(
         domain=DOMAIN,

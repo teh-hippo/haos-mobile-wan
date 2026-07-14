@@ -43,6 +43,9 @@ class GatewayApi:
                     headers=self._headers,
                     json=payload,
                 )
+                if response.status in {401, 403}:
+                    await response.release()
+                    raise GatewayApiAuthError("Authentication rejected by gateway app")
                 data = await response.json()
         except (aiohttp.ClientError, TimeoutError) as err:
             raise GatewayApiConnectionError(
@@ -50,10 +53,6 @@ class GatewayApi:
             ) from err
         except ValueError as err:
             raise GatewayApiError("Invalid response from gateway app") from err
-        if response.status in {401, 403}:
-            raise GatewayApiAuthError(
-                str(data.get("error", "Authentication rejected by gateway app"))
-            )
         if response.status >= 400:
             raise GatewayApiError(str(data.get("error", f"HTTP {response.status}")))
         return data

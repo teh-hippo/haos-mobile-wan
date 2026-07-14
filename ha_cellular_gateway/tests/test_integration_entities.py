@@ -557,6 +557,9 @@ class GatewayIntegrationTests(unittest.TestCase):
                 self.status = status
                 self._payload = payload
 
+            async def release(self):
+                pass
+
             async def json(self):
                 return self._payload
 
@@ -572,6 +575,32 @@ class GatewayIntegrationTests(unittest.TestCase):
             async def request(self, *args, **kwargs):
                 raise client_error("offline")
 
+        class BodyReadErrorSession:
+            async def request(self, *args, **kwargs):
+                class DropResponse:
+                    status = 200
+
+                    async def release(self):
+                        pass
+
+                    async def json(self):
+                        raise client_error("connection dropped during read")
+
+                return DropResponse()
+
+        class BodyReadTimeoutSession:
+            async def request(self, *args, **kwargs):
+                class SlowResponse:
+                    status = 200
+
+                    async def release(self):
+                        pass
+
+                    async def json(self):
+                        raise TimeoutError("timed out reading body")
+
+                return SlowResponse()
+
         api = self.api.GatewayApi(AuthSession(), "http://gateway.local:8099", "abc")
         with self.assertRaises(self.api.GatewayApiAuthError):
             asyncio.run(api.status())
@@ -586,6 +615,32 @@ class GatewayIntegrationTests(unittest.TestCase):
             "abc",
         )
         with self.assertRaises(self.api.GatewayApiConnectionError):
+            asyncio.run(api.status())
+
+        api = self.api.GatewayApi(BodyReadErrorSession(), "http://gateway.local:8099", "abc")
+        with self.assertRaises(self.api.GatewayApiConnectionError):
+            asyncio.run(api.status())
+
+        api = self.api.GatewayApi(BodyReadTimeoutSession(), "http://gateway.local:8099", "abc")
+        with self.assertRaises(self.api.GatewayApiConnectionError):
+            asyncio.run(api.status())
+
+    def test_auth_rejection_with_non_json_body_raises_auth_error(self) -> None:
+        class NonJsonAuthResponse:
+            status = 401
+
+            async def release(self):
+                pass
+
+            async def json(self):
+                raise ValueError("not JSON")
+
+        class NonJsonAuthSession:
+            async def request(self, *args, **kwargs):
+                return NonJsonAuthResponse()
+
+        api = self.api.GatewayApi(NonJsonAuthSession(), "http://gateway.local:8099", "abc")
+        with self.assertRaises(self.api.GatewayApiAuthError):
             asyncio.run(api.status())
 
     def test_coordinator_raises_auth_failed_for_invalid_auth(self) -> None:

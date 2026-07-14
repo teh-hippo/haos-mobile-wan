@@ -229,7 +229,7 @@ automation:
 - manual configuration requires access to the gateway API token;
 - current quality-scale gaps are tracked in
   [`custom_components/ha_cellular_gateway/quality_scale.yaml`](custom_components/ha_cellular_gateway/quality_scale.yaml);
-- local `icon.png` and `logo.png` cover current custom-integration installs on
+- local brand assets under `brand/` cover current custom-integration installs on
   Home Assistant 2026.3+, but any future Home Assistant Core submission would
   still need the separate upstream docs/core/brands review process.
 

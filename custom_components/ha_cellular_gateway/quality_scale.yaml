@@ -11,7 +11,7 @@ rules:
     comment: The coordinator polls the local gateway API every 30 seconds.
   brands:
     status: done
-    comment: Local icon and logo assets are shipped with the integration for HA 2026.3+ custom brands support.
+    comment: Local brand assets are shipped under brand/ inside the integration for HA 2026.3+ custom brands support.
   common-modules:
     status: done
     comment: Shared API, coordinator, entity, and diagnostics logic are split into dedicated modules.

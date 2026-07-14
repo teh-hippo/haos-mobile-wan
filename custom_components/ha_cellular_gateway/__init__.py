@@ -19,7 +19,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: GatewayConfigEntry) -> b
         entry.data[CONF_URL],
         entry.data[CONF_TOKEN],
     )
-    coordinator = GatewayCoordinator(hass, api)
+    coordinator = GatewayCoordinator(
+        hass,
+        api,
+        entry_id=entry.entry_id,
+        entry_title=entry.title,
+    )
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = coordinator
@@ -29,4 +34,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: GatewayConfigEntry) -> b
 
 async def async_unload_entry(hass: HomeAssistant, entry: GatewayConfigEntry) -> bool:
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    return bool(unloaded)
+    if unloaded:
+        await entry.runtime_data.async_clear_repairs()
+    return unloaded

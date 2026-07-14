@@ -20,8 +20,9 @@
   `iphone_usb` upstream mode.
 - Add guided iPhone USB trust, `ipheth` discovery and DHCP preflight with
   persistent pairing records under `/data/lockdown`.
-- Add `usb` and `udev` app permissions instead of `full_access`, and document
-  their security impact and hardware-validation limits.
+- Add the enforced AppArmor profile and keep the app to the audited
+  `host_network`, `hassio_api`, `NET_ADMIN`, `NET_RAW` and `usb` permission
+  set, without `full_access`, host D-Bus or `udev`.
 
 ## 0.1.1
 

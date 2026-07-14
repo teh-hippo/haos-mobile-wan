@@ -224,12 +224,30 @@ Adding this Apps repository does not install the integration.
 
 ## Security status
 
-The app uses `NET_ADMIN`, `NET_RAW` and `usb: true`, without `full_access` or
-host D-Bus. `usb` exposes `/dev/bus/usb` so libimobiledevice can pair with the
-phone. Its AppArmor profile remains in complain mode while the network and USB
-command surface is audited on real hardware. Runtime isolation therefore
-depends on the app's scoped netfilter and policy-routing rules plus the limited
-USB device cgroup.
+The app uses `host_network: true`, `NET_ADMIN`, `NET_RAW`, `hassio_api: true`
+and `usb: true`, without `full_access`, host D-Bus or `udev`.
+
+- `host_network` is required because the app validates and mutates the HAOS
+  host firewall, routing tables and real network interfaces.
+- `NET_ADMIN` is required for the app's tagged `iptables`/`ip6tables`, route
+  and policy-rule ownership model.
+- `NET_RAW` remains required because `dnsmasq` and `udhcpc` own DHCP on the
+  downstream and `iphone_usb` interfaces.
+- `usb: true` remains required for the supported `iphone_usb` path because
+  Home Assistant App permissions are static per app and cannot be toggled per
+  `upstream_mode`.
+
+That static-permission model is the supported exemption for hotspot-only
+deployments: `hotspot_wifi` does not use USB at runtime, but the app still
+ships with the minimal shared permission set needed for the existing iPhone USB
+path. If dormant USB exposure is unacceptable on a given host, this app does
+not currently offer a separate hotspot-only package.
+
+The enforced AppArmor profile is limited to the app payload, its own `/data`
+state, `/run/ha-cellgw`, the `usbmuxd` runtime socket, the required `ip`,
+`iptables`, `dnsmasq`, `curl`, `usbmuxd`, `idevice*` and `udhcpc` executables,
+the specific `/proc/sys/net/ipv4` checks, `/sys/class/net`, `ipheth` USB sysfs
+inspection and `/dev/bus/usb`.
 
 The API binds to the Supervisor-side host address and requires a generated
 Bearer token. Diagnostics redact credentials, public addressing and network

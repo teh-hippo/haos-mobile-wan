@@ -1,6 +1,6 @@
 #include <tunables/global>
 
-profile ha_cellular_gateway flags=(attach_disconnected,mediate_deleted,complain) {
+profile ha_cellular_gateway flags=(attach_disconnected,mediate_deleted) {
   #include <abstractions/base>
 
   capability net_admin,
@@ -9,12 +9,18 @@ profile ha_cellular_gateway flags=(attach_disconnected,mediate_deleted,complain)
 
   /app/** r,
   /data/** rwk,
-  /run/** rwk,
-  /proc/** r,
+  /run/ha-cellgw/** rwk,
+  /run/usbmuxd rw,
+  /run/usbmuxd/** rwk,
+  /var/run/usbmuxd rw,
+  /var/run/usbmuxd/** rwk,
+  /var/lib/lockdown/** rwk,
+  /proc/sys/net/ipv4/** r,
   /dev/bus/usb/** rw,
   /sys/class/net/** r,
-  /sys/bus/usb/** r,
-  /sys/module/** r,
+  /sys/bus/usb/devices/** r,
+  /sys/bus/usb/drivers/ipheth/** r,
+  /sys/module/ipheth/** r,
 
   /usr/bin/python3 ix,
   /usr/bin/curl rix,

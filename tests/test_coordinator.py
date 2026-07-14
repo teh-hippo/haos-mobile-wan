@@ -28,3 +28,18 @@ async def test_coordinator_wraps_gateway_errors(hass) -> None:
 
     with pytest.raises(UpdateFailed, match="offline"):
         await coordinator._async_update_data()
+
+
+async def test_coordinator_raises_auth_failed_for_auth_error(hass) -> None:
+    from homeassistant.exceptions import ConfigEntryAuthFailed
+    from custom_components.ha_cellular_gateway.api import GatewayApiAuthError
+
+    api = type(
+        "Api",
+        (),
+        {"status": AsyncMock(side_effect=GatewayApiAuthError("bad token"))},
+    )()
+    coordinator = GatewayCoordinator(hass, api)
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()

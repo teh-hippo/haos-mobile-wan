@@ -588,6 +588,19 @@ class GatewayIntegrationTests(unittest.TestCase):
 
                 return DropResponse()
 
+        class BodyReadTimeoutSession:
+            async def request(self, *args, **kwargs):
+                class SlowResponse:
+                    status = 200
+
+                    async def release(self):
+                        pass
+
+                    async def json(self):
+                        raise TimeoutError("timed out reading body")
+
+                return SlowResponse()
+
         api = self.api.GatewayApi(AuthSession(), "http://gateway.local:8099", "abc")
         with self.assertRaises(self.api.GatewayApiAuthError):
             asyncio.run(api.status())
@@ -605,6 +618,10 @@ class GatewayIntegrationTests(unittest.TestCase):
             asyncio.run(api.status())
 
         api = self.api.GatewayApi(BodyReadErrorSession(), "http://gateway.local:8099", "abc")
+        with self.assertRaises(self.api.GatewayApiConnectionError):
+            asyncio.run(api.status())
+
+        api = self.api.GatewayApi(BodyReadTimeoutSession(), "http://gateway.local:8099", "abc")
         with self.assertRaises(self.api.GatewayApiConnectionError):
             asyncio.run(api.status())
 

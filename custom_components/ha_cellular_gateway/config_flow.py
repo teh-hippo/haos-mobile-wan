@@ -13,7 +13,7 @@ from .api import GatewayApi, GatewayApiError
 from .const import CONF_TOKEN, DEFAULT_NAME, DOMAIN
 
 
-class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
+class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
     VERSION = 1
 
     @staticmethod

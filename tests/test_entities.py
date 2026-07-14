@@ -110,6 +110,10 @@ async def test_gateway_entity_sets_device_metadata(runtime_coordinator) -> None:
     assert gateway_entity.device_info["name"] == "HAOS Mobile WAN"
     assert gateway_entity.device_info["manufacturer"] == "teh-hippo"
 
+    assert select.GatewayModeSelect(runtime_coordinator, "entry-1").unique_id == "entry-1_mode_control"
+    assert binary_sensor.GatewaySafetySensor(runtime_coordinator, "entry-1").unique_id == "entry-1_safety_checks"
+    assert button.GatewayButton(runtime_coordinator, "entry-1", button.DESCRIPTIONS[0]).unique_id == "entry-1_reconcile"
+
 
 async def test_button_and_sensor_entity_names(runtime_coordinator) -> None:
     gateway_button = button.GatewayButton(

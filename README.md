@@ -254,18 +254,43 @@ PYTHONDONTWRITEBYTECODE=1 \
   python -m unittest discover -s ha_cellular_gateway/tests -v
 
 PYTHONDONTWRITEBYTECODE=1 \
-  pytest tests \
-  --cov=custom_components/ha_cellular_gateway \
-  --cov-report=term-missing \
-  --cov-report=json
-
-PYTHONDONTWRITEBYTECODE=1 python -m py_compile \
+  python -m py_compile \
   ha_cellular_gateway/rootfs/app/*.py \
   custom_components/ha_cellular_gateway/*.py
 
 PYTHONDONTWRITEBYTECODE=1 \
   PYTHONPATH=ha_cellular_gateway/rootfs \
   python -c "import app.main"
+
+PYTHONDONTWRITEBYTECODE=1 \
+  pytest tests \
+  --cov=custom_components/ha_cellular_gateway \
+  --cov-report=term-missing \
+  --cov-report=json
+
+python - <<'PY'
+from pathlib import Path
+import json
+
+threshold = 95
+report = json.loads(Path("coverage.json").read_text(encoding="utf-8"))
+files = sorted(
+    path
+    for path in report["files"]
+    if path.startswith("custom_components/ha_cellular_gateway/")
+)
+assert files, "No integration coverage files found"
+failures = []
+for path in files:
+    percent = report["files"][path]["summary"]["percent_covered"]
+    if percent <= threshold:
+        failures.append(f"{path}: {percent:.2f}%")
+if failures:
+    raise SystemExit(
+        f"Each integration module must exceed {threshold}% coverage:\n"
+        + "\n".join(failures)
+    )
+PY
 
 python - <<'PY'
 from pathlib import Path

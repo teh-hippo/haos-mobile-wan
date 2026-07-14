@@ -6,15 +6,57 @@
         "data": {
           "url": "App API URL",
           "token": "API token"
+        },
+        "data_description": {
+          "url": "Enter the base URL for the gateway app API.",
+          "token": "Enter the bearer token accepted by the gateway app API."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect HAOS Mobile WAN",
+        "data": {
+          "token": "API token"
+        },
+        "data_description": {
+          "token": "Enter a current bearer token for the configured gateway app."
+        }
+      },
+      "reconfigure": {
+        "title": "Update HAOS Mobile WAN",
+        "data": {
+          "url": "App API URL",
+          "token": "API token"
+        },
+        "data_description": {
+          "url": "Update the base URL for the gateway app API.",
+          "token": "Update the bearer token accepted by the gateway app API."
         }
       }
     },
     "error": {
-      "cannot_connect": "Unable to connect to the gateway app"
+      "cannot_connect": "Unable to connect to the gateway app",
+      "invalid_auth": "Authentication was rejected by the gateway app",
+      "unknown": "The gateway app returned an unexpected error"
     },
     "abort": {
       "already_configured": "This gateway is already configured",
-      "cannot_connect": "Unable to connect to the gateway app"
+      "cannot_connect": "Unable to connect to the gateway app",
+      "invalid_auth": "Authentication was rejected by the gateway app",
+      "unknown": "The gateway app returned an unexpected error",
+      "single_instance_allowed": "Only one gateway can be configured at a time",
+      "reauth_successful": "HAOS Mobile WAN reconnected successfully",
+      "reconfigure_successful": "HAOS Mobile WAN configuration updated successfully"
+    }
+  },
+  "exceptions": {
+    "cannot_connect": {
+      "message": "Unable to connect to the gateway app"
+    },
+    "invalid_auth": {
+      "message": "Authentication was rejected by the gateway app"
+    },
+    "api_error": {
+      "message": "The gateway app rejected the request: {error}"
     }
   }
 }

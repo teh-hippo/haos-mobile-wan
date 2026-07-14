@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock
 
+import pytest
 from homeassistant.components.binary_sensor import BinarySensorEntityDescription
 from homeassistant.components.button import ButtonEntityDescription
 from homeassistant.components.sensor import SensorEntityDescription
@@ -111,3 +112,68 @@ async def test_button_and_sensor_entity_names(runtime_coordinator) -> None:
 
     assert gateway_button.name == "Reapply gateway state"
     assert gateway_sensor.name == "Mode"
+
+
+async def test_button_press_raises_translated_auth_error(runtime_coordinator) -> None:
+    from homeassistant.exceptions import HomeAssistantError
+    from custom_components.ha_cellular_gateway.api import GatewayApiAuthError
+    from homeassistant.components.button import ButtonEntityDescription
+
+    runtime_coordinator.api.reconcile = AsyncMock(
+        side_effect=GatewayApiAuthError("bad token")
+    )
+
+    gateway_button = button.GatewayButton(
+        runtime_coordinator,
+        "entry-1",
+        ButtonEntityDescription(key="reconcile", name="Reapply gateway state"),
+    )
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await gateway_button.async_press()
+
+    assert exc_info.value.translation_domain == "ha_cellular_gateway"
+    assert exc_info.value.translation_key == "invalid_auth"
+    runtime_coordinator.async_request_refresh.assert_not_awaited()
+
+
+async def test_select_raises_translated_api_error(runtime_coordinator) -> None:
+    from homeassistant.exceptions import HomeAssistantError
+    from custom_components.ha_cellular_gateway.api import GatewayApiError
+
+    runtime_coordinator.api.set_mode = AsyncMock(
+        side_effect=GatewayApiError("mode change rejected")
+    )
+
+    gateway_select = select.GatewayModeSelect(runtime_coordinator, "entry-1")
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await gateway_select.async_select_option("trial")
+
+    assert exc_info.value.translation_domain == "ha_cellular_gateway"
+    assert exc_info.value.translation_key == "api_error"
+    assert exc_info.value.translation_placeholders == {"error": "mode change rejected"}
+    runtime_coordinator.async_request_refresh.assert_not_awaited()
+
+
+async def test_button_press_raises_translated_connection_error(runtime_coordinator) -> None:
+    from homeassistant.exceptions import HomeAssistantError
+    from custom_components.ha_cellular_gateway.api import GatewayApiConnectionError
+    from homeassistant.components.button import ButtonEntityDescription
+
+    runtime_coordinator.api.reconcile = AsyncMock(
+        side_effect=GatewayApiConnectionError("offline")
+    )
+
+    gateway_button = button.GatewayButton(
+        runtime_coordinator,
+        "entry-1",
+        ButtonEntityDescription(key="reconcile", name="Reapply gateway state"),
+    )
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await gateway_button.async_press()
+
+    assert exc_info.value.translation_domain == "ha_cellular_gateway"
+    assert exc_info.value.translation_key == "cannot_connect"
+    runtime_coordinator.async_request_refresh.assert_not_awaited()

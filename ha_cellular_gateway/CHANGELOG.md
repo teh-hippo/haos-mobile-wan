@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.10
+
+- Allow the final resolver configuration file reported by AppArmor.
+
 ## 0.3.9
 
 - Allow the runtime name-resolution and CA files reported by AppArmor.

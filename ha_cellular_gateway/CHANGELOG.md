@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2
+
+- Override the base image entrypoint so the gateway starts without `/init`.
+
 ## 0.3.1
 
 - Start the gateway process directly instead of invoking the unused inherited

@@ -97,6 +97,15 @@ jobs:
               ).read_text(encoding="utf-8")
           )
           assert app["version"] == integration["version"]
+          assert app["arch"] == ["aarch64"]
+          assert app["host_network"] is True
+          assert app["hassio_api"] is True
+          assert app["usb"] is True
+          assert app["apparmor"] is True
+          assert app["privileged"] == ["NET_ADMIN", "NET_RAW"]
+          assert app.get("full_access") in (None, False)
+          assert app.get("host_dbus") in (None, False)
+          assert app.get("udev") in (None, False)
           strings = json.loads(
               Path(
                   "custom_components/ha_cellular_gateway/strings.json"
@@ -122,4 +131,57 @@ jobs:
           assert dockerfile.startswith(
               "FROM ghcr.io/home-assistant/base:"
           )
+
+          profile = Path("ha_cellular_gateway/apparmor.txt").read_text(
+              encoding="utf-8"
+          )
+          assert "complain" not in profile
+          for fragment in (
+              "/run/**",
+              "/proc/**",
+              "/sys/bus/usb/**",
+              "/sys/module/**",
+              "/usr/sbin/conntrack",
+          ):
+              assert fragment not in profile
+          for fragment in (
+              "capability net_admin,",
+              "capability net_raw,",
+              "/run/ha-cellgw/** rwk,",
+              "/run/usbmuxd rw,",
+              "/run/usbmuxd/** rwk,",
+              "/var/run/usbmuxd rw,",
+              "/var/lib/lockdown/** rwk,",
+              "/proc/sys/net/ipv4/** r,",
+              "/dev/bus/usb/** rw,",
+              "/sys/bus/usb/devices/** r,",
+              "/sys/bus/usb/drivers/ipheth/** r,",
+              "/sys/module/ipheth/** r,",
+          ):
+              assert fragment in profile
           PY
+
+      - name: Parse AppArmor profile
+        run: apparmor_parser -QK ha_cellular_gateway/apparmor.txt
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build aarch64 app image
+        run: |
+          VERSION=$(python - <<'PY'
+          from pathlib import Path
+          import yaml
+          app = yaml.safe_load(
+              Path("ha_cellular_gateway/config.yaml").read_text(encoding="utf-8")
+          )
+          print(app["version"])
+          PY
+          )
+          docker buildx build \
+            --platform linux/arm64 \
+            --build-arg BUILD_VERSION="$VERSION" \
+            --build-arg BUILD_ARCH=aarch64 \
+            --file ha_cellular_gateway/Dockerfile \
+            ha_cellular_gateway

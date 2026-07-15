@@ -4,8 +4,10 @@
   "after_dependencies": ["hassio"],
   "codeowners": ["@teh-hippo"],
   "config_flow": true,
-  "documentation": "https://github.com/teh-hippo/haos-mobile-wan",
+  "documentation": "https://github.com/teh-hippo/haos-mobile-wan#optional-home-assistant-integration",
   "integration_type": "service",
+  "issue_tracker": "https://github.com/teh-hippo/haos-mobile-wan/issues",
   "iot_class": "local_polling",
+  "loggers": ["custom_components.ha_cellular_gateway"],
   "version": "0.2.0"
 }

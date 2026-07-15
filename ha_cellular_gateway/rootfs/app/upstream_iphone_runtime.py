@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,7 @@ class PairingResult:
 
 class IPhoneUsbRuntime:
     APPLE_VENDOR = "05ac"
+    PAIRING_RETRY_SECONDS = 60
 
     def __init__(
         self,
@@ -48,6 +50,7 @@ class IPhoneUsbRuntime:
         self.usbmuxd_process: subprocess.Popen[str] | None = None
         self.udhcpc_process: subprocess.Popen[str] | None = None
         self.udhcpc_interface: str | None = None
+        self.pairing_retry: tuple[str, float, PairingResult] | None = None
 
     def capability_errors(self) -> list[str]:
         errors: list[str] = []
@@ -135,10 +138,28 @@ class IPhoneUsbRuntime:
         return [line.strip() for line in output.splitlines() if line.strip()]
 
     def validate_pairing(self, udid: str) -> bool:
+        records = self.run("idevicepair", "list", check=False)
+        paired_udids = {
+            line.strip()
+            for line in (records.stdout or "").splitlines()
+            if line.strip()
+        }
+        if records.returncode != 0 or udid not in paired_udids:
+            return False
         result = self.run("idevicepair", "--udid", udid, "validate", check=False)
-        return result.returncode == 0
+        paired = result.returncode == 0
+        if paired:
+            self.pairing_retry = None
+        return paired
 
     def pair_device(self, udid: str) -> PairingResult:
+        now = time.monotonic()
+        if (
+            self.pairing_retry
+            and self.pairing_retry[0] == udid
+            and now - self.pairing_retry[1] < self.PAIRING_RETRY_SECONDS
+        ):
+            return self.pairing_retry[2]
         result = self.run(
             "idevicepair",
             "--udid",
@@ -148,28 +169,36 @@ class IPhoneUsbRuntime:
             timeout=30,
         )
         if result.returncode == 0:
-            return PairingResult(True, "paired")
-        text = "\n".join(
-            part for part in (result.stdout, result.stderr) if part
-        ).lower()
+            pairing = PairingResult(True, "paired")
+        else:
+            text = "\n".join(
+                part for part in (result.stdout, result.stderr) if part
+            ).lower()
+            pairing = self._pairing_error(text)
+        self.pairing_retry = None if pairing.paired else (udid, now, pairing)
+        return pairing
+
+    @staticmethod
+    def _pairing_error(text: str) -> PairingResult:
         if "trust dialog" in text or "user denied" in text:
             return PairingResult(
                 False,
                 "waiting_for_trust",
                 "Unlock the iPhone, tap Trust, keep Personal Hotspot enabled, "
-                "then press Reapply gateway state",
+                "and pairing will continue within one minute",
             )
         if "passcode" in text:
             return PairingResult(
                 False,
                 "waiting_for_unlock",
-                "Unlock the iPhone, leave it on the Home screen, then retry pairing",
+                "Unlock the iPhone and leave it on the Home screen while the "
+                "app retries",
             )
         return PairingResult(
             False,
             "pairing_failed",
             "iPhone USB pairing failed; reconnect the cable, confirm Trust on the "
-            "phone, then press Reapply gateway state",
+            "phone, and leave it connected while the app retries",
         )
 
     def apple_usb_present(self) -> bool:

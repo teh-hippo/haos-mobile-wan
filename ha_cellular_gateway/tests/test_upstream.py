@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from helpers import FakeProcess, FakeRunner, Result, make_config
 from rootfs.app.const import IPHONE_USB
@@ -89,6 +90,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
     def test_resolve_usb_upstream_uses_app_owned_lease(self) -> None:
         runner = FakeRunner()
         runner.idevice_udids = ["iphone-udid"]
+        runner.idevice_paired_udids = ["iphone-udid"]
         runner.idevice_validate_result.returncode = 0
         self._add_ipheth_interface()
         self._add_apple_usb_device()
@@ -124,6 +126,32 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("tap Trust", errors[0])
 
+    def test_pairing_prompt_is_rate_limited(self) -> None:
+        runner = FakeRunner()
+        runner.idevice_udids = ["iphone-udid"]
+        self._add_apple_usb_device()
+        manager = self._manager(runner)
+
+        with patch(
+            "rootfs.app.upstream_iphone_runtime.time.monotonic",
+            side_effect=[100.0, 105.0, 161.0],
+        ):
+            manager.resolve()
+            manager.resolve()
+            pair_commands = [
+                command for command in runner.commands if command[-1:] == ["pair"]
+            ]
+            self.assertEqual(len(pair_commands), 1)
+            self.assertFalse(
+                any(command[-1:] == ["validate"] for command in runner.commands)
+            )
+
+            manager.resolve()
+            pair_commands = [
+                command for command in runner.commands if command[-1:] == ["pair"]
+            ]
+            self.assertEqual(len(pair_commands), 2)
+
     def test_external_lease_is_not_flushed_on_cleanup(self) -> None:
         runner = FakeRunner()
         runner.interface_addresses["eth0"] = ("172.20.10.2", 28)
@@ -146,6 +174,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
     def test_rejects_host_managed_conflict_when_mutating(self) -> None:
         runner = FakeRunner()
         runner.idevice_udids = ["iphone-udid"]
+        runner.idevice_paired_udids = ["iphone-udid"]
         runner.idevice_validate_result.returncode = 0
         runner.interface_addresses["eth0"] = ("172.20.10.2", 28)
         runner.main_default_routes.append(
@@ -184,6 +213,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
     ) -> None:
         runner = FakeRunner()
         runner.idevice_udids = ["iphone-udid"]
+        runner.idevice_paired_udids = ["iphone-udid"]
         runner.idevice_validate_result.returncode = 0
         self._add_ipheth_interface()
         self._add_apple_usb_device()
@@ -216,6 +246,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
     def test_external_lease_owner_is_never_accepted(self) -> None:
         runner = FakeRunner()
         runner.idevice_udids = ["iphone-udid"]
+        runner.idevice_paired_udids = ["iphone-udid"]
         runner.idevice_validate_result.returncode = 0
         self._add_ipheth_interface()
         self._add_apple_usb_device()
@@ -240,6 +271,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
     def test_rejects_invalid_dynamic_lease(self) -> None:
         runner = FakeRunner()
         runner.idevice_udids = ["iphone-udid"]
+        runner.idevice_paired_udids = ["iphone-udid"]
         runner.idevice_validate_result.returncode = 0
         self._add_apple_usb_device()
         self._add_ipheth_interface()
@@ -259,6 +291,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
     def test_rejects_overlapping_dynamic_lease(self) -> None:
         runner = FakeRunner()
         runner.idevice_udids = ["iphone-udid"]
+        runner.idevice_paired_udids = ["iphone-udid"]
         runner.idevice_validate_result.returncode = 0
         self._add_apple_usb_device()
         self._add_ipheth_interface()
@@ -278,6 +311,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
     def test_failed_invalid_lease_cleanup_blocks_fallback(self) -> None:
         runner = FakeRunner()
         runner.idevice_udids = ["iphone-udid"]
+        runner.idevice_paired_udids = ["iphone-udid"]
         runner.idevice_validate_result.returncode = 0
         self._add_apple_usb_device()
         self._add_ipheth_interface()
@@ -339,6 +373,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
     def test_stale_app_lease_is_discarded(self) -> None:
         runner = FakeRunner()
         runner.idevice_udids = ["iphone-udid"]
+        runner.idevice_paired_udids = ["iphone-udid"]
         runner.idevice_validate_result.returncode = 0
         self._add_apple_usb_device()
         self._add_ipheth_interface()
@@ -435,6 +470,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
     def test_disconnect_and_reconnect_updates_interface_and_address(self) -> None:
         runner = FakeRunner()
         runner.idevice_udids = ["iphone-udid"]
+        runner.idevice_paired_udids = ["iphone-udid"]
         runner.idevice_validate_result.returncode = 0
         self._add_apple_usb_device()
         self._add_ipheth_interface("eth0")
@@ -482,6 +518,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
     def test_exited_dhcp_process_is_restarted(self) -> None:
         runner = FakeRunner()
         runner.idevice_udids = ["iphone-udid"]
+        runner.idevice_paired_udids = ["iphone-udid"]
         runner.idevice_validate_result.returncode = 0
         self._add_apple_usb_device()
         self._add_ipheth_interface("eth0")

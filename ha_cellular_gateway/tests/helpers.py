@@ -63,6 +63,7 @@ class FakeRunner:
         self.chain_listings: dict[tuple[str, str], str] = {}
         self.rule_checks: set[tuple[str, tuple[str, ...], tuple[str, ...]]] = set()
         self.idevice_udids: list[str] = []
+        self.idevice_paired_udids: list[str] = []
         self.idevice_pair_result = Result(returncode=1, stdout="ERROR: Please accept the trust dialog\n")
         self.idevice_validate_result = Result(returncode=1, stdout="ERROR: Device is not paired\n")
         self.main_default_routes = [{"dst": "default", "gateway": "192.168.1.1", "dev": "end0"}]
@@ -202,6 +203,11 @@ class FakeRunner:
             return Result(returncode=1)
         if args[:2] == ["idevice_id", "--list"]:
             return Result(stdout="\n".join(self.idevice_udids) + ("\n" if self.idevice_udids else ""))
+        if args[:2] == ["idevicepair", "list"]:
+            return Result(
+                stdout="\n".join(self.idevice_paired_udids)
+                + ("\n" if self.idevice_paired_udids else "")
+            )
         if args and args[0] == "idevicepair" and "--udid" in args:
             if args[-1] == "validate":
                 return self.idevice_validate_result

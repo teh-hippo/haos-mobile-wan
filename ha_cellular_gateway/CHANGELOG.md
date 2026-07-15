@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1
+
+- Keep a failed iPhone pairing request open long enough to accept the Trust
+  prompt instead of reopening it every reconciliation cycle.
+- Allow the BusyBox DHCP client and its lease helper to run under AppArmor.
+
 ## 0.4.0
 
 - Replace gateway mode and dry-run with a single Enabled control.

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Literal, NotRequired, TypeAlias, TypedDict
 
-GatewayMode: TypeAlias = Literal["disabled", "trial", "active"]
-GatewaySelectableMode: TypeAlias = Literal["disabled", "trial"]
+GatewayMode: TypeAlias = Literal["disabled", "active"]
+GatewaySelectableMode: TypeAlias = Literal["disabled", "active"]
 GatewayUpstreamMode: TypeAlias = Literal["hotspot_wifi", "iphone_usb"]
 GatewayPairingState: TypeAlias = Literal[
     "not_applicable",
@@ -41,6 +41,7 @@ class GatewayRuntimeConfig(TypedDict):
     upstream_interface: str
     upstream_address: str
     upstream_gateway: str
+    hotspot_ssid: str
     downstream_mac: str
     downstream_address: str
 
@@ -63,8 +64,6 @@ class GatewayStatus(TypedDict):
     dnsmasq_running: bool
     upstream_healthy: bool
     public_ip: str | None
-    rollback_armed: bool
-    rollback_deadline: float | None
     last_reconcile: float | None
     last_health_probe: float | None
     last_error: str | None

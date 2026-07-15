@@ -15,6 +15,8 @@ TO_REDACT: set[str] = {
     "upstream_address",
     "upstream_gateway",
     "upstream_ssid",
+    "hotspot_ssid",
+    "hotspot_password",
     "upstream_device_udid",
     "downstream_mac",
     "management_address",

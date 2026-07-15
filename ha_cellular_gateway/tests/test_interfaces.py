@@ -3,7 +3,8 @@ import unittest
 from pathlib import Path
 
 from rootfs.app.errors import GatewayError
-from rootfs.app.interfaces import DownstreamInterface, detect_management
+from rootfs.app.downstream import DownstreamInterface
+from rootfs.app.management import detect_management
 
 from helpers import FakeRunner, make_config
 

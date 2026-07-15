@@ -29,8 +29,8 @@ def apply(
     *,
     recovering: bool = False,
 ) -> None:
-    if mode not in {"trial", "active"}:
-        raise GatewayError("Mode must be trial or active")
+    if mode != "active":
+        raise GatewayError("Mode must be active")
     if engine.config.dry_run:
         raise SafetyError("Mutation is disabled while dry_run is true")
 
@@ -38,16 +38,6 @@ def apply(
         with engine.lock:
             if not recovering:
                 engine.desired_mode = mode
-            if mode == "trial" and (
-                not recovering or engine.trial_deadline is None
-            ):
-                engine.trial_started_at = time.time()
-                engine.trial_deadline = (
-                    engine.trial_started_at + engine.config.trial_seconds
-                )
-            elif mode == "active":
-                engine.trial_started_at = None
-                engine.trial_deadline = None
 
         downstream = engine.safety.find_downstream()
         upstream, upstream_errors = engine._resolve_upstream()
@@ -70,7 +60,6 @@ def apply(
             cleanup(
                 engine,
                 preserve_desired=True,
-                preserve_trial_deadline=recovering or mode == "trial",
                 preserve_host_protection=True,
             )
             _protect_host(engine, downstream)
@@ -84,7 +73,6 @@ def apply(
         cleanup(
             engine,
             preserve_desired=True,
-            preserve_trial_deadline=mode == "trial",
             preserve_host_protection=True,
         )
         with engine.lock:
@@ -101,7 +89,6 @@ def apply(
             cleanup(
                 engine,
                 preserve_desired=True,
-                preserve_trial_deadline=mode == "trial",
                 preserve_host_protection=True,
             )
             message = f"Activation failed: {err}"
@@ -124,14 +111,12 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                 startup_cleanup_pending = engine.startup_cleanup_pending
                 owned_state = engine.owned_state
                 desired_mode = engine.desired_mode
-                trial_deadline = engine.trial_deadline
                 state_load_error = engine.state_load_error
 
             if startup_cleanup_pending:
                 cleanup(
                     engine,
                     preserve_desired=True,
-                    preserve_trial_deadline=True,
                     preserve_host_protection=not engine.config.dry_run,
                     force=bool(owned_state),
                 )
@@ -159,18 +144,7 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                 engine.last_upstream = upstream
                 engine.last_safety_errors = errors
 
-            if (
-                desired_mode == "trial"
-                and trial_deadline
-                and time.time() >= trial_deadline
-            ):
-                cleanup(engine, preserve_host_protection=True)
-                _protect_host(engine, downstream)
-                with engine.lock:
-                    engine.last_error = "Trial expired and was rolled back"
-                return
-
-            if desired_mode not in {"trial", "active"}:
+            if desired_mode != "active":
                 managed_chains = (
                     ("iptables", engine.firewall.INPUT_CHAIN),
                     ("ip6tables", engine.firewall.INPUT6_CHAIN),
@@ -211,7 +185,6 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                 cleanup(
                     engine,
                     preserve_desired=True,
-                    preserve_trial_deadline=True,
                     preserve_host_protection=True,
                 )
                 _protect_host(engine, downstream)

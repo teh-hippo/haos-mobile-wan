@@ -158,12 +158,11 @@ class DistributionMetadataTests(unittest.TestCase):
             "| Downstream interface present | `binary_sensor` |",
             "| Gateway rules applied | `binary_sensor` |",
             "| DHCP server running | `binary_sensor` |",
-            "| Rollback armed | `binary_sensor` |",
             "| Safety checks | `binary_sensor` |",
             "| Desired mode | `sensor` |",
             "| Upstream pairing | `sensor` |",
             "| Public IP | `sensor` |",
-            "| Mode | `select` | Safe runtime control limited to `disabled` and `trial` |",
+            "| Mode | `select` | Runtime control for `disabled` and `active` |",
             "| Reapply gateway state | `button` |",
         ):
             self.assertIn(table_row, text)

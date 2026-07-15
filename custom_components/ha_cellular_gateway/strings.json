@@ -62,7 +62,7 @@
   "issues": {
     "state_invalid": {
       "title": "Gateway state is invalid",
-      "description": "HAOS Mobile WAN disabled {entry_title} because its saved ownership or trial state is invalid. Review the app diagnostics, correct the host state if needed, and then reapply the desired mode."
+      "description": "HAOS Mobile WAN disabled {entry_title} because its saved ownership state is invalid. Review the app diagnostics, correct the host state if needed, and then reapply the desired mode."
     },
     "host_configuration": {
       "title": "Gateway host safety checks are failing",
@@ -79,6 +79,10 @@
     "upstream_configuration": {
       "title": "Gateway upstream configuration needs attention",
       "description": "HAOS Mobile WAN could not prepare {entry_title}'s upstream because commissioning or host ownership checks failed. Review the app diagnostics, correct the USB or upstream configuration, and then retry."
+    },
+    "hotspot_configuration": {
+      "title": "Gateway hotspot configuration failed",
+      "description": "HAOS Mobile WAN disabled {entry_title} because the configured hotspot Wi-Fi profile could not be applied through Supervisor. Review the app options and Supervisor network access, then restart the app."
     }
   },
   "entity": {
@@ -95,9 +99,6 @@
       "dnsmasq_running": {
         "name": "DHCP server running"
       },
-      "rollback_armed": {
-        "name": "Rollback armed"
-      },
       "safety_checks": {
         "name": "Safety checks"
       }
@@ -112,7 +113,7 @@
         "name": "Mode",
         "state": {
           "disabled": "Disabled",
-          "trial": "Trial"
+          "active": "Active"
         }
       }
     },
@@ -121,7 +122,6 @@
         "name": "Mode",
         "state": {
           "disabled": "Disabled",
-          "trial": "Trial",
           "active": "Active"
         }
       },
@@ -129,7 +129,6 @@
         "name": "Desired mode",
         "state": {
           "disabled": "Disabled",
-          "trial": "Trial",
           "active": "Active"
         }
       },

@@ -308,6 +308,8 @@ def make_config(**overrides: object) -> GatewayConfig:
         "upstream_interface": "wlan0",
         "upstream_address": "172.20.10.4/28",
         "upstream_gateway": "172.20.10.1",
+        "hotspot_ssid": "",
+        "hotspot_password": "",
         "downstream_mac": "00:11:22:33:44:55",
         "downstream_address": "192.168.80.1/24",
     }

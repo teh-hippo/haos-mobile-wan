@@ -25,6 +25,7 @@ class AddonSecurityTests(unittest.TestCase):
         self.assertEqual(self.config["arch"], ["aarch64"])
         self.assertTrue(self.config["host_network"])
         self.assertTrue(self.config["hassio_api"])
+        self.assertEqual(self.config["hassio_role"], "manager")
         self.assertTrue(self.config["usb"])
         self.assertTrue(self.config["apparmor"])
         self.assertEqual(self.config["timeout"], 30)
@@ -38,6 +39,8 @@ class AddonSecurityTests(unittest.TestCase):
                 "mode",
                 "dry_run",
                 "upstream_mode",
+                "hotspot_ssid",
+                "hotspot_password",
                 "downstream_address",
             },
         )

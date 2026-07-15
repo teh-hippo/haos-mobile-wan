@@ -100,6 +100,7 @@ jobs:
           assert app["arch"] == ["aarch64"]
           assert app["host_network"] is True
           assert app["hassio_api"] is True
+          assert app["hassio_role"] == "manager"
           assert app["usb"] is True
           assert app["apparmor"] is True
           assert app["privileged"] == ["NET_ADMIN", "NET_RAW"]
@@ -120,9 +121,14 @@ jobs:
           assert Path("ha_cellular_gateway/DOCS.md").exists()
           assert Path("ha_cellular_gateway/translations/en.yaml").exists()
 
-          for path in Path("ha_cellular_gateway/rootfs/app").glob("*.py"):
+          roots = (
+              Path("ha_cellular_gateway/rootfs/app"),
+              Path("custom_components/ha_cellular_gateway"),
+          )
+          for root in roots:
+            for path in root.glob("*.py"):
               line_count = len(path.read_text(encoding="utf-8").splitlines())
-              assert line_count <= 300, f"{path} has {line_count} lines"
+              assert line_count <= 250, f"{path} has {line_count} lines"
 
           dockerfile = Path(
               "ha_cellular_gateway/Dockerfile"

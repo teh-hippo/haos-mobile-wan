@@ -107,7 +107,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_dry_run_refuses_mutation(self) -> None:
         with self.assertRaisesRegex(SafetyError, "dry_run"):
-            self.engine.apply("trial")
+            self.engine.apply("active")
 
     def test_fresh_dry_run_reconcile_does_not_mutate_host(self) -> None:
         self.engine.reconcile()
@@ -559,55 +559,41 @@ class GatewayEngineTests(unittest.TestCase):
             )
         )
 
-    def test_configured_trial_arms_deadline_on_first_reconcile(self) -> None:
-        engine = self._prepare_active_engine("trial")
-
-        engine.reconcile()
-
-        self.assertEqual(engine.mode, "trial")
-        self.assertIsNotNone(engine.trial_deadline)
-
-    def test_trial_deadline_survives_restart(self) -> None:
-        engine = self._prepare_active_engine("trial")
-        engine.apply("trial")
-        deadline = engine.trial_deadline
-        self.assertIsNotNone(deadline)
-
-        values = sysctl_values()
-        restarted = GatewayEngine(
-            make_config(mode="trial", dry_run=False),
-            runner=FakeRunner(),
-            read_text=lambda path: values[path],
-            state_path=self.state_path,
-        )
-        self.assertEqual(restarted.trial_deadline, deadline)
-
-    def test_expired_trial_rolls_back_after_restart(self) -> None:
-        started_at = time.time() - 400
+    def test_persisted_extra_state_key_is_ignored(self) -> None:
         self.state_path.write_text(
             json.dumps(
                 {
-                    "trial": {
-                        "started_at": started_at,
-                        "deadline": started_at + 300,
+                    "unused": {
+                        "started_at": time.time() - 400,
+                        "deadline": time.time() - 100,
                     }
                 }
             ),
             encoding="utf-8",
         )
-        values = sysctl_values()
+        engine = self._prepare_active_engine()
+        engine.reconcile()
+        self.assertEqual(engine.mode, "active")
+        self.assertEqual(engine.desired_mode, "active")
+        self.assertNotIn("unused", self.state_path.read_text(encoding="utf-8"))
+
+    def test_status_and_state_do_not_disclose_hotspot_password(self) -> None:
         engine = GatewayEngine(
-            make_config(mode="trial", dry_run=False),
+            make_config(
+                hotspot_ssid="Phone",
+                hotspot_password="supersecret",
+            ),
             runner=FakeRunner(),
-            read_text=lambda path: values[path],
+            read_text=lambda path: sysctl_values()[path],
             state_path=self.state_path,
         )
-        engine.safety.find_downstream = lambda: "enx001122334455"
-        engine.safety.errors = lambda *args, **kwargs: []
-        engine.reconcile()
-        self.assertEqual(engine.mode, "disabled")
-        self.assertEqual(engine.desired_mode, "disabled")
-        self.assertIsNone(engine.trial_deadline)
+        engine.owned_state = {"downstream": "eth1"}
+        engine._persist_state()
+
+        status_text = json.dumps(engine.status(), sort_keys=True)
+        self.assertNotIn("hotspot_password", status_text)
+        self.assertNotIn("supersecret", status_text)
+        self.assertNotIn("supersecret", self.state_path.read_text(encoding="utf-8"))
 
     def test_unexpected_reconcile_error_fails_closed(self) -> None:
         engine = self._prepare_active_engine()

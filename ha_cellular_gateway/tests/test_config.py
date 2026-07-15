@@ -94,6 +94,11 @@ class GatewayConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(GatewayError, "Unsupported upstream mode"):
             config.validate()
 
+    def test_rejects_invalid_mode(self) -> None:
+        config = make_config(mode="standby")
+        with self.assertRaisesRegex(GatewayError, "Unsupported mode"):
+            config.validate()
+
     def test_rejects_overlapping_networks(self) -> None:
         config = make_config(downstream_address="192.168.1.10/25")
         with self.assertRaisesRegex(GatewayError, "must not overlap"):
@@ -119,6 +124,29 @@ class GatewayConfigTests(unittest.TestCase):
         config = make_config(downstream_mac="not-a-mac")
         with self.assertRaisesRegex(GatewayError, "MAC address"):
             config.validate()
+
+    def test_accepts_empty_hotspot_credentials(self) -> None:
+        make_config(hotspot_ssid="", hotspot_password="").validate()
+
+    def test_requires_hotspot_ssid_and_password_together(self) -> None:
+        for overrides in (
+            {"hotspot_ssid": "Phone", "hotspot_password": ""},
+            {"hotspot_ssid": "", "hotspot_password": "validpass"},
+        ):
+            with self.subTest(overrides=overrides):
+                with self.assertRaisesRegex(GatewayError, "both be set"):
+                    make_config(**overrides).validate()
+
+    def test_validates_hotspot_ssid_wifi_limits(self) -> None:
+        with self.assertRaisesRegex(GatewayError, "SSID"):
+            make_config(hotspot_ssid="x" * 33, hotspot_password="validpass").validate()
+        make_config(hotspot_ssid="Phone", hotspot_password="validpass").validate()
+
+    def test_validates_hotspot_password_length(self) -> None:
+        for password in ("short", "x" * 64):
+            with self.subTest(password=password):
+                with self.assertRaisesRegex(GatewayError, "password"):
+                    make_config(hotspot_ssid="Phone", hotspot_password=password).validate()
 
     def test_usb_mode_allows_dynamic_upstream_network(self) -> None:
         config = make_config(

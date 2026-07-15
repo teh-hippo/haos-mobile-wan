@@ -16,6 +16,7 @@ _VALID_TRANSLATION_KEYS = {
     "downstream_configuration",
     "policy_configuration",
     "upstream_configuration",
+    "hotspot_configuration",
 }
 
 

@@ -32,7 +32,7 @@ DESCRIPTIONS = (
         key="mode",
         translation_key="mode",
         device_class=SensorDeviceClass.ENUM,
-        options=["disabled", "trial", "active"],
+        options=["disabled", "active"],
         icon="mdi:wan",
         value_fn=lambda data: data["mode"],
     ),
@@ -40,7 +40,7 @@ DESCRIPTIONS = (
         key="desired_mode",
         translation_key="desired_mode",
         device_class=SensorDeviceClass.ENUM,
-        options=["disabled", "trial", "active"],
+        options=["disabled", "active"],
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         icon="mdi:target",
@@ -134,4 +134,3 @@ class GatewaySensor(GatewayEntity, SensorEntity):
     @property
     def native_value(self) -> GatewaySensorValue:
         return self.entity_description.value_fn(self.coordinator.data)
-

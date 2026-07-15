@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import subprocess
 import time
-from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 from .status_issues import build_status_issues
@@ -31,7 +30,6 @@ def fail_closed(engine: GatewayEngine, error: Exception) -> None:
         try:
             engine.cleanup(
                 preserve_desired=True,
-                preserve_trial_deadline=True,
                 preserve_host_protection=True,
             )
         except (
@@ -86,17 +84,13 @@ def status(engine: GatewayEngine) -> dict[str, object]:
             "dnsmasq_running": engine.dhcp.running,
             "upstream_healthy": engine.upstream_healthy,
             "public_ip": engine.public_ip,
-            "rollback_armed": engine.trial_deadline is not None,
-            "rollback_deadline": engine.trial_deadline,
             "last_reconcile": engine.last_reconcile,
             "last_health_probe": engine.last_health_probe,
             "last_error": engine.last_error,
             "safety_errors": list(engine.last_safety_errors),
             "issues": issues,
             **upstream_status,
-            "config": {
-                key: value for key, value in asdict(engine.config).items()
-            },
+            "config": _status_config(engine),
         }
 
 
@@ -129,15 +123,11 @@ def stop(engine: GatewayEngine) -> None:
     with engine.operation_lock:
         engine.stop_event.set()
         with engine.lock:
-            preserve_trial = (
-                engine.desired_mode == "trial" and engine.trial_deadline is not None
-            )
             force = bool(engine.owned_state or engine.applied)
         cleanup_error: Exception | None = None
         try:
             engine.cleanup(
                 preserve_desired=True,
-                preserve_trial_deadline=preserve_trial,
                 force=force,
             )
         except (
@@ -162,3 +152,20 @@ def stop(engine: GatewayEngine) -> None:
             raise
         if cleanup_error:
             raise cleanup_error
+
+
+def _status_config(engine: GatewayEngine) -> dict[str, object]:
+    config = engine.config
+    return {
+        "mode": config.mode,
+        "dry_run": config.dry_run,
+        "management_interface": config.management_interface,
+        "management_address": config.management_address,
+        "upstream_mode": config.upstream_mode,
+        "upstream_interface": config.upstream_interface,
+        "upstream_address": config.upstream_address,
+        "upstream_gateway": config.upstream_gateway,
+        "hotspot_ssid": config.hotspot_ssid,
+        "downstream_mac": config.downstream_mac,
+        "downstream_address": config.downstream_address,
+    }

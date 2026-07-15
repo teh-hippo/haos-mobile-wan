@@ -23,7 +23,7 @@ from .gateway_runtime import (
     status,
     stop,
 )
-from .interfaces import DownstreamInterface
+from .downstream import DownstreamInterface
 from .policy import PolicyRouting
 from .safety import SafetyInspector
 from .state import StateStore
@@ -69,7 +69,7 @@ class GatewayEngine:
         self.mode = "disabled"
         self.desired_mode = (
             config.mode
-            if not config_error and config.mode in {"trial", "active"}
+            if not config_error and config.mode == "active"
             else "disabled"
         )
         self.last_error: str | None = None
@@ -101,25 +101,6 @@ class GatewayEngine:
                 self.owned_state = None
                 startup_errors.append("Persistent ownership state is invalid")
                 self.desired_mode = "disabled"
-        self.trial_started_at: float | None = None
-        self.trial_deadline: float | None = None
-        trial = state.get("trial")
-        if self.desired_mode == "trial" and isinstance(trial, dict):
-            try:
-                started_at = float(trial["started_at"])
-                deadline = float(trial["deadline"])
-                now = time.time()
-                if (
-                    deadline < started_at
-                    or deadline > started_at + self.config.trial_seconds + 5
-                    or now + 60 < started_at
-                ):
-                    raise ValueError("trial timestamps are inconsistent")
-                self.trial_started_at = started_at
-                self.trial_deadline = deadline
-            except (KeyError, TypeError, ValueError):
-                startup_errors.append("Persistent trial state is invalid")
-                self.desired_mode = "disabled"
         self.state_load_error = "; ".join(startup_errors) or None
         if self.state_load_error:
             self.last_error = self.state_load_error
@@ -133,20 +114,18 @@ class GatewayEngine:
         return self.runner.run(list(args), check=check, timeout=timeout)
 
     def _persist_state(self) -> None:
-        self.state_store.save(owned=self.owned_state, trial_started_at=self.trial_started_at, trial_deadline=self.trial_deadline)
+        self.state_store.save(owned=self.owned_state)
 
     def cleanup(
         self,
         *,
         preserve_desired: bool = False,
-        preserve_trial_deadline: bool = False,
         preserve_host_protection: bool = False,
         force: bool = False,
     ) -> None:
         cleanup_gateway(
             self,
             preserve_desired=preserve_desired,
-            preserve_trial_deadline=preserve_trial_deadline,
             preserve_host_protection=preserve_host_protection,
             force=force,
         )

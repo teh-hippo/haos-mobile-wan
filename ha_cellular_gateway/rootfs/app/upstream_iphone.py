@@ -4,24 +4,22 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
-from .command import RunCommand, run_json
+from .command import RunCommand
 from .config import RUN_DIR, GatewayConfig
 from .errors import GatewayError
-from .upstream_lease import (
-    DynamicLease,
-    inspect_external_lease,
-    load_app_lease,
-    validate_dynamic_lease,
+from .upstream_iphone_resolver import (
+    LeaseResolution,
+    host_conflict_message,
+    host_managed_conflict,
+    owned_interface,
+    resolved_interface,
 )
 from .upstream_iphone_runtime import IPhoneUsbRuntime
 from .upstream_models import ResolvedUpstream
 
 
 class IPhoneUsbUpstream:
-    HOST_CONFLICT_MESSAGE = (
-        "iPhone USB interface is already host-managed; leave ipheth unmanaged "
-        "so the app can own DHCP and the main default route"
-    )
+    HOST_CONFLICT_MESSAGE = host_conflict_message()
 
     def __init__(
         self,
@@ -96,18 +94,18 @@ class IPhoneUsbUpstream:
                 self.pairing_state = "dry_run_blocked"
                 self.pairing_message = message
                 return None, [message]
-            resolved, error = self._resolved_interface(interface)
-            if error:
+            lease = self._resolved_interface(interface)
+            if lease.error:
                 self.pairing_state = "invalid_lease"
-                self.pairing_message = error
-                return None, [error]
-            if resolved is None:
+                self.pairing_message = lease.error
+                return None, [lease.error]
+            if lease.upstream is None:
                 message = "iPhone USB upstream is present but has no DHCP lease"
                 self.pairing_state = "waiting_for_dhcp"
                 self.pairing_message = message
                 return None, [message]
             self.pairing_state = "paired"
-            return resolved, []
+            return lease.upstream, []
 
         try:
             self.runtime.ensure_usbmuxd()
@@ -154,19 +152,19 @@ class IPhoneUsbUpstream:
             self.pairing_message = message
             return None, [message]
 
-        if self._host_managed_conflict(interface):
+        if host_managed_conflict(self.run, self.runtime.lease_path, interface):
             self.runtime.stop_dhcp()
             self.pairing_state = "ownership_conflict"
             self.pairing_message = self.HOST_CONFLICT_MESSAGE
             return None, [self.pairing_message]
 
         self.runtime.ensure_dhcp(interface)
-        resolved, error = self._resolved_interface(interface)
-        if error:
+        lease = self._resolved_interface(interface)
+        if lease.error:
             self.pairing_state = "invalid_lease"
-            self.pairing_message = error
-            return None, [error]
-        if resolved is None:
+            self.pairing_message = lease.error
+            return None, [lease.error]
+        if lease.upstream is None:
             self.pairing_state = "waiting_for_dhcp"
             self.pairing_message = (
                 "Waiting for the iPhone USB tether interface to acquire DHCP"
@@ -174,10 +172,14 @@ class IPhoneUsbUpstream:
             return None, [self.pairing_message]
         self.pairing_state = "paired"
         self.pairing_message = None
-        return resolved, []
+        return lease.upstream, []
 
     def cleanup(self) -> None:
-        interface = self._owned_interface()
+        interface = owned_interface(
+            self.runtime.lease_path,
+            self.runtime.udhcpc_interface,
+            self.interface,
+        )
         self.runtime.stop_dhcp()
         if interface:
             self.run(
@@ -198,63 +200,15 @@ class IPhoneUsbUpstream:
     def _resolved_interface(
         self,
         interface: str,
-    ) -> tuple[ResolvedUpstream | None, str | None]:
-        app_lease = load_app_lease(self.runtime.lease_path, interface)
-        if app_lease is not None:
-            self.lease_owner = "app"
-            return validate_dynamic_lease(self.config, interface, *app_lease)
-        state = self._external_lease(interface)
-        if state.address is None and not state.has_default_route:
-            return None, None
-        self.lease_owner = "external"
-        if state.address is None or state.gateway is None:
-            return None, self.HOST_CONFLICT_MESSAGE
-        return validate_dynamic_lease(
+    ) -> LeaseResolution:
+        lease = resolved_interface(
             self.config,
-            interface,
-            state.address,
-            state.gateway,
-        )
-
-    def _host_managed_conflict(self, interface: str) -> bool:
-        if load_app_lease(self.runtime.lease_path, interface) is not None:
-            return False
-        state = self._external_lease(interface)
-        return state.address is not None or state.has_default_route
-
-    def _external_lease(self, interface: str) -> DynamicLease:
-        return inspect_external_lease(
-            run_json(
-                self.run,
-                "ip",
-                "-4",
-                "-j",
-                "address",
-                "show",
-                "dev",
-                interface,
-            ),
-            run_json(
-                self.run,
-                "ip",
-                "-4",
-                "-j",
-                "route",
-                "show",
-                "table",
-                "main",
-                "default",
-            ),
+            self.run,
+            self.runtime.lease_path,
             interface,
         )
-
-    def _owned_interface(self) -> str | None:
-        interface = self.runtime.udhcpc_interface
-        if interface and load_app_lease(self.runtime.lease_path, interface):
-            return interface
-        if self.interface and load_app_lease(self.runtime.lease_path, self.interface):
-            return self.interface
-        return None
+        self.lease_owner = lease.owner
+        return lease
 
     def _remove_main_defaults(self, interface: str) -> None:
         while (

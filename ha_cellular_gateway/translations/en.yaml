@@ -2,9 +2,8 @@ configuration:
   mode:
     name: Gateway mode
     description: >-
-      Disabled performs no forwarding. Trial enables the gateway temporarily
-      and rolls back after the configured trial period. Active keeps the
-      gateway enabled while the app is running.
+      Disabled performs no forwarding. Active keeps the gateway enabled while
+      the app is running.
   dry_run:
     name: Dry run
     description: >-
@@ -28,6 +27,18 @@ configuration:
     name: Optional - hotspot gateway override
     description: >-
       Used only for hotspot_wifi mode. Leave unset for 172.20.10.1.
+  hotspot_ssid:
+    name: Hotspot SSID
+    description: >-
+      Leave blank with Hotspot password to keep the HAOS Wi-Fi profile
+      configured outside the app. Set both values to let the app apply the
+      hotspot profile at startup.
+  hotspot_password:
+    name: Hotspot password
+    description: >-
+      Leave blank with Hotspot SSID to keep the external HAOS Wi-Fi profile.
+      When set, the password is stored only in app options and sent to
+      Supervisor during startup.
   downstream_mac:
     name: USB Ethernet adapter override
     description: >-
@@ -37,4 +48,4 @@ configuration:
     name: Downstream gateway address
     description: >-
       Private IPv4 gateway in CIDR notation. The app adds this exact address
-      during activation and removes it during rollback or shutdown.
+      during activation and removes it when disabled or during shutdown.

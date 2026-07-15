@@ -1,5 +1,5 @@
 name: HAOS Mobile WAN
-version: "0.3.17"
+version: "0.3.18"
 slug: ha_cellular_gateway
 description: Redundant mobile WAN gateway engine for Home Assistant OS
 url: https://github.com/teh-hippo/haos-mobile-wan
@@ -10,9 +10,11 @@ boot: manual
 stage: experimental
 breaking_versions:
   - "0.3.0"
+  - "0.3.18"
 init: false
 host_network: true
 hassio_api: true
+hassio_role: manager
 discovery:
   - ha_cellular_gateway
 usb: true
@@ -27,11 +29,15 @@ options:
   mode: disabled
   dry_run: true
   upstream_mode: hotspot_wifi
+  hotspot_ssid: ""
+  hotspot_password: ""
   downstream_address: 192.168.80.1/24
 schema:
-  mode: list(disabled|trial|active)
+  mode: list(disabled|active)
   dry_run: bool
   upstream_mode: list(hotspot_wifi|iphone_usb)
+  hotspot_ssid: str
+  hotspot_password: password
   downstream_mac: 'match(^$|^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$)?'
   downstream_address: str
   upstream_interface: 'match(^[A-Za-z0-9_.-]{1,15}$)?'

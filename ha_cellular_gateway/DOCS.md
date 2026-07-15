@@ -37,14 +37,14 @@ Before commissioning:
    authoritative DHCP server when enabled.
 
 Manual boot means the app does not restart automatically after HAOS reboots.
-Enable start-on-boot in the Apps panel only after a successful hardware trial.
+Enable start-on-boot in the Apps panel only after successful hardware validation.
 
 ## Configure HAOS networking
 
 The app discovers and validates the management network but never changes it.
 The USB Ethernet profile must be left without host-managed IP addressing. The
 app then owns one exact runtime address on that interface and can remove it
-cleanly during rollback or shutdown.
+cleanly when disabled, on failure or during shutdown.
 
 Use the Terminal & SSH app or another supported HAOS console.
 
@@ -67,8 +67,10 @@ both values at startup.
 
 ### 3. Choose the upstream mode
 
-`upstream_mode: hotspot_wifi` is the default and keeps the current static Wi-Fi
-commissioning flow.
+`upstream_mode: hotspot_wifi` is the default. Leave `hotspot_ssid` and
+`hotspot_password` empty to keep the current externally configured HAOS Wi-Fi
+profile. Set both values to let the app apply the hotspot Wi-Fi profile through
+Supervisor when the app starts.
 
 `upstream_mode: iphone_usb` is experimental. The app:
 
@@ -92,7 +94,9 @@ NetworkManager for DHCP.
 
 ### 4. Configure the phone hotspot interface
 
-The example defaults match an iPhone Personal Hotspot:
+When `hotspot_ssid` and `hotspot_password` are both empty, configure the HAOS
+Wi-Fi profile outside the app. The example defaults match an iPhone Personal
+Hotspot:
 
 ```sh
 ha network update wlan0 \
@@ -110,6 +114,12 @@ ha network update wlan0 \
 Do not configure an IPv4 gateway on `wlan0`. The app adds the phone gateway
 only to its dedicated policy table. Verify that `wlan0` does not appear as a
 main-table default route.
+
+When both hotspot credential options are set, the app applies the same static
+profile at startup using the configured `upstream_interface`,
+`upstream_address`, public DNS servers and disabled IPv6. It intentionally omits
+an IPv4 gateway from the Supervisor request. Restart the app after changing
+these options.
 
 ### 5. Configure the USB Ethernet interface
 
@@ -146,19 +156,21 @@ The defaults are examples and must match the target host.
 
 | Normal option | Purpose |
 |---|---|
-| `mode` | `disabled`, time-limited `trial`, or persistent `active` startup state |
+| `mode` | `disabled` or `active` startup state |
 | `dry_run` | Blocks every downstream mutation while preflight checks run |
 | `upstream_mode` | `hotspot_wifi` for the existing Wi-Fi path, `iphone_usb` for experimental USB tethering |
+| `hotspot_ssid` | Optional app-managed hotspot SSID for `hotspot_wifi`; leave empty with `hotspot_password` for the legacy manual profile path |
+| `hotspot_password` | Optional masked hotspot WPA passphrase; set only with `hotspot_ssid` |
 | `downstream_address` | Private gateway address and subnet used only for the router WAN transit |
 
 The optional `downstream_mac`, `upstream_interface`, `upstream_address` and
 `upstream_gateway` fields are hidden with the unused optional settings. The MAC
-selects between multiple USB Ethernet adapters. The hotspot fields override the
-standard `wlan0`, `172.20.10.4/28` and `172.20.10.1` defaults.
+selects between multiple USB Ethernet adapters. The hotspot network fields
+override the standard `wlan0`, `172.20.10.4/28` and `172.20.10.1` defaults.
 
 The transit subnet is derived from `downstream_address`. The app offers one
 five-minute DHCP lease to the router, uses public IPv4 resolvers, policy table
-201, a five-second reconciliation interval, a five-minute trial, and the fixed
+201, a five-second reconciliation interval, and the fixed
 Supervisor-local API endpoint. These are implementation details rather than
 user settings.
 
@@ -178,19 +190,16 @@ Options are read when the app starts. Restart the app after changing them.
 5. Confirm the selected upstream is ready while the gateway still remains
    disabled.
 6. Connect the USB Ethernet cable only to the intended router WAN port.
-7. Select `trial` mode.
+7. Select `active` mode.
 8. Confirm the router receives an address from the configured DHCP range.
 9. Confirm DNS and HTTPS traffic use the selected mobile upstream.
 10. Confirm Home Assistant management remains reachable.
 11. Confirm no transit traffic can use the management interface.
 
-Trial mode automatically tears down the transient downstream address, DHCP,
-forwarding, NAT and policy routing after five minutes. The host-ingress guard
-remains while the app is running. The absolute deadline is stored under
-`/data`, so an app restart does not grant additional trial time.
-
-After a successful trial, set `mode: active` in the app options and restart.
-Enable start-on-boot only after reboot recovery has also been tested.
+Set `mode: disabled` to tear down the transient downstream address, DHCP,
+forwarding, NAT and policy routing. The host-ingress guard remains while the app
+is running. Enable start-on-boot only after reboot recovery has also been
+tested.
 
 ## Failure and recovery behaviour
 
@@ -207,7 +216,8 @@ becomes unsafe, the app:
 
 The app never flushes host firewall base chains or deletes policy rules by
 priority alone. It never changes the management NetworkManager profile or the
-USB Ethernet NetworkManager profile.
+USB Ethernet NetworkManager profile. It changes the Wi-Fi profile only at
+startup when both hotspot credential options are set.
 
 On graceful stop, the same cleanup also removes the host-ingress guard before
 the container exits. The Supervisor allows 30 seconds for this teardown. If the
@@ -258,8 +268,9 @@ Adding this Apps repository does not install the integration.
 
 ## Security status
 
-The app uses `host_network: true`, `NET_ADMIN`, `NET_RAW`, `hassio_api: true`
-and `usb: true`, without `full_access`, host D-Bus or `udev`.
+The app uses `host_network: true`, `NET_ADMIN`, `NET_RAW`, `hassio_api: true`,
+`hassio_role: manager` and `usb: true`, without `full_access`, host D-Bus or
+`udev`.
 
 - `host_network` is required because the app validates and mutates the HAOS
   host firewall, routing tables and real network interfaces.
@@ -267,6 +278,9 @@ and `usb: true`, without `full_access`, host D-Bus or `udev`.
   and policy-rule ownership model.
 - `NET_RAW` remains required because `dnsmasq` and `udhcpc` own DHCP on the
   downstream and `iphone_usb` interfaces.
+- `hassio_role: manager` is required because app-managed hotspot credentials
+  use the Supervisor `/network` API. `hassio_api: true` alone can publish
+  discovery but cannot update a network interface.
 - `usb: true` remains required for the supported `iphone_usb` path because
   Home Assistant App permissions are static per app and cannot be toggled per
   `upstream_mode`.

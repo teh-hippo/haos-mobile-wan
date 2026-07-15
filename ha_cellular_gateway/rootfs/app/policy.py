@@ -5,6 +5,13 @@ import ipaddress
 from .command import RunCommand, run_json, run_json_table
 from .config import GatewayConfig
 from .errors import GatewayError
+from .policy_match import (
+    route_descriptor,
+    route_descriptor_from_args,
+    route_present,
+    rule_matches,
+    rule_present,
+)
 from .upstream_models import ResolvedUpstream, configured_upstream
 
 
@@ -124,78 +131,9 @@ class PolicyRouting:
             "table",
             str(self.config.routing_table),
         )
-        return all(
-            self._rule_present(rules, rule) for rule in self.rule_args(ownership)
-        ) and all(
-            self._route_present(routes, route) for route in self.route_args(ownership)
+        return all(rule_present(rules, rule) for rule in self.rule_args(ownership)) and all(
+            route_present(routes, route) for route in self.route_args(ownership)
         )
-
-    @staticmethod
-    def _rule_present(rules: object, expected: list[str]) -> bool:
-        if not isinstance(rules, list):
-            return False
-        return any(
-            isinstance(rule, dict) and PolicyRouting._rule_matches(rule, expected)
-            for rule in rules
-        )
-
-    @staticmethod
-    def _rule_matches(rule: dict[str, object], expected: list[str]) -> bool:
-        priority = int(expected[expected.index("pref") + 1])
-        table = expected[expected.index("lookup") + 1]
-        interface = (
-            expected[expected.index("iif") + 1]
-            if "iif" in expected
-            else None
-        )
-        source = (
-            expected[expected.index("from") + 1]
-            if "from" in expected
-            else ""
-        )
-        allowed_sources = {source}
-        if source.endswith("/32"):
-            allowed_sources.add(source.removesuffix("/32"))
-        actual_source = str(rule.get("src", ""))
-        actual_length = rule.get("srclen")
-        if actual_source not in {"", "all"} and actual_length is not None:
-            actual_source = f"{actual_source}/{actual_length}"
-        return (
-            int(rule.get("priority", -1)) == priority
-            and str(rule.get("table", rule.get("lookup", ""))) == table
-            and (
-                interface is None
-                or str(rule.get("iifname", rule.get("iif", ""))) == interface
-            )
-            and (
-                not source
-                and actual_source in {"", "all"}
-                or actual_source in allowed_sources
-            )
-        )
-
-    @staticmethod
-    def _route_present(routes: object, expected: list[str]) -> bool:
-        if not isinstance(routes, list):
-            return False
-        return any(
-            isinstance(route, dict)
-            and PolicyRouting._route_matches(route, expected)
-            for route in routes
-        )
-
-    @staticmethod
-    def _route_matches(route: dict[str, object], expected: list[str]) -> bool:
-        destination = expected[0]
-        interface = expected[expected.index("dev") + 1]
-        source = expected[expected.index("src") + 1]
-        gateway = expected[expected.index("via") + 1] if "via" in expected else ""
-        return (
-            str(route.get("dst", "default")),
-            str(route.get("dev", "")),
-            str(route.get("prefsrc", route.get("src", ""))),
-            str(route.get("gateway", "")),
-        ) == (destination, interface, source, gateway)
 
     def _rule_conflicts(
         self,
@@ -211,13 +149,13 @@ class PolicyRouting:
             priority = int(rule.get("priority", -1))
             rule_table = str(rule.get("table", rule.get("lookup", "")))
             if priority in self.RULE_PRIORITIES and not any(
-                self._rule_matches(rule, expected)
+                rule_matches(rule, expected)
                 for expected in expected_rules
             ):
                 conflicts.append(f"Policy priority {priority} is already in use")
                 continue
             if rule_table == table and not any(
-                self._rule_matches(rule, expected)
+                rule_matches(rule, expected)
                 for expected in expected_rules
             ):
                 conflicts.append(
@@ -239,24 +177,10 @@ class PolicyRouting:
             "table",
             self._value(ownership, "routing_table"),
         )
-        expected = {
-            (
-                route[0],
-                route[route.index("dev") + 1],
-                route[route.index("src") + 1],
-                route[route.index("via") + 1] if "via" in route else "",
-            )
-            for route in self.route_args(ownership)
-        }
+        expected = {route_descriptor_from_args(route) for route in self.route_args(ownership)}
         conflicts: list[str] = []
         for route in routes if isinstance(routes, list) else []:
-            descriptor = (
-                str(route.get("dst", "default")),
-                str(route.get("dev", "")),
-                str(route.get("prefsrc", route.get("src", ""))),
-                str(route.get("gateway", "")),
-            )
-            if descriptor not in expected:
+            if route_descriptor(route) not in expected:
                 conflicts.append(
                     f"Routing table {self.config.routing_table} contains an unexpected route"
                 )

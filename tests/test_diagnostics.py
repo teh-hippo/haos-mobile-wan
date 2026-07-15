@@ -26,6 +26,8 @@ async def test_diagnostics_redacts_sensitive_values(
                 "upstream_runtime_interface": "usb0",
                 "upstream_pairing_message": "ipheth driver is not active",
                 "upstream_lockdown_path": "/var/run/usbmuxd",
+                "hotspot_ssid": "Phone",
+                "hotspot_password": "supersecret",
             },
             "api": type(
                 "RuntimeApi",
@@ -51,6 +53,8 @@ async def test_diagnostics_redacts_sensitive_values(
     assert result["status"]["upstream_runtime_interface"] == "**REDACTED**"
     assert result["status"]["upstream_pairing_message"] == "**REDACTED**"
     assert result["status"]["upstream_lockdown_path"] == "**REDACTED**"
+    assert result["status"]["hotspot_ssid"] == "**REDACTED**"
+    assert result["status"]["hotspot_password"] == "**REDACTED**"
 
 
 async def test_diagnostics_preserves_structured_issues(
@@ -87,4 +91,3 @@ async def test_diagnostics_preserves_structured_issues(
     result = await async_get_config_entry_diagnostics(hass, mock_config_entry)
 
     assert result["status"]["issues"] == issues
-

@@ -18,7 +18,7 @@ from custom_components.ha_cellular_gateway.api import (
     [
         ("status", "GET", "/v1/status", None),
         ("reconcile", "POST", "/v1/reconcile", None),
-        ("set_mode", "POST", "/v1/mode", {"mode": "trial"}),
+        ("set_mode", "POST", "/v1/mode", {"mode": "active"}),
     ],
 )
 async def test_gateway_api_requests(
@@ -34,7 +34,7 @@ async def test_gateway_api_requests(
     api = GatewayApi(session, "http://gateway.local:8099/", "secret")
 
     result = await getattr(api, method_name)(
-        *(["trial"] if method_name == "set_mode" else [])
+        *(["active"] if method_name == "set_mode" else [])
     )
 
     assert result == {"ok": True}

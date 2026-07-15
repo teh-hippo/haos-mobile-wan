@@ -23,7 +23,6 @@ _UPSTREAM_STABLE_STATES: dict[str, tuple[str, str]] = {
 
 _EXACT_ERRORS: dict[str, tuple[str, str | None, str]] = {
     "Persistent ownership state is invalid": ("persistent_ownership_state_invalid", "state_invalid", "Saved gateway ownership state is invalid"),
-    "Persistent trial state is invalid": ("persistent_trial_state_invalid", "state_invalid", "Saved gateway trial state is invalid"),
     "Management interface/address baseline does not match": ("management_baseline_mismatch", "host_configuration", "The management baseline no longer matches the configured host state"),
     "Management interface is unavailable": ("management_interface_unavailable", "host_configuration", "The management interface is unavailable"),
     "Host IPv4 forwarding is not enabled": ("ipv4_forwarding_disabled", "host_configuration", "Host IPv4 forwarding is disabled"),
@@ -49,7 +48,6 @@ _EXACT_ERRORS: dict[str, tuple[str, str | None, str]] = {
     "IPv6 is active on mobile upstream": ("upstream_ipv6_active", "host_configuration", "IPv6 is active on the mobile upstream"),
     "Cannot verify upstream IPv6 state": ("upstream_ipv6_unverified", "host_configuration", "The gateway could not verify mobile upstream IPv6 state"),
     "Cannot inspect policy-routing ownership": ("policy_ownership_unavailable", "policy_configuration", "The gateway could not inspect policy-routing ownership"),
-    "Trial expired and was rolled back": ("trial_expired", None, "The gateway trial expired and was rolled back"),
     "Required udhcpc helper script is unavailable": ("upstream_udhcpc_script_unavailable", "upstream_configuration", "The required iPhone USB DHCP helper script is missing"),
     "USB device access is unavailable; enable the app usb permission": ("upstream_usb_access_unavailable", "upstream_configuration", "USB device access is unavailable; enable the app USB permission"),
 }
@@ -133,6 +131,8 @@ def _issue_from_error(error: str) -> dict[str, Any] | None:
         return _issue("policy_unexpected_route", "policy_configuration", "The gateway routing table contains an unexpected route")
     if error.startswith("Required command is unavailable: "):
         return _issue("upstream_required_command_unavailable", "upstream_configuration", "A required iPhone USB command is not installed")
+    if error.startswith("Invalid app configuration: Hotspot "):
+        return _issue("hotspot_configuration_failed", "hotspot_configuration", "The hotspot Wi-Fi profile could not be configured")
     if error.startswith(
         (
             "Cannot read app configuration:",
@@ -141,6 +141,8 @@ def _issue_from_error(error: str) -> dict[str, Any] | None:
         )
     ):
         return _issue("app_configuration_unavailable", "host_configuration", "The app could not load a safe host configuration")
+    if error.startswith("Hotspot Wi-Fi provisioning failed:"):
+        return _issue("hotspot_configuration_failed", "hotspot_configuration", "The hotspot Wi-Fi profile could not be configured")
     if error.startswith("Safety inspection failed:"):
         return _issue("safety_inspection_failed", "host_configuration", "The gateway could not complete its safety inspection")
     if error.startswith("Activation failed:"):

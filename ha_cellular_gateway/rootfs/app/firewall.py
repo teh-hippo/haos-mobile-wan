@@ -3,6 +3,7 @@ from __future__ import annotations
 from .command import RunCommand
 from .config import GatewayConfig
 from .firewall_rules import FirewallRules
+from .firewall_state import firewall_installed, host_protection_installed, jump_installed
 from .netfilter import Netfilter
 
 
@@ -35,70 +36,10 @@ class Firewall:
         downstream: str | None,
         upstream_interface: str | None = None,
     ) -> bool:
-        if not downstream or not self.host_protection_installed(downstream):
-            return False
-        upstream = upstream_interface or self.config.upstream_interface
-        if not all(
-            (
-                self.netfilter.chain_exists("iptables", self.FORWARD_CHAIN),
-                self._jump_installed(
-                    "iptables",
-                    "DOCKER-USER",
-                    self.FORWARD_CHAIN,
-                    f"{self.COMMENT_PREFIX}:jump",
-                ),
-                self.netfilter.chain_matches(
-                    "iptables",
-                    self.FORWARD_CHAIN,
-                    self._forward_rules(downstream, upstream),
-                ),
-                self.netfilter.rule_exists(
-                    "iptables",
-                    "POSTROUTING",
-                    self._nat_rule(upstream),
-                    ["-t", "nat"],
-                ),
-                all(
-                    self.netfilter.rule_exists(
-                        "iptables",
-                        "FORWARD",
-                        rule,
-                        ["-t", "mangle"],
-                    )
-                    for rule in self._mss_rules(downstream, upstream)
-                ),
-            )
-        ):
-            return False
-        if not self.netfilter.chain_exists("ip6tables", "DOCKER-USER"):
-            return True
-        return all(
-            (
-                self._ipv6_input_guard_installed(downstream),
-                self.netfilter.chain_exists("ip6tables", self.FORWARD6_CHAIN),
-                self._jump_installed(
-                    "ip6tables",
-                    "DOCKER-USER",
-                    self.FORWARD6_CHAIN,
-                    f"{self.COMMENT_PREFIX}:v6-jump",
-                ),
-                self.netfilter.chain_matches(
-                    "ip6tables",
-                    self.FORWARD6_CHAIN,
-                    self._forward6_rules(downstream),
-                ),
-            )
-        )
+        return firewall_installed(self, downstream, upstream_interface)
 
     def host_protection_installed(self, downstream: str | None) -> bool:
-        return bool(
-            downstream
-            and self._input_guard_installed(downstream)
-            and (
-                not self.netfilter.chain_exists("ip6tables", "DOCKER-USER")
-                or self._ipv6_input_guard_installed(downstream)
-            )
-        )
+        return host_protection_installed(self, downstream)
 
     def _ensure_chain_rules(
         self,
@@ -112,44 +53,6 @@ class Firewall:
         for rule in rules:
             self.netfilter.run(family, "-A", chain, *rule)
 
-    def _input_guard_installed(self, downstream: str) -> bool:
-        return all(
-            (
-                self.netfilter.chain_exists("iptables", self.INPUT_CHAIN),
-                self._jump_installed(
-                    "iptables",
-                    "INPUT",
-                    self.INPUT_CHAIN,
-                    f"{self.COMMENT_PREFIX}:local-jump",
-                    ["-i", downstream],
-                ),
-                self.netfilter.chain_matches(
-                    "iptables",
-                    self.INPUT_CHAIN,
-                    self._input_rules(),
-                ),
-            )
-        )
-
-    def _ipv6_input_guard_installed(self, downstream: str) -> bool:
-        return all(
-            (
-                self.netfilter.chain_exists("ip6tables", self.INPUT6_CHAIN),
-                self._jump_installed(
-                    "ip6tables",
-                    "INPUT",
-                    self.INPUT6_CHAIN,
-                    f"{self.COMMENT_PREFIX}:v6-local-jump",
-                    ["-i", downstream],
-                ),
-                self.netfilter.chain_matches(
-                    "ip6tables",
-                    self.INPUT6_CHAIN,
-                    self._input6_rules(),
-                ),
-            )
-        )
-
     def _jump_installed(
         self,
         family: str,
@@ -158,11 +61,7 @@ class Firewall:
         comment: str,
         match: list[str] | None = None,
     ) -> bool:
-        return self.netfilter.rule_is_first_unique(
-            family,
-            parent,
-            self.netfilter.jump_rule(child, comment, match),
-        )
+        return jump_installed(self, family, parent, child, comment, match)
 
     def apply(self, downstream: str, upstream_interface: str | None = None) -> None:
         upstream = upstream_interface or self.config.upstream_interface

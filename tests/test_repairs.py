@@ -19,6 +19,11 @@ def test_active_repair_keys_stable_repairable() -> None:
     assert active_repair_keys(issues) == {"host_configuration"}  # type: ignore[arg-type]
 
 
+def test_active_repair_keys_hotspot_configuration() -> None:
+    issues = [{"id": "x", "translation_key": "hotspot_configuration", "repairable": True, "transient": False, "message": "m"}]
+    assert active_repair_keys(issues) == {"hotspot_configuration"}  # type: ignore[arg-type]
+
+
 def test_active_repair_keys_transient_ignored() -> None:
     issues = [{"id": "x", "translation_key": "host_configuration", "repairable": True, "transient": True, "message": "m"}]
     assert active_repair_keys(issues) == set()  # type: ignore[arg-type]

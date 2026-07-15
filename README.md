@@ -12,13 +12,14 @@ The app is intentionally safe by default:
 - no forwarding, NAT, DHCP or downstream-address activation without passing
   safety checks;
 - automatic management-network and single USB Ethernet discovery;
-- exact transient downstream-address ownership with rollback cleanup;
+- exact transient downstream-address ownership with fail-closed cleanup;
 - no `full_access` capability.
 
 ## Architecture
 
 - `end0`: unchanged Home Assistant management network;
-- `wlan0`: default iPhone hotspot upstream, with no main-table default route;
+- `wlan0`: default iPhone hotspot upstream, with no main-table default route,
+  configured manually or from masked app options;
 - `ipheth`: optional experimental iPhone USB-tethering upstream, paired and
   DHCP-managed by the app without using the management Ethernet;
 - USB Ethernet NIC: isolated downstream to a router WAN port;
@@ -124,7 +125,6 @@ gateway state.
 | Downstream interface present | `binary_sensor` | `on` when the configured downstream adapter is present |
 | Gateway rules applied | `binary_sensor` | `on` when the managed firewall and policy rules are installed |
 | DHCP server running | `binary_sensor` | `on` when the downstream DHCP service is running |
-| Rollback armed | `binary_sensor` | `on` while a trial rollback deadline is armed |
 | Safety checks | `binary_sensor` | `on` when all gateway safety checks pass; `errors` lists current failures |
 | Mode | `sensor` | Current effective gateway mode reported by the app |
 | Desired mode | `sensor` | Requested mode before or during reconciliation |
@@ -138,7 +138,7 @@ gateway state.
 
 | Control | Platform | Behaviour |
 |---|---|---|
-| Mode | `select` | Safe runtime control limited to `disabled` and `trial` |
+| Mode | `select` | Runtime control for `disabled` and `active` |
 | Reapply gateway state | `button` | Triggers an immediate reconcile against the current app settings |
 
 ### Function reference
@@ -167,8 +167,7 @@ gateway state.
 
 - keep a gateway health summary visible on the main Home Assistant dashboard;
 - alert when the mobile upstream drops or when safety checks fail closed;
-- confirm that a trial window is still armed before testing a new WAN path;
-- expose a guarded **trial** toggle and manual reconcile button without opening
+- expose a direct **active** / **disabled** toggle and manual reconcile button without opening
   an SSH shell on the HAOS host.
 
 ### Automation examples
@@ -229,7 +228,7 @@ automation:
 |---|---|---|
 | Home Assistant OS host running the HAOS Mobile WAN app | Supported | Required for the integration to discover or reach the local API |
 | Management Ethernet preserved as the main LAN uplink | Supported | The gateway app discovers and validates the sole main default route and its IPv4 address |
-| Wi-Fi hotspot upstream on `wlan0` | Supported | This is the default validated upstream path |
+| Wi-Fi hotspot upstream on `wlan0` | Supported | This is the default validated upstream path. Credentials can stay in an external HAOS profile or be applied from masked app options at startup |
 | USB Ethernet downstream NIC connected to a router WAN port | Supported | A single adapter is selected automatically; its host profile must have IPv4 and IPv6 disabled |
 | iPhone USB tethering via dynamic `ipheth` | Experimental support | Supported by the app and surfaced by the integration, but still experimental on stock HAOS 18.1 |
 
@@ -249,9 +248,6 @@ automation:
   Assistant Core integration;
 - the integration is a companion UI and API layer and does not replace the
   [commissioning guide](ha_cellular_gateway/DOCS.md);
-- the **Mode** select intentionally exposes only `disabled` and `trial`, not
-  `active`, to keep the high-risk steady-state transition outside this optional
-  control surface;
 - manual configuration requires access to the gateway API token;
 - current self-assessment is tracked in
   [`custom_components/ha_cellular_gateway/quality_scale.yaml`](custom_components/ha_cellular_gateway/quality_scale.yaml);
@@ -294,8 +290,9 @@ automation:
 
 ## Security status
 
-The app uses `host_network: true`, `NET_ADMIN`, `NET_RAW`, `hassio_api: true`
-and `usb: true`, without `full_access`, host D-Bus or `udev`.
+The app uses `host_network: true`, `NET_ADMIN`, `NET_RAW`, `hassio_api: true`,
+`hassio_role: manager` and `usb: true`, without `full_access`, host D-Bus or
+`udev`.
 
 - `host_network` is required because the app validates and mutates the HAOS
   host firewall, routing tables and real network interfaces.
@@ -303,6 +300,9 @@ and `usb: true`, without `full_access`, host D-Bus or `udev`.
   and policy-rule ownership model and its exact transient downstream address.
 - `NET_RAW` remains required because `dnsmasq` and `udhcpc` own DHCP on the
   downstream and `iphone_usb` interfaces.
+- `hassio_role: manager` is required because app-managed hotspot credentials
+  use the Supervisor `/network` API. `hassio_api: true` alone can publish
+  discovery but cannot update a network interface.
 - `usb: true` remains required for the supported `iphone_usb` path because Home
   Assistant App permissions are static per app and cannot be toggled per
   `upstream_mode`.
@@ -393,6 +393,7 @@ assert app["version"] == integration["version"]
 assert app["arch"] == ["aarch64"]
 assert app["host_network"] is True
 assert app["hassio_api"] is True
+assert app["hassio_role"] == "manager"
 assert app["usb"] is True
 assert app["apparmor"] is True
 assert app["privileged"] == ["NET_ADMIN", "NET_RAW"]
@@ -413,9 +414,14 @@ assert strings == runtime_translations
 assert Path("ha_cellular_gateway/DOCS.md").exists()
 assert Path("ha_cellular_gateway/translations/en.yaml").exists()
 
-for path in Path("ha_cellular_gateway/rootfs/app").glob("*.py"):
-    line_count = len(path.read_text(encoding="utf-8").splitlines())
-    assert line_count <= 300, f"{path} has {line_count} lines"
+roots = (
+    Path("ha_cellular_gateway/rootfs/app"),
+    Path("custom_components/ha_cellular_gateway"),
+)
+for root in roots:
+    for path in root.glob("*.py"):
+        line_count = len(path.read_text(encoding="utf-8").splitlines())
+        assert line_count <= 250, f"{path} has {line_count} lines"
 
 dockerfile = Path("ha_cellular_gateway/Dockerfile").read_text(encoding="utf-8")
 assert "ARG BUILD_FROM" not in dockerfile

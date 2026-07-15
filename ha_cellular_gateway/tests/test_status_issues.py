@@ -224,6 +224,19 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertEqual(issue["translation_key"], "upstream_configuration")
         self.assertTrue(issue["repairable"])
 
+    def test_hotspot_configuration_failure_is_repairable(self) -> None:
+        for error in (
+            "Hotspot Wi-Fi provisioning failed: Supervisor token is unavailable",
+            "Invalid app configuration: Hotspot password must be 8 to 63 characters",
+        ):
+            with self.subTest(error=error):
+                result = build_status_issues([error], None, {})
+                self.assertEqual(len(result), 1)
+                issue = result[0]
+                self.assertEqual(issue["id"], "hotspot_configuration_failed")
+                self.assertEqual(issue["translation_key"], "hotspot_configuration")
+                self.assertTrue(issue["repairable"])
+
     def test_waiting_for_trust_is_transient(self) -> None:
         result = build_status_issues(
             [],

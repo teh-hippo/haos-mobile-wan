@@ -21,7 +21,7 @@ async def test_binary_sensor_setup_and_state(runtime_coordinator) -> None:
 
     await binary_sensor.async_setup_entry(None, entry_obj, created.extend)
 
-    assert len(created) == 6
+    assert len(created) == 5
     assert created[0].is_on is True
     assert created[-1].is_on is True
     assert created[-1].extra_state_attributes == {"errors": []}
@@ -71,10 +71,10 @@ async def test_select_setup_and_action(runtime_coordinator) -> None:
 
     await select.async_setup_entry(None, entry_obj, created.extend)
 
-    assert created[0].current_option is None
-    assert created[0].options == ["disabled", "trial"]
-    await created[0].async_select_option("trial")
-    runtime_coordinator.api.set_mode.assert_awaited_once_with("trial")
+    assert created[0].current_option == "active"
+    assert created[0].options == ["disabled", "active"]
+    await created[0].async_select_option("active")
+    runtime_coordinator.api.set_mode.assert_awaited_once_with("active")
 
 
 async def test_select_current_option_when_mode_is_valid(runtime_coordinator) -> None:
@@ -87,7 +87,7 @@ async def test_select_raises_for_unsupported_mode(runtime_coordinator) -> None:
     gateway_select = select.GatewayModeSelect(runtime_coordinator, "entry-1")
 
     with pytest.raises(ValueError, match="Unsupported mode"):
-        await gateway_select.async_select_option("active")
+        await gateway_select.async_select_option("standby")
 
 
 async def test_sensor_setup_and_values(runtime_coordinator) -> None:
@@ -123,7 +123,7 @@ async def test_entity_description_metadata(runtime_coordinator) -> None:
     sensor_desc_by_key = {d.key: d for d in sensor.DESCRIPTIONS}
 
     assert sensor_desc_by_key["mode"].translation_key == "mode"
-    assert sensor_desc_by_key["mode"].options == ["disabled", "trial", "active"]
+    assert sensor_desc_by_key["mode"].options == ["disabled", "active"]
     assert sensor_desc_by_key["upstream_mode"].options == ["hotspot_wifi", "iphone_usb"]
     assert sensor_desc_by_key["upstream_pairing_state"].options == [
         "not_applicable",
@@ -195,7 +195,7 @@ async def test_select_raises_translated_api_error(runtime_coordinator) -> None:
     gateway_select = select.GatewayModeSelect(runtime_coordinator, "entry-1")
 
     with pytest.raises(HomeAssistantError) as exc_info:
-        await gateway_select.async_select_option("trial")
+        await gateway_select.async_select_option("active")
 
     assert exc_info.value.translation_domain == "ha_cellular_gateway"
     assert exc_info.value.translation_key == "api_error"
@@ -223,4 +223,3 @@ async def test_button_press_raises_translated_connection_error(runtime_coordinat
     assert exc_info.value.translation_domain == "ha_cellular_gateway"
     assert exc_info.value.translation_key == "cannot_connect"
     runtime_coordinator.async_request_refresh.assert_not_awaited()
-

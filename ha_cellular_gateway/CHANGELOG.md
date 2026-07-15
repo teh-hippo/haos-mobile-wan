@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.18
+
+- Add optional masked hotspot credentials and apply the Wi-Fi profile through
+  Supervisor at app startup.
+- Limit app modes to direct disabled and active control.
+- Split the app bootstrap, discovery, interface, firewall, policy and upstream
+  helpers into smaller modules.
+
 ## 0.3.17
 
 - Install the iPhone command-line tools required for USB pairing and fail the

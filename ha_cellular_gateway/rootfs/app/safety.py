@@ -9,7 +9,7 @@ from .command import RunCommand, run_json
 from .config import GatewayConfig
 from .errors import GatewayError
 from .firewall import Firewall
-from .interfaces import DownstreamInterface
+from .downstream import DownstreamInterface
 from .policy import PolicyRouting
 from .upstream_models import ResolvedUpstream
 

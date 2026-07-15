@@ -24,7 +24,7 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 def status_payload() -> dict[str, object]:
     return {
         "mode": "active",
-        "desired_mode": "trial",
+        "desired_mode": "active",
         "upstream_mode": "hotspot_wifi",
         "upstream_pairing_state": "paired",
         "downstream_interface": "eth1",
@@ -34,7 +34,6 @@ def status_payload() -> dict[str, object]:
         "downstream_present": True,
         "rules_installed": True,
         "dnsmasq_running": True,
-        "rollback_armed": False,
         "safety_errors": [],
     }
 

@@ -24,17 +24,10 @@ class StateStore:
         self,
         *,
         owned: dict[str, object] | None,
-        trial_started_at: float | None,
-        trial_deadline: float | None,
     ) -> None:
         payload: dict[str, object] = {}
         if owned:
             payload["owned"] = owned
-        if trial_started_at is not None and trial_deadline is not None:
-            payload["trial"] = {
-                "started_at": trial_started_at,
-                "deadline": trial_deadline,
-            }
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if not payload:

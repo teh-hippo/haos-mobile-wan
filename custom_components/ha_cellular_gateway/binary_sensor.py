@@ -59,14 +59,6 @@ DESCRIPTIONS = (
         icon="mdi:server-network",
         value_fn=lambda data: data["dnsmasq_running"],
     ),
-    GatewayBinarySensorEntityDescription(
-        key="rollback_armed",
-        translation_key="rollback_armed",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        icon="mdi:timer-alert-outline",
-        value_fn=lambda data: data["rollback_armed"],
-    ),
 )
 
 
@@ -119,4 +111,3 @@ class GatewaySafetySensor(GatewayEntity, BinarySensorEntity):
     @property
     def icon(self) -> str:
         return "mdi:shield-check" if self.is_on else "mdi:shield-alert"
-

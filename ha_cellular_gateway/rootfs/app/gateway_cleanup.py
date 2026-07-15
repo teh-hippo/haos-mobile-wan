@@ -27,7 +27,6 @@ def cleanup(
     engine: GatewayEngine,
     *,
     preserve_desired: bool = False,
-    preserve_trial_deadline: bool = False,
     preserve_host_protection: bool = False,
     force: bool = False,
 ) -> None:
@@ -38,9 +37,6 @@ def cleanup(
                 engine.applied = False
                 if not preserve_desired:
                     engine.desired_mode = "disabled"
-                if not preserve_trial_deadline:
-                    engine.trial_started_at = None
-                    engine.trial_deadline = None
                 engine._persist_state()
                 return
             owned_state = engine.owned_state
@@ -108,9 +104,6 @@ def cleanup(
             engine.applied = False
             if not preserve_desired:
                 engine.desired_mode = "disabled"
-            if not preserve_trial_deadline:
-                engine.trial_started_at = None
-                engine.trial_deadline = None
             engine._persist_state()
         if errors:
             raise GatewayError("Cleanup failed: " + "; ".join(errors))

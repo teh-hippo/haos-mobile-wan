@@ -30,7 +30,7 @@ class GatewayModeSelect(GatewayEntity, SelectEntity):
     _attr_translation_key = "mode_control"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_icon = "mdi:wan"
-    _attr_options = ["disabled", "trial"]
+    _attr_options = ["disabled", "active"]
 
     def __init__(self, coordinator: GatewayCoordinator, entry_id: str) -> None:
         super().__init__(coordinator, entry_id, "mode_control")
@@ -39,7 +39,7 @@ class GatewayModeSelect(GatewayEntity, SelectEntity):
     def current_option(self) -> GatewaySelectableMode | None:
         mode = self.coordinator.data["mode"]
         if mode in self.options:
-            return cast(GatewaySelectableMode, mode)
+            return mode
         return None
 
     async def async_select_option(self, option: str) -> None:

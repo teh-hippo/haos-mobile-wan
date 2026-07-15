@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.5
+
+- Allow AppArmor to traverse the gateway package directory.
+
 ## 0.3.4
 
 - Set the Python package search path explicitly for the gateway runtime.

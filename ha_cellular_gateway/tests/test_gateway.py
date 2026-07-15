@@ -201,6 +201,10 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_activation_failure_is_cleaned_and_retried(self) -> None:
         engine = self._prepare_active_engine()
+        engine.apply("active")
+        self.assertTrue(
+            engine.firewall.host_protection_installed("enx001122334455")
+        )
 
         def fail_firewall(downstream: str, upstream_interface: str | None = None) -> None:
             raise OSError("firewall unavailable")
@@ -210,11 +214,32 @@ class GatewayEngineTests(unittest.TestCase):
             engine.apply("active")
         self.assertEqual(engine.mode, "disabled")
         self.assertEqual(engine.desired_mode, "active")
+        self.assertTrue(
+            engine.firewall.host_protection_installed("enx001122334455")
+        )
 
         engine.firewall.apply = lambda downstream, upstream_interface=None: None
         engine.startup_cleanup_pending = False
         engine.reconcile()
         self.assertEqual(engine.mode, "active")
+
+    def test_apply_safety_failure_preserves_host_protection(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply("active")
+        self.assertTrue(
+            engine.firewall.host_protection_installed("enx001122334455")
+        )
+
+        engine.safety.errors = lambda *args, **kwargs: ["Upstream unavailable"]
+
+        with self.assertRaisesRegex(SafetyError, "Upstream unavailable"):
+            engine.apply("active")
+
+        self.assertEqual(engine.mode, "disabled")
+        self.assertEqual(engine.desired_mode, "active")
+        self.assertTrue(
+            engine.firewall.host_protection_installed("enx001122334455")
+        )
 
     def test_active_mode_reapplies_when_policy_state_is_missing(self) -> None:
         engine = self._prepare_active_engine()

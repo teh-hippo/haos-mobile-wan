@@ -117,6 +117,7 @@ def apply(
                 engine,
                 preserve_desired=True,
                 preserve_trial_deadline=recovering or mode == "trial",
+                preserve_host_protection=True,
             )
             message = "; ".join(errors)
             with engine.lock:
@@ -129,6 +130,7 @@ def apply(
             engine,
             preserve_desired=True,
             preserve_trial_deadline=mode == "trial",
+            preserve_host_protection=True,
         )
         with engine.lock:
             engine.owned_state = engine.policy.ownership(downstream, upstream)
@@ -142,6 +144,7 @@ def apply(
                 engine,
                 preserve_desired=True,
                 preserve_trial_deadline=mode == "trial",
+                preserve_host_protection=True,
             )
             message = f"Activation failed: {err}"
             with engine.lock:

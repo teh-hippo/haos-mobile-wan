@@ -1,5 +1,5 @@
 name: HAOS Mobile WAN
-version: "0.3.3"
+version: "0.3.4"
 slug: ha_cellular_gateway
 description: Redundant mobile WAN gateway engine for Home Assistant OS
 url: https://github.com/teh-hippo/haos-mobile-wan

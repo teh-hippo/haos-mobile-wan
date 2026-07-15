@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.4
+
+- Set the Python package search path explicitly for the gateway runtime.
+
 ## 0.3.3
 
 - Start from the image root so Python can import the gateway package.

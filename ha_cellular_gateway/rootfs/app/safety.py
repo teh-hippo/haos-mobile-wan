@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -57,6 +58,12 @@ class SafetyInspector:
     def _ip_forward(self) -> int:
         return int(
             self.read_text(Path("/proc/sys/net/ipv4/ip_forward")).strip()
+        )
+
+    def _has_non_link_local_ipv6(self, interface: str) -> bool:
+        return any(
+            not ipaddress.ip_interface(address).ip.is_link_local
+            for address in self.interface_addresses(interface, family=6)
         )
 
     def errors(
@@ -162,10 +169,7 @@ class SafetyInspector:
                 errors.append("Cannot inspect policy-routing ownership")
 
         try:
-            if self.interface_addresses(
-                upstream_interface,
-                family=6,
-            ):
+            if self._has_non_link_local_ipv6(upstream_interface):
                 errors.append("IPv6 is active on mobile upstream")
         except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
             errors.append("Cannot verify upstream IPv6 state")
@@ -199,7 +203,7 @@ class SafetyInspector:
         except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
             errors.append("Downstream interface is unavailable")
         try:
-            if self.interface_addresses(downstream, family=6):
+            if self._has_non_link_local_ipv6(downstream):
                 errors.append("IPv6 is active on downstream NIC")
         except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
             errors.append("Cannot verify downstream IPv6 state")

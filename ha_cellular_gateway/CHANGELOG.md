@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.12
+
+- Allow unavoidable IPv6 link-local addresses while rejecting routed IPv6.
+
 ## 0.3.11
 
 - Treat an unused Linux policy table as empty during preflight inspection.

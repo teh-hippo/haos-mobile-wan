@@ -4,16 +4,20 @@ from __future__ import annotations
 import json
 import os
 import signal
+import sys
 import threading
 import urllib.error
 import urllib.request
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
-from .command import CommandRunner
-from .config import GatewayConfig
-from .errors import GatewayError
-from .gateway import GatewayEngine, load_or_create_token
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from app.command import CommandRunner
+from app.config import GatewayConfig
+from app.errors import GatewayError
+from app.gateway import GatewayEngine, load_or_create_token
 
 
 class GatewayHandler(BaseHTTPRequestHandler):

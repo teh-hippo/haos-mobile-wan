@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.6
+
+- Execute the gateway script directly without package discovery at startup.
+
 ## 0.3.5
 
 - Allow AppArmor to traverse the gateway package directory.

@@ -30,5 +30,5 @@ RUN mkdir -p /data /var/lib \
     /app/main.py \
     /app/udhcpc.script
 
-ENTRYPOINT ["/usr/bin/python3", "-m", "app.main"]
+ENTRYPOINT ["/usr/bin/python3", "/app/main.py"]
 CMD []

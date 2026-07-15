@@ -4,6 +4,7 @@ profile ha_cellular_gateway flags=(attach_disconnected,mediate_deleted) {
   #include <abstractions/base>
 
   capability net_admin,
+  capability net_bind_service,
   capability net_raw,
   network,
 

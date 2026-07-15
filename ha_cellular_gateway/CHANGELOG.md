@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.14
+
+- Allow dnsmasq to bind its DHCP service port under AppArmor.
+
 ## 0.3.13
 
 - Allow creation of the gateway runtime directory under AppArmor.

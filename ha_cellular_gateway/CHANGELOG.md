@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.19
+
+- Allow the iPhone USB preflight to enumerate the exact USB sysfs directory
+  under AppArmor.
+
 ## 0.3.18
 
 - Add optional masked hotspot credentials and apply the Wi-Fi profile through

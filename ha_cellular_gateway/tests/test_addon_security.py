@@ -71,6 +71,7 @@ class AddonSecurityTests(unittest.TestCase):
             "/dev/bus/usb/** rw,",
             "/sys/class/net/** r,",
             "/sys/devices/** r,",
+            "/sys/bus/usb/devices/ r,",
             "/sys/bus/usb/devices/** r,",
             "/sys/bus/usb/drivers/ipheth/** r,",
             "/sys/module/ipheth/** r,",

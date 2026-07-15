@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.11
+
+- Treat an unused Linux policy table as empty during preflight inspection.
+
 ## 0.3.10
 
 - Allow the final resolver configuration file reported by AppArmor.

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 
-from .command import RunCommand, run_json
+from .command import RunCommand, run_json, run_json_table
 from .config import GatewayConfig
 from .errors import GatewayError
 from .upstream_models import ResolvedUpstream, configured_upstream
@@ -114,7 +114,7 @@ class PolicyRouting:
             return False
         ownership = self.ownership(downstream, upstream)
         rules = run_json(self.run, "ip", "-j", "rule", "show")
-        routes = run_json(
+        routes = run_json_table(
             self.run,
             "ip",
             "-4",
@@ -229,7 +229,7 @@ class PolicyRouting:
         self,
         ownership: dict[str, object],
     ) -> list[str]:
-        routes = run_json(
+        routes = run_json_table(
             self.run,
             "ip",
             "-4",

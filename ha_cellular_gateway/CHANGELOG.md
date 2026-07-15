@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.17
+
+- Install the iPhone command-line tools required for USB pairing and fail the
+  image build if either pairing executable is missing.
+
 ## 0.3.16
 
 - Mark the live-commissioned 0.3 baseline as the current release for continued

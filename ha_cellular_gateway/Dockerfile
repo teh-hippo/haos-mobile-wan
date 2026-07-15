@@ -16,9 +16,11 @@ RUN apk add --no-cache \
     dnsmasq \
     iproute2 \
     iptables \
-    libimobiledevice \
+    libimobiledevice-progs \
     python3 \
-    usbmuxd
+    usbmuxd \
+    && command -v idevice_id >/dev/null \
+    && command -v idevicepair >/dev/null
 
 COPY rootfs /
 

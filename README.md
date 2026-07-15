@@ -207,7 +207,8 @@ automation:
 
 ### Limitations
 
-- iPhone USB requires Personal Hotspot, an unlocked phone and accepted trust;
+- iPhone USB requires **Allow Others to Join** under Personal Hotspot, an
+  unlocked phone and accepted trust;
 - automatic failover reacts to source readiness, not Internet health;
 - only IPv4 gateway service is supported;
 - the optional integration is custom and distributed through HACS;
@@ -233,7 +234,7 @@ interface names and iPhone identifiers.
 | Problem | Check |
 |---|---|
 | The gateway remains inactive while Enabled is on | Review **Safety checks** and **Last error** |
-| USB is not selected | Unlock the iPhone, enable Personal Hotspot, accept Trust and check `ipheth` |
+| USB is not selected | Unlock the iPhone, enable **Allow Others to Join** under Personal Hotspot, accept Trust and check `ipheth` |
 | Wi-Fi fallback is unavailable | Check the Wi-Fi hotspot profile and app credentials, then restart the app |
 | The router receives no WAN lease | Confirm the router-facing USB adapter has HAOS IPv4 and IPv6 disabled |
 | More than one USB Ethernet adapter is attached | Set the optional router adapter MAC address |

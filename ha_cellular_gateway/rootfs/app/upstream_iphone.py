@@ -15,6 +15,7 @@ from .upstream_iphone_resolver import (
 )
 from .upstream_iphone_cleanup import discard_owned_lease
 from .upstream_iphone_runtime import IPhoneUsbRuntime
+from .upstream_lease import lease_lock
 from .upstream_models import ResolvedUpstream
 
 
@@ -81,7 +82,10 @@ class IPhoneUsbUpstream:
         apple_present = self.runtime.apple_usb_present()
         interface = self.runtime.ipheth_interface()
         self.interface = interface
-        if self._set_ownership_conflict(interface):
+        with lease_lock(self.runtime.lease_lock_path):
+            ownership_conflict = self._has_ownership_conflict(interface)
+        if ownership_conflict:
+            self._mark_ownership_conflict()
             return None, [self.HOST_CONFLICT_MESSAGE]
 
         try:
@@ -130,7 +134,9 @@ class IPhoneUsbUpstream:
             return None, [message]
 
         self.runtime.ensure_dhcp(interface)
-        lease = self._resolved_interface(interface)
+        with lease_lock(self.runtime.lease_lock_path):
+            lease = self._resolved_interface(interface)
+            dhcp_error = self.runtime.dhcp_error()
         if lease.error:
             message = lease.error
             if lease.owner == "app":
@@ -152,6 +158,10 @@ class IPhoneUsbUpstream:
         if lease.owner == "external":
             self._mark_ownership_conflict()
             return None, [self.HOST_CONFLICT_MESSAGE]
+        if dhcp_error:
+            self.pairing_state = "dhcp_failed"
+            self.pairing_message = dhcp_error
+            return None, [dhcp_error]
         if lease.upstream is None:
             self.pairing_state = "waiting_for_dhcp"
             self.pairing_message = (
@@ -163,9 +173,13 @@ class IPhoneUsbUpstream:
         return lease.upstream, []
 
     def fallback_allowed(self) -> bool:
-        if self._set_ownership_conflict(
-            self.runtime.ipheth_interface()
-        ):
+        interface = self.runtime.ipheth_interface()
+        if interface is None:
+            return self.fallback_safe
+        with lease_lock(self.runtime.lease_lock_path):
+            ownership_conflict = self._has_ownership_conflict(interface)
+        if ownership_conflict:
+            self._mark_ownership_conflict()
             return False
         return self.fallback_safe
 
@@ -180,15 +194,12 @@ class IPhoneUsbUpstream:
         )
         self.lease_owner = None
 
-    def _set_ownership_conflict(self, interface: str | None) -> bool:
-        if not interface or not host_managed_conflict(
+    def _has_ownership_conflict(self, interface: str | None) -> bool:
+        return bool(interface) and host_managed_conflict(
             self.run,
             self.runtime.lease_path,
-            interface,
-        ):
-            return False
-        self._mark_ownership_conflict()
-        return True
+            str(interface),
+        )
 
     def _mark_ownership_conflict(self) -> None:
         self.runtime.stop_dhcp()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -9,6 +10,7 @@ from pathlib import Path
 
 from .command import RunCommand, stop_process
 from .errors import GatewayError
+from .upstream_lease import lease_lock
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,8 @@ class IPhoneUsbRuntime:
         self.which = which or shutil.which
         self.usbmuxd_pid = run_dir / "usbmuxd.pid"
         self.usbmuxd_log = run_dir / "usbmuxd.log"
+        self.dhcp_error_path = run_dir / "iphone-usb-dhcp-error"
+        self.lease_lock_path = run_dir / "iphone-usb.lock"
         self.lease_path = run_dir / "iphone-usb-lease.json"
         self.usbmuxd_process: subprocess.Popen[str] | None = None
         self.udhcpc_process: subprocess.Popen[str] | None = None
@@ -110,6 +114,9 @@ class IPhoneUsbRuntime:
             return
         self.stop_dhcp()
         self.run_dir.mkdir(parents=True, exist_ok=True)
+        with lease_lock(self.lease_lock_path, exclusive=True):
+            self.dhcp_error_path.unlink(missing_ok=True)
+        environment = {**os.environ, "CELLGW_RUN_DIR": str(self.run_dir)}
         self.udhcpc_process = self.popen(
             [
                 "udhcpc",
@@ -122,6 +129,7 @@ class IPhoneUsbRuntime:
             text=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            env=environment,
         )
         self.udhcpc_interface = interface
 
@@ -129,6 +137,13 @@ class IPhoneUsbRuntime:
         stop_process(self.udhcpc_process)
         self.udhcpc_process = None
         self.udhcpc_interface = None
+
+    def dhcp_error(self) -> str | None:
+        try:
+            error = self.dhcp_error_path.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            return None
+        return error or None
 
     def connected_udids(self) -> list[str]:
         result = self.run("idevice_id", "--list", check=False)

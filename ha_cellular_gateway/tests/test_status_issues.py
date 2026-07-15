@@ -79,6 +79,20 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertTrue(issue["repairable"])
         self.assertFalse(issue["transient"])
 
+    def test_dhcp_failure_produces_repairable_issue(self) -> None:
+        result = build_status_issues(
+            [],
+            None,
+            {"upstream_pairing_state": "dhcp_failed"},
+        )
+
+        self.assertEqual(result[0]["id"], "upstream_dhcp_failed")
+        self.assertEqual(
+            result[0]["translation_key"],
+            "upstream_configuration",
+        )
+        self.assertTrue(result[0]["repairable"])
+
     def test_safety_checks_not_run_sentinel_is_suppressed(self) -> None:
         result = build_status_issues(
             ["Safety checks have not run yet"], None, {}

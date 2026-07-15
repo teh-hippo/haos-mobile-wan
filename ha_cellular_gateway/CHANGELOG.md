@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.2
+
+- Serialise iPhone DHCP address changes with lease ownership checks so the app
+  cannot mistake its own lease for host-managed state.
+- Remove only the exact app-owned USB address during DHCP renewal and cleanup.
+- Treat an `ipheth` interface disappearing during inspection as a normal
+  hot-plug transition.
+
 ## 0.4.1
 
 - Keep a failed iPhone pairing request open long enough to accept the Trust

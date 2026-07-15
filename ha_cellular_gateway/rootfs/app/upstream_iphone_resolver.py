@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import subprocess
 from dataclasses import dataclass
 
 from .command import RunCommand, run_json
@@ -94,16 +96,7 @@ def owned_interface(lease_path, runtime_interface: str | None, current: str | No
 
 def external_lease(run: RunCommand, interface: str) -> DynamicLease:
     return inspect_external_lease(
-        run_json(
-            run,
-            "ip",
-            "-4",
-            "-j",
-            "address",
-            "show",
-            "dev",
-            interface,
-        ),
+        _interface_addresses(run, interface),
         run_json(
             run,
             "ip",
@@ -116,6 +109,30 @@ def external_lease(run: RunCommand, interface: str) -> DynamicLease:
             "default",
         ),
         interface,
+    )
+
+
+def _interface_addresses(run: RunCommand, interface: str) -> object:
+    args = (
+        "ip",
+        "-4",
+        "-j",
+        "address",
+        "show",
+        "dev",
+        interface,
+    )
+    result = run(*args, check=False)
+    if result.returncode == 0:
+        return json.loads(result.stdout or "[]")
+    detail = f"{result.stdout}\n{result.stderr}".lower()
+    if "does not exist" in detail or "cannot find device" in detail:
+        return []
+    raise subprocess.CalledProcessError(
+        result.returncode,
+        args,
+        output=result.stdout,
+        stderr=result.stderr,
     )
 
 

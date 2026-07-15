@@ -15,6 +15,7 @@ _UPSTREAM_TRANSIENT_STATES = {
 
 _UPSTREAM_STABLE_STATES: dict[str, tuple[str, str]] = {
     "daemon_failed": ("upstream_daemon_failed", "The iPhone USB pairing helper failed to start"),
+    "dhcp_failed": ("upstream_dhcp_failed", "The iPhone USB DHCP client failed"),
     "ownership_conflict": ("upstream_ownership_conflict", "The iPhone USB upstream is already managed by the host"),
     "invalid_lease": ("upstream_invalid_lease", "The iPhone USB upstream lease is invalid"),
     "pairing_failed": ("upstream_pairing_failed", "iPhone USB pairing failed"),

@@ -1,3 +1,4 @@
+import fcntl
 import json
 import shutil
 import subprocess
@@ -10,7 +11,10 @@ from helpers import FakeProcess, FakeRunner, Result, make_config
 from rootfs.app.const import IPHONE_USB
 from rootfs.app.errors import GatewayError
 from rootfs.app.upstream_iphone import IPhoneUsbUpstream
-from rootfs.app.upstream_iphone_resolver import LeaseResolution
+from rootfs.app.upstream_iphone_resolver import (
+    LeaseResolution,
+    external_lease,
+)
 from rootfs.app.upstream_models import ResolvedUpstream
 
 
@@ -171,6 +175,33 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
             )
         )
 
+    def test_interface_disappearance_is_treated_as_no_lease(self) -> None:
+        runner = FakeRunner()
+
+        def run(*args, **kwargs):
+            if args[:4] == ("ip", "-4", "-j", "address"):
+                return Result(
+                    returncode=1,
+                    stderr='Device "eth0" does not exist.\n',
+                )
+            return runner.run(list(args), **kwargs)
+
+        lease = external_lease(run, "eth0")
+
+        self.assertEqual(lease.addresses, ())
+        self.assertFalse(lease.has_default_route)
+
+    def test_interface_inspection_failure_is_not_hidden(self) -> None:
+        runner = FakeRunner()
+
+        def run(*args, **kwargs):
+            if args[:4] == ("ip", "-4", "-j", "address"):
+                return Result(returncode=2, stderr="permission denied\n")
+            return runner.run(list(args), **kwargs)
+
+        with self.assertRaises(subprocess.CalledProcessError):
+            external_lease(run, "eth0")
+
     def test_rejects_host_managed_conflict_when_mutating(self) -> None:
         runner = FakeRunner()
         runner.idevice_udids = ["iphone-udid"]
@@ -194,6 +225,32 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
             ],
         )
         self.assertFalse(manager.fallback_safe)
+
+    def test_ownership_conflict_stops_dhcp_after_lock_release(self) -> None:
+        runner = FakeRunner()
+        runner.interface_addresses["eth0"] = ("172.20.10.2", 28)
+        self._add_ipheth_interface()
+        self._add_apple_usb_device()
+        manager = self._manager(runner)
+        lock_was_released = False
+
+        def stop_dhcp() -> None:
+            nonlocal lock_was_released
+            with manager.runtime.lease_lock_path.open(
+                "a+",
+                encoding="utf-8",
+            ) as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                lock_was_released = True
+                fcntl.flock(lock, fcntl.LOCK_UN)
+
+        manager.runtime.stop_dhcp = stop_dhcp
+
+        upstream, errors = manager.resolve()
+
+        self.assertIsNone(upstream)
+        self.assertEqual(errors, [manager.HOST_CONFLICT_MESSAGE])
+        self.assertTrue(lock_was_released)
 
     def test_host_managed_usb_blocks_fallback_without_detected_phone(self) -> None:
         runner = FakeRunner()
@@ -288,6 +345,33 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         self.assertEqual(errors, ["iPhone USB lease address is not a usable host address"])
         self.assertFalse((self.run_dir / "iphone-usb-lease.json").exists())
 
+    def test_dhcp_hook_error_is_reported(self) -> None:
+        runner = FakeRunner()
+        runner.idevice_udids = ["iphone-udid"]
+        runner.idevice_paired_udids = ["iphone-udid"]
+        runner.idevice_validate_result.returncode = 0
+        self._add_apple_usb_device()
+        self._add_ipheth_interface()
+
+        def popen(args, **kwargs):
+            if args[0] == "udhcpc":
+                self.run_dir.mkdir(parents=True, exist_ok=True)
+                (self.run_dir / "iphone-usb-dhcp-error").write_text(
+                    "iPhone USB DHCP address configuration failed",
+                    encoding="utf-8",
+                )
+            return FakeProcess()
+
+        manager = self._manager(runner, popen=popen)
+        upstream, errors = manager.resolve()
+
+        self.assertIsNone(upstream)
+        self.assertEqual(
+            errors,
+            ["iPhone USB DHCP address configuration failed"],
+        )
+        self.assertEqual(manager.pairing_state, "dhcp_failed")
+
     def test_rejects_overlapping_dynamic_lease(self) -> None:
         runner = FakeRunner()
         runner.idevice_udids = ["iphone-udid"]
@@ -352,11 +436,31 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         )
         manager = self._manager(runner)
         manager.interface = None
+        original_run = manager.run
+        exclusive_lock_held = False
+
+        def run(*args, **kwargs):
+            nonlocal exclusive_lock_held
+            if args[:4] == ("ip", "-4", "address", "del"):
+                with manager.runtime.lease_lock_path.open(
+                    "a+",
+                    encoding="utf-8",
+                ) as lock:
+                    with self.assertRaises(BlockingIOError):
+                        fcntl.flock(
+                            lock,
+                            fcntl.LOCK_SH | fcntl.LOCK_NB,
+                        )
+                    exclusive_lock_held = True
+            return original_run(*args, **kwargs)
+
+        manager.run = run
 
         manager.cleanup()
 
         self.assertNotIn("eth0", runner.interface_addresses)
         self.assertFalse((self.run_dir / "iphone-usb-lease.json").exists())
+        self.assertTrue(exclusive_lock_held)
 
     def test_invalid_lease_record_is_retained(self) -> None:
         runner = FakeRunner()

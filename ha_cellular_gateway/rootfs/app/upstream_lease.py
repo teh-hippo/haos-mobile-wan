@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import fcntl
 import ipaddress
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +23,22 @@ class DynamicLease:
     @property
     def address(self) -> str | None:
         return self.addresses[0] if len(self.addresses) == 1 else None
+
+
+@contextmanager
+def lease_lock(
+    path: Path,
+    *,
+    exclusive: bool = False,
+) -> Iterator[None]:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+", encoding="utf-8") as lock:
+        operation = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+        fcntl.flock(lock, operation)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 def load_app_lease_record(
@@ -53,6 +72,32 @@ def load_app_lease(path: Path, interface: str) -> tuple[str, str] | None:
     if record is None or record[0] != interface:
         return None
     return record[1], record[2]
+
+
+def write_app_lease_record(
+    path: Path,
+    interface: str,
+    address: str,
+    gateway: str,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    try:
+        temporary.write_text(
+            json.dumps(
+                {
+                    "owner": "app",
+                    "interface": interface,
+                    "address": address,
+                    "gateway": gateway,
+                },
+                separators=(",", ":"),
+            ),
+            encoding="utf-8",
+        )
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def inspect_external_lease(

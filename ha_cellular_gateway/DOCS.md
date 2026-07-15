@@ -128,6 +128,8 @@ The app:
 
 Connect the unlocked iPhone with a data-capable cable, enable **Personal
 Hotspot** and **Allow Others to Join**, then accept **Trust** if prompted.
+[Apple requires this toggle](https://support.apple.com/en-au/111785) for USB
+tethering as well as Wi-Fi tethering.
 
 Do not configure `ipheth` in HAOS. If the host already owns an address or main
 default route on that interface, the app reports an ownership conflict and

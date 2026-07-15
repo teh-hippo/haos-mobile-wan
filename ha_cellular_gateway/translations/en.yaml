@@ -10,14 +10,6 @@ configuration:
     description: >-
       Prevent all activation changes. Leave enabled until every safety check
       passes and the downstream cable is connected only to a router WAN port.
-  management_interface:
-    name: Management interface
-    description: >-
-      HAOS interface that must retain the normal Home Assistant LAN and its
-      main default route.
-  management_address:
-    name: Management IPv4 address
-    description: Expected static management address in CIDR notation.
   upstream_mode:
     name: Upstream mode
     description: >-
@@ -25,53 +17,24 @@ configuration:
       an experimental iPhone USB-tethering path that pairs with the phone and
       acquires DHCP without using the management Ethernet.
   upstream_interface:
-    name: Mobile upstream interface
+    name: Optional - hotspot interface override
     description: >-
-      Wi-Fi hotspot interface for hotspot_wifi mode. iphone_usb discovers the
-      ipheth interface dynamically and does not rely on this value.
-  upstream_ssid:
-    name: Mobile hotspot name
-    description: Informational SSID expected only in hotspot_wifi mode.
+      Used only for hotspot_wifi mode. Leave unset to use wlan0. iphone_usb
+      discovers the ipheth interface dynamically.
   upstream_address:
-    name: Mobile upstream IPv4 address
-    description: Static hotspot address in CIDR notation for hotspot_wifi mode.
+    name: Optional - hotspot IPv4 address override
+    description: Used only for hotspot_wifi mode. Leave unset for 172.20.10.4/28.
   upstream_gateway:
-    name: Mobile upstream gateway
+    name: Optional - hotspot gateway override
     description: >-
-      Phone hotspot gateway used only in the dedicated policy table for
-      hotspot_wifi mode.
+      Used only for hotspot_wifi mode. Leave unset for 172.20.10.1.
   downstream_mac:
-    name: Downstream USB Ethernet MAC
+    name: USB Ethernet adapter override
     description: >-
-      Lowercase colon-separated MAC address of the USB Ethernet adapter
-      connected to the router WAN port.
+      Leave blank to select the only attached USB Ethernet adapter. Set its
+      MAC address only when more than one eligible adapter is attached.
   downstream_address:
     name: Downstream gateway address
-    description: Static IPv4 address served to the router WAN side.
-  transit_subnet:
-    name: Downstream transit subnet
-    description: Isolated IPv4 subnet used only between HAOS and the router WAN.
-  dhcp_start:
-    name: DHCP range start
-    description: First address offered to the downstream router.
-  dhcp_end:
-    name: DHCP range end
-    description: Last address offered to the downstream router.
-  dns_servers:
-    name: Advertised DNS servers
-    description: Public IPv4 DNS servers offered to the downstream router.
-  routing_table:
-    name: Advanced - policy routing table
-    description: Dedicated Linux routing table. Change only to resolve a conflict.
-  reconcile_seconds:
-    name: Advanced - reconciliation interval
-    description: Seconds between safety and runtime-state checks.
-  trial_seconds:
-    name: Trial duration
-    description: Seconds before trial mode automatically disables the gateway.
-  api_bind:
-    name: Advanced - local API bind address
-    description: Supervisor-side host address used by the optional integration.
-  api_port:
-    name: Advanced - local API port
-    description: Supervisor-side port used by the optional integration.
+    description: >-
+      Private IPv4 gateway in CIDR notation. The app adds this exact address
+      during activation and removes it during rollback or shutdown.

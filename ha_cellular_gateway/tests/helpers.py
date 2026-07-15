@@ -68,7 +68,6 @@ class FakeRunner:
         self.interface_addresses = {
             "end0": ("192.168.1.2", 24),
             "wlan0": ("172.20.10.4", 28),
-            "enx001122334455": ("192.168.80.1", 24),
         }
 
     def run(
@@ -111,7 +110,12 @@ class FakeRunner:
             interface = args[-1]
             if interface not in self.interface_addresses:
                 return Result(stdout="[]")
-            address, prefix = self.interface_addresses[interface]
+            configured = self.interface_addresses[interface]
+            addresses = (
+                configured
+                if isinstance(configured, list)
+                else [configured]
+            )
             return Result(
                 stdout=json.dumps(
                     [
@@ -122,6 +126,7 @@ class FakeRunner:
                                     "local": address,
                                     "prefixlen": prefix,
                                 }
+                                for address, prefix in addresses
                             ]
                         }
                     ]
@@ -151,6 +156,36 @@ class FakeRunner:
             return Result(stdout=json.dumps(self.policy_routes))
         if args[:4] == ["ip", "-j", "rule", "show"]:
             return Result(stdout=json.dumps(self.policy_rules))
+        if args[:4] in (
+            ["ip", "-4", "address", "add"],
+            ["ip", "-4", "address", "del"],
+        ):
+            address, interface = args[4], args[6]
+            local, _, prefix = address.partition("/")
+            value = (local, int(prefix))
+            configured = self.interface_addresses.get(interface)
+            addresses = (
+                list(configured)
+                if isinstance(configured, list)
+                else ([configured] if configured else [])
+            )
+            if args[3] == "add":
+                if value not in addresses:
+                    addresses.append(value)
+                self.interface_addresses[interface] = (
+                    addresses[0] if len(addresses) == 1 else addresses
+                )
+                return Result()
+            if value not in addresses:
+                return Result(returncode=1)
+            addresses.remove(value)
+            if not addresses:
+                self.interface_addresses.pop(interface, None)
+            else:
+                self.interface_addresses[interface] = (
+                    addresses[0] if len(addresses) == 1 else addresses
+                )
+            return Result()
         if args[:3] in (["ip", "rule", "del"], ["ip", "route", "del"]):
             if args[:5] == ["ip", "route", "del", "default", "dev"]:
                 interface = args[5]
@@ -271,20 +306,10 @@ def make_config(**overrides: object) -> GatewayConfig:
         "management_address": "192.168.1.2/24",
         "upstream_mode": "hotspot_wifi",
         "upstream_interface": "wlan0",
-        "upstream_ssid": "MobileHotspot",
         "upstream_address": "172.20.10.4/28",
         "upstream_gateway": "172.20.10.1",
         "downstream_mac": "00:11:22:33:44:55",
         "downstream_address": "192.168.80.1/24",
-        "transit_subnet": "192.168.80.0/24",
-        "dhcp_start": "192.168.80.10",
-        "dhcp_end": "192.168.80.50",
-        "dns_servers": ("1.1.1.1", "8.8.8.8"),
-        "routing_table": 201,
-        "reconcile_seconds": 5,
-        "trial_seconds": 300,
-        "api_bind": "172.30.32.1",
-        "api_port": 8099,
     }
     values.update(overrides)
     return GatewayConfig(**values)

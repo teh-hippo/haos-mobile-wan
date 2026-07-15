@@ -28,7 +28,6 @@ class DnsmasqService:
         return bool(self.process and self.process.poll() is None)
 
     def render_config(self, downstream: str) -> str:
-        dns = ",".join(self.config.dns_servers)
         netmask = ipaddress.ip_network(self.config.transit_subnet).netmask
         return "\n".join(
             (
@@ -39,7 +38,7 @@ class DnsmasqService:
                 "dhcp-authoritative",
                 (
                     f"dhcp-range={self.config.dhcp_start},{self.config.dhcp_end},"
-                    f"{netmask},12h"
+                    f"{netmask},5m"
                 ),
                 f"dhcp-option=option:router,{self.config.downstream_ip}",
                 (

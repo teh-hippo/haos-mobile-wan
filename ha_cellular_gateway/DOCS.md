@@ -41,9 +41,10 @@ Enable start-on-boot in the Apps panel only after a successful hardware trial.
 
 ## Configure HAOS networking
 
-The app deliberately validates persistent host networking but does not modify
-it. This avoids an app error replacing or disconnecting Home Assistant's
-management network.
+The app discovers and validates the management network but never changes it.
+The USB Ethernet profile must be left without host-managed IP addressing. The
+app then owns one exact runtime address on that interface and can remove it
+cleanly during rollback or shutdown.
 
 Use the Terminal & SSH app or another supported HAOS console.
 
@@ -60,8 +61,9 @@ again. Record its interface name and MAC address.
 
 ### 2. Preserve management Ethernet
 
-Do not change the management interface. Record its current static address and
-confirm it owns the main default route.
+Do not change the management interface. Confirm it has one unambiguous IPv4
+address and is the only interface with a main default route. The app detects
+both values at startup.
 
 ### 3. Choose the upstream mode
 
@@ -111,16 +113,21 @@ main-table default route.
 
 ### 5. Configure the USB Ethernet interface
 
-Replace `enx001122334455` with the detected interface:
+Replace `enp1s0u1` with the detected interface:
 
 ```sh
-ha network update enx001122334455 \
-  --ipv4-method static \
-  --ipv4-address 192.168.80.1/24 \
+ha network update enp1s0u1 \
+  --ipv4-method disabled \
   --ipv6-method disabled
 ```
 
-Do not configure a gateway or DNS servers on this interface.
+Do not configure an address, gateway or DNS servers on this interface. The app
+rejects host-managed IPv4 addresses, installs its configured downstream address
+only during activation, and deletes that exact address when it rolls back.
+
+With one eligible USB Ethernet adapter attached, the app selects it
+automatically. If more than one is attached, set `downstream_mac` to the
+intended adapter's MAC address.
 
 ### 6. Verify the host baseline
 
@@ -129,28 +136,31 @@ Confirm:
 - management remains reachable;
 - the management interface is the only main default route;
 - `wlan0` has the expected static address and no main default route;
-- the USB interface has the expected downstream address;
+- the USB interface has no host-managed IPv4 address;
 - IPv6 is disabled on Wi-Fi and USB Ethernet;
-- the app options contain the USB adapter's MAC;
 - the three configured IPv4 networks do not overlap.
 
 ## App options
 
 The defaults are examples and must match the target host.
 
-| Option | Purpose |
+| Normal option | Purpose |
 |---|---|
+| `mode` | `disabled`, time-limited `trial`, or persistent `active` startup state |
+| `dry_run` | Blocks every downstream mutation while preflight checks run |
 | `upstream_mode` | `hotspot_wifi` for the existing Wi-Fi path, `iphone_usb` for experimental USB tethering |
-| `management_interface`, `management_address` | Baseline that must remain unchanged |
-| `upstream_interface`, `upstream_address`, `upstream_gateway` | Phone hotspot path for `hotspot_wifi` |
-| `downstream_mac`, `downstream_address` | Stable USB adapter identity and gateway |
-| `transit_subnet`, `dhcp_start`, `dhcp_end` | Isolated router WAN network |
-| `dns_servers` | Public DNS servers advertised by DHCP |
-| `trial_seconds` | Automatic trial rollback period |
+| `downstream_address` | Private gateway address and subnet used only for the router WAN transit |
 
-`routing_table`, `reconcile_seconds`, `api_bind` and `api_port` are advanced
-compatibility settings. Leave them unchanged unless resolving a measured
-conflict.
+The optional `downstream_mac`, `upstream_interface`, `upstream_address` and
+`upstream_gateway` fields are hidden with the unused optional settings. The MAC
+selects between multiple USB Ethernet adapters. The hotspot fields override the
+standard `wlan0`, `172.20.10.4/28` and `172.20.10.1` defaults.
+
+The transit subnet is derived from `downstream_address`. The app offers one
+five-minute DHCP lease to the router, uses public IPv4 resolvers, policy table
+201, a five-second reconciliation interval, a five-minute trial, and the fixed
+Supervisor-local API endpoint. These are implementation details rather than
+user settings.
 
 Options are read when the app starts. Restart the app after changing them.
 
@@ -159,8 +169,9 @@ Options are read when the app starts. Restart the app after changing them.
 1. Start the app with disabled mode and dry-run enabled.
 2. Review the logs and safety-check status. Resolve every reported error.
 3. Set `dry_run: false`, keep `mode: disabled`, save and restart.
-   This leaves the downstream host-ingress guard in place while transit, NAT,
-   DHCP and policy routing stay disabled.
+   This permits iPhone USB pairing when selected and installs only the
+   downstream host-ingress guard. The downstream address, forwarding, DHCP and
+   policy routing remain absent.
 4. If using `iphone_usb`, connect the iPhone by USB, unlock it, enable Personal
    Hotspot and tap **Trust** when prompted. Then press **Reapply gateway state**
    until the pairing state becomes `paired`.
@@ -173,9 +184,10 @@ Options are read when the app starts. Restart the app after changing them.
 10. Confirm Home Assistant management remains reachable.
 11. Confirm no transit traffic can use the management interface.
 
-Trial mode automatically tears down DHCP, firewall, NAT and policy routing
-after `trial_seconds`. The absolute deadline is stored under `/data`, so an app
-restart does not grant additional trial time.
+Trial mode automatically tears down the transient downstream address, DHCP,
+forwarding, NAT and policy routing after five minutes. The host-ingress guard
+remains while the app is running. The absolute deadline is stored under
+`/data`, so an app restart does not grant additional trial time.
 
 After a successful trial, set `mode: active` in the app options and restart.
 Enable start-on-boot only after reboot recovery has also been tested.
@@ -188,11 +200,23 @@ becomes unsafe, the app:
 - stops DHCP;
 - removes its tagged forwarding and NAT rules;
 - removes only the exact policy rules and routes it owns;
+- removes the exact transient downstream address it added;
+- retains its downstream host-ingress guard while the app is running;
 - keeps the requested active mode so it can recover automatically when every
   safety check passes again.
 
 The app never flushes host firewall base chains or deletes policy rules by
-priority alone.
+priority alone. It never changes the management NetworkManager profile or the
+USB Ethernet NetworkManager profile.
+
+On graceful stop, the same cleanup also removes the host-ingress guard before
+the container exits. The Supervisor allows 30 seconds for this teardown. If the
+process is killed without cleanup, `/data/state.json` records the exact owned
+address, routes and rules so the next start removes them before reconciliation.
+An HAOS reboot also clears transient interface and firewall state.
+
+The downstream router can retain its last DHCP lease for up to five minutes
+after the app stops. It receives no usable gateway service during that period.
 
 To recover:
 
@@ -201,6 +225,16 @@ To recover:
 3. Disconnect the USB Ethernet cable from the downstream router.
 4. Correct HAOS interface configuration or app options.
 5. Restart in disabled dry-run mode.
+
+Before uninstalling, return to disabled mode and let the app complete one
+reconcile or stop cleanly. If the USB adapter will be reused for ordinary
+networking, restore its HAOS profile afterwards, for example:
+
+```sh
+ha network update enp1s0u1 \
+  --ipv4-method auto \
+  --ipv6-method auto
+```
 
 ## iPhone USB feasibility and limits
 

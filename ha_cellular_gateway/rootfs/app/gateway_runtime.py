@@ -32,9 +32,7 @@ def fail_closed(engine: GatewayEngine, error: Exception) -> None:
             engine.cleanup(
                 preserve_desired=True,
                 preserve_trial_deadline=True,
-                preserve_host_protection=engine._protectable_downstream(
-                    engine.last_downstream,
-                ),
+                preserve_host_protection=True,
             )
         except (
             engine.gateway_error,
@@ -80,6 +78,9 @@ def status(engine: GatewayEngine) -> dict[str, object]:
             "upstream_address": upstream.address if upstream else None,
             "upstream_gateway": upstream.gateway if upstream else None,
             "downstream_interface": engine.last_downstream,
+            "downstream_mac": engine.downstream.mac(engine.last_downstream)
+            if engine.last_downstream
+            else None,
             "downstream_present": engine.last_downstream is not None,
             "rules_installed": engine.applied,
             "dnsmasq_running": engine.dhcp.running,
@@ -94,9 +95,7 @@ def status(engine: GatewayEngine) -> dict[str, object]:
             "issues": issues,
             **upstream_status,
             "config": {
-                key: value
-                for key, value in asdict(engine.config).items()
-                if key not in {"dns_servers"}
+                key: value for key, value in asdict(engine.config).items()
             },
         }
 
@@ -134,9 +133,32 @@ def stop(engine: GatewayEngine) -> None:
                 engine.desired_mode == "trial" and engine.trial_deadline is not None
             )
             force = bool(engine.owned_state or engine.applied)
-        engine.cleanup(
-            preserve_desired=True,
-            preserve_trial_deadline=preserve_trial,
-            force=force,
-        )
-        engine.upstream.cleanup()
+        cleanup_error: Exception | None = None
+        try:
+            engine.cleanup(
+                preserve_desired=True,
+                preserve_trial_deadline=preserve_trial,
+                force=force,
+            )
+        except (
+            engine.gateway_error,
+            OSError,
+            subprocess.SubprocessError,
+            ValueError,
+        ) as err:
+            cleanup_error = err
+        try:
+            engine.upstream.cleanup()
+        except (
+            engine.gateway_error,
+            OSError,
+            subprocess.SubprocessError,
+            ValueError,
+        ) as err:
+            if cleanup_error:
+                raise engine.gateway_error(
+                    f"{cleanup_error}; upstream cleanup failed: {err}"
+                ) from err
+            raise
+        if cleanup_error:
+            raise cleanup_error

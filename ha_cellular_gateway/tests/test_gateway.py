@@ -70,7 +70,7 @@ class GatewayEngineTests(unittest.TestCase):
         )
         return engine
 
-    def _assert_disabled_restart_preserves_repairable_host_guard(
+    def _assert_disabled_restart_repairs_host_guard(
         self,
         ipv4_input_rules: tuple[str, ...],
         ipv6_input_rules: tuple[str, ...],
@@ -95,49 +95,14 @@ class GatewayEngineTests(unittest.TestCase):
         restarted.reconcile()
 
         commands = restarted.runner.commands[before:]
-        guard_mutations = [
-            command
-            for command in commands
-            if command[0] in {"iptables", "ip6tables"}
-            and any(operation in command for operation in ("-F", "-X"))
-            and any(
-                chain in command
-                for chain in (
-                    restarted.firewall.INPUT_CHAIN,
-                    restarted.firewall.INPUT6_CHAIN,
-                )
-            )
-        ]
-        self.assertEqual(guard_mutations, [])
-        cleanup_hook_deletions = [
-            command
-            for command in commands
-            if command[0] in {"iptables", "ip6tables"}
-            and command[1:3] == ["-D", "INPUT"]
-            and (len(command) < 4 or not command[3].isdigit())
-        ]
-        self.assertEqual(cleanup_hook_deletions, [])
         self.assertTrue(
-            restarted.firewall.netfilter.rule_is_first_unique(
-                "iptables",
-                "INPUT",
-                restarted.firewall.netfilter.jump_rule(
-                    restarted.firewall.INPUT_CHAIN,
-                    "ha-cellgw:local-jump",
-                    ["-i", "enx001122334455"],
-                ),
+            restarted.firewall.host_protection_installed(
+                "enx001122334455"
             )
         )
-        self.assertTrue(
-            restarted.firewall.netfilter.rule_is_first_unique(
-                "ip6tables",
-                "INPUT",
-                restarted.firewall.netfilter.jump_rule(
-                    restarted.firewall.INPUT6_CHAIN,
-                    "ha-cellgw:v6-local-jump",
-                    ["-i", "enx001122334455"],
-                ),
-            )
+        self.assertNotIn(
+            "enx001122334455",
+            restarted.runner.interface_addresses,
         )
 
     def test_dry_run_refuses_mutation(self) -> None:
@@ -165,6 +130,35 @@ class GatewayEngineTests(unittest.TestCase):
             )
         ]
         self.assertEqual(mutating_commands, [])
+
+    def test_config_error_still_cleans_owned_host_state(self) -> None:
+        active = self._prepare_active_engine()
+        active.apply("active")
+        values = sysctl_values()
+        degraded = GatewayEngine(
+            make_config(mode="active", dry_run=False),
+            runner=active.runner,
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+            config_error="Cannot detect management network: no default route",
+        )
+        degraded.safety.find_downstream = lambda: "enx001122334455"
+        degraded.safety.errors = lambda *args, **kwargs: []
+
+        degraded.reconcile()
+
+        self.assertEqual(degraded.desired_mode, "disabled")
+        self.assertIsNone(degraded.owned_state)
+        self.assertNotIn(
+            "enx001122334455",
+            degraded.runner.interface_addresses,
+        )
+        self.assertTrue(
+            degraded.firewall.host_protection_installed(
+                "enx001122334455"
+            )
+        )
+        self.assertIn("Cannot detect management network", degraded.last_error)
 
     def test_status_uses_cached_health(self) -> None:
         self.engine.upstream_healthy = True
@@ -217,18 +211,20 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertTrue(
             engine.firewall.host_protection_installed("enx001122334455")
         )
+        self.assertNotIn("enx001122334455", engine.runner.interface_addresses)
 
         engine.firewall.apply = lambda downstream, upstream_interface=None: None
         engine.startup_cleanup_pending = False
         engine.reconcile()
         self.assertEqual(engine.mode, "active")
 
-    def test_apply_safety_failure_preserves_host_protection(self) -> None:
+    def test_apply_safety_failure_cleans_host_state(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply("active")
         self.assertTrue(
             engine.firewall.host_protection_installed("enx001122334455")
         )
+        self.assertIn("enx001122334455", engine.runner.interface_addresses)
 
         engine.safety.errors = lambda *args, **kwargs: ["Upstream unavailable"]
 
@@ -240,6 +236,7 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertTrue(
             engine.firewall.host_protection_installed("enx001122334455")
         )
+        self.assertNotIn("enx001122334455", engine.runner.interface_addresses)
 
     def test_active_mode_reapplies_when_policy_state_is_missing(self) -> None:
         engine = self._prepare_active_engine()
@@ -368,7 +365,7 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertEqual(mutating_commands, [])
         self.assertEqual(dnsmasq_starts, [])
 
-    def test_disabled_mode_preserves_live_host_protection(self) -> None:
+    def test_cleanup_removes_host_protection_when_adapter_probe_fails(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply("active")
         engine.firewall.netfilter.chain_exists = lambda family, chain: True
@@ -377,7 +374,7 @@ class GatewayEngineTests(unittest.TestCase):
         )
         before = len(engine.runner.commands)
 
-        engine.cleanup(preserve_host_protection=True)
+        engine.cleanup()
 
         commands = [" ".join(command) for command in engine.runner.commands[before:]]
         self.assertTrue(
@@ -386,14 +383,34 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertTrue(
             any(command == "ip6tables -F HA_CELLGW6" for command in commands)
         )
-        self.assertFalse(
+        self.assertTrue(
             any(
                 "HA_CELLGW_LOCAL" in command or "HA_CELLGW6_LOCAL" in command
                 for command in commands
             )
         )
+        self.assertNotIn("enx001122334455", engine.runner.interface_addresses)
 
-    def test_disabled_mode_reconcile_does_not_flush_realistic_host_guard(self) -> None:
+    def test_cleanup_keeps_host_guard_if_address_removal_fails(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply("active")
+
+        def fail_address_cleanup(ownership) -> None:
+            raise GatewayError("address still present")
+
+        engine.downstream.cleanup = fail_address_cleanup
+
+        with self.assertRaisesRegex(GatewayError, "address still present"):
+            engine.cleanup()
+
+        self.assertIsNotNone(engine.owned_state)
+        self.assertTrue(
+            engine.firewall.host_protection_installed(
+                "enx001122334455"
+            )
+        )
+
+    def test_disabled_mode_reconcile_preserves_host_guard(self) -> None:
         values = sysctl_values()
         engine = GatewayEngine(
             make_config(mode="disabled", dry_run=False),
@@ -421,7 +438,26 @@ class GatewayEngineTests(unittest.TestCase):
                 for operation in ("-A", "-D", "-I", "-N", "-F", "-X")
             )
         ]
-        self.assertEqual(mutating_commands, [])
+        self.assertTrue(mutating_commands)
+        self.assertTrue(
+            engine.firewall.host_protection_installed(
+                "enx001122334455"
+            )
+        )
+        before = len(engine.runner.commands)
+
+        engine.reconcile()
+
+        repeated_mutations = [
+            command
+            for command in engine.runner.commands[before:]
+            if command[0] in {"iptables", "ip6tables"}
+            and any(
+                operation in command
+                for operation in ("-A", "-D", "-I", "-N", "-F", "-X")
+            )
+        ]
+        self.assertEqual(repeated_mutations, [])
 
     def test_disabled_restart_cleanup_preserves_valid_host_guard(self) -> None:
         engine = self._prepare_active_engine()
@@ -437,26 +473,26 @@ class GatewayEngineTests(unittest.TestCase):
 
         restarted.reconcile()
 
-        guard_mutations = [
-            command
-            for command in restarted.runner.commands[before:]
-            if command[0] in {"iptables", "ip6tables"}
-            and any(operation in command for operation in ("-F", "-D", "-X"))
-            and any(
-                chain in command
-                for chain in (
-                    "INPUT",
-                    restarted.firewall.INPUT_CHAIN,
-                    restarted.firewall.INPUT6_CHAIN,
+        self.assertFalse(
+            any(
+                command[:3]
+                in (
+                    ["iptables", "-X", restarted.firewall.INPUT_CHAIN],
+                    ["ip6tables", "-X", restarted.firewall.INPUT6_CHAIN],
                 )
+                for command in restarted.runner.commands[before:]
             )
-        ]
-        self.assertEqual(guard_mutations, [])
+        )
+        self.assertTrue(
+            restarted.firewall.host_protection_installed(
+                "enx001122334455"
+            )
+        )
 
-    def test_disabled_restart_preserves_duplicate_first_repairable_host_guard(
+    def test_disabled_restart_repairs_duplicate_host_guard(
         self,
     ) -> None:
-        self._assert_disabled_restart_preserves_repairable_host_guard(
+        self._assert_disabled_restart_repairs_host_guard(
             (
                 "-A INPUT -i enx001122334455 -m comment --comment ha-cellgw:local-jump -j HA_CELLGW_LOCAL",
                 "-A INPUT -j ACCEPT",
@@ -469,8 +505,8 @@ class GatewayEngineTests(unittest.TestCase):
             ),
         )
 
-    def test_disabled_restart_preserves_late_repairable_host_guard(self) -> None:
-        self._assert_disabled_restart_preserves_repairable_host_guard(
+    def test_disabled_restart_repairs_late_host_guard(self) -> None:
+        self._assert_disabled_restart_repairs_host_guard(
             (
                 "-A INPUT -j ACCEPT",
                 "-A INPUT -i enx001122334455 -m comment --comment ha-cellgw:local-jump -j HA_CELLGW_LOCAL",
@@ -481,7 +517,7 @@ class GatewayEngineTests(unittest.TestCase):
             ),
         )
 
-    def test_disabled_mode_reconcile_repairs_late_parent_jumps_without_flushing_guard(
+    def test_disabled_mode_reconcile_repairs_late_parent_jumps(
         self,
     ) -> None:
         values = sysctl_values()
@@ -505,17 +541,6 @@ class GatewayEngineTests(unittest.TestCase):
 
         engine.reconcile()
 
-        guard_flushes = [
-            command
-            for command in engine.runner.commands[before:]
-            if command[:3] in (
-                ["iptables", "-F", engine.firewall.INPUT_CHAIN],
-                ["iptables", "-X", engine.firewall.INPUT_CHAIN],
-                ["ip6tables", "-F", engine.firewall.INPUT6_CHAIN],
-                ["ip6tables", "-X", engine.firewall.INPUT6_CHAIN],
-            )
-        ]
-        self.assertEqual(guard_flushes, [])
         self.assertTrue(
             any(
                 command[:4] == ["iptables", "-I", "INPUT", "1"]
@@ -528,6 +553,19 @@ class GatewayEngineTests(unittest.TestCase):
                 for command in engine.runner.commands[before:]
             )
         )
+        self.assertTrue(
+            engine.firewall.host_protection_installed(
+                "enx001122334455"
+            )
+        )
+
+    def test_configured_trial_arms_deadline_on_first_reconcile(self) -> None:
+        engine = self._prepare_active_engine("trial")
+
+        engine.reconcile()
+
+        self.assertEqual(engine.mode, "trial")
+        self.assertIsNotNone(engine.trial_deadline)
 
     def test_trial_deadline_survives_restart(self) -> None:
         engine = self._prepare_active_engine("trial")
@@ -613,6 +651,26 @@ class GatewayEngineTests(unittest.TestCase):
         worker.join(timeout=2)
         self.assertLess(elapsed, 0.5)
         self.assertEqual(status["mode"], "disabled")
+
+    def test_stop_cleans_upstream_after_gateway_cleanup_failure(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply("active")
+        upstream_cleaned = False
+
+        def fail_cleanup(**kwargs) -> None:
+            raise GatewayError("host cleanup failed")
+
+        def cleanup_upstream() -> None:
+            nonlocal upstream_cleaned
+            upstream_cleaned = True
+
+        engine.cleanup = fail_cleanup
+        engine.upstream.cleanup = cleanup_upstream
+
+        with self.assertRaisesRegex(GatewayError, "host cleanup failed"):
+            engine.stop()
+
+        self.assertTrue(upstream_cleaned)
 
     def test_stop_after_dry_run_detected_usb_does_not_flush_external_interface(self) -> None:
         values = sysctl_values()

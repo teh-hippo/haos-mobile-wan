@@ -9,7 +9,10 @@ The app is intentionally safe by default:
 - manual boot;
 - `mode: disabled`;
 - `dry_run: true`;
-- no route, firewall, NAT or DHCP mutation without passing safety checks;
+- no forwarding, NAT, DHCP or downstream-address activation without passing
+  safety checks;
+- automatic management-network and single USB Ethernet discovery;
+- exact transient downstream-address ownership with rollback cleanup;
 - no `full_access` capability.
 
 ## Architecture
@@ -41,8 +44,8 @@ In Home Assistant:
 3. Add `https://github.com/teh-hippo/haos-mobile-wan`.
 4. Install **HAOS Mobile WAN**.
 
-Leave manual boot, disabled mode and dry-run enabled until every interface and
-address has been configured for the target HAOS host. Then follow the
+Leave manual boot, disabled mode and dry-run enabled until the upstream and
+unaddressed USB Ethernet baseline match the target HAOS host. Then follow the
 [commissioning guide](ha_cellular_gateway/DOCS.md).
 
 ## Remove the HAOS app
@@ -51,7 +54,9 @@ address has been configured for the target HAOS host. Then follow the
    active.
 2. Disconnect the downstream USB Ethernet cable from the router WAN port.
 3. In **Settings > Apps**, stop and uninstall **HAOS Mobile WAN**.
-4. Remove the repository entry from the app store only if you no longer want
+4. If the USB Ethernet adapter will be reused, restore its HAOS IPv4 and IPv6
+   profile from the disabled commissioning baseline.
+5. Remove the repository entry from the app store only if you no longer want
    app updates from this repository.
 
 Removing the HAOS app does not uninstall the optional HACS integration, but the
@@ -223,9 +228,9 @@ automation:
 | Hardware / topology | Status | Notes |
 |---|---|---|
 | Home Assistant OS host running the HAOS Mobile WAN app | Supported | Required for the integration to discover or reach the local API |
-| Management Ethernet preserved as the main LAN uplink | Supported | The gateway app validates this baseline and the integration reports its status |
+| Management Ethernet preserved as the main LAN uplink | Supported | The gateway app discovers and validates the sole main default route and its IPv4 address |
 | Wi-Fi hotspot upstream on `wlan0` | Supported | This is the default validated upstream path |
-| USB Ethernet downstream NIC connected to a router WAN port | Supported | Required for the isolated downstream path |
+| USB Ethernet downstream NIC connected to a router WAN port | Supported | A single adapter is selected automatically; its host profile must have IPv4 and IPv6 disabled |
 | iPhone USB tethering via dynamic `ipheth` | Experimental support | Supported by the app and surfaced by the integration, but still experimental on stock HAOS 18.1 |
 
 ### Unsupported hardware
@@ -283,6 +288,8 @@ automation:
 | The integration requests reauthentication | The app token changed; rerun the reauthentication flow with a current token |
 | Entities show unavailable | Check the app logs and the **Last error** / **Safety checks** entities for the current fail-closed reason |
 | The button or select appears to do nothing | The app may still be in `dry_run`, `disabled`, or failing safety checks; inspect the current mode and last error first |
+| More than one USB Ethernet adapter is attached | Set the optional `downstream_mac` override to the intended router-WAN adapter |
+| The app reports host-managed downstream IPv4 | Set the USB Ethernet HAOS profile to disabled IPv4 and IPv6; the app owns its runtime address |
 | Branding does not appear | Local custom-integration brands require Home Assistant 2026.3+; older installs still rely on the external brands path |
 
 ## Security status
@@ -293,7 +300,7 @@ and `usb: true`, without `full_access`, host D-Bus or `udev`.
 - `host_network` is required because the app validates and mutates the HAOS
   host firewall, routing tables and real network interfaces.
 - `NET_ADMIN` is required for the app's tagged `iptables`/`ip6tables`, route
-  and policy-rule ownership model.
+  and policy-rule ownership model and its exact transient downstream address.
 - `NET_RAW` remains required because `dnsmasq` and `udhcpc` own DHCP on the
   downstream and `iphone_usb` interfaces.
 - `usb: true` remains required for the supported `iphone_usb` path because Home

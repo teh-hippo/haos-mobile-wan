@@ -10,6 +10,7 @@ import urllib.request
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from .command import CommandRunner
 from .config import GatewayConfig
 from .errors import GatewayError
 from .gateway import GatewayEngine, load_or_create_token
@@ -69,7 +70,9 @@ class GatewayHandler(BaseHTTPRequestHandler):
             if self.path == "/v1/mode":
                 mode = str(self._body().get("mode", ""))
                 if mode == "disabled":
-                    self.server.engine.cleanup()
+                    self.server.engine.cleanup(
+                        preserve_host_protection=True,
+                    )
                 else:
                     self.server.engine.apply(mode)
                 self._json(HTTPStatus.OK, self.server.engine.status())
@@ -123,8 +126,19 @@ def publish_discovery(config: GatewayConfig, token: str) -> None:
 
 
 def main() -> None:
-    config = GatewayConfig.from_path()
-    engine = GatewayEngine(config)
+    runner = CommandRunner()
+    config, config_error = GatewayConfig.load_path(
+        run=lambda *args, **kwargs: runner.run(
+            list(args),
+            check=kwargs.get("check", True),
+            timeout=kwargs.get("timeout", 20),
+        )
+    )
+    engine = GatewayEngine(
+        config,
+        runner=runner,
+        config_error=config_error,
+    )
     token = load_or_create_token()
     server = GatewayServer((config.api_bind, config.api_port), engine, token)
     worker = threading.Thread(

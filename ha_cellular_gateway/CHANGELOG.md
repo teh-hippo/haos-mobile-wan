@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0
+
+- Reduce the normal app form to mode, dry-run, upstream mode and downstream
+  network choices, with optional hotspot and adapter overrides.
+- Detect the sole management default route and a single USB Ethernet adapter
+  instead of asking users to copy host identity into app options.
+- Own one exact transient downstream address and remove it with DHCP, policy
+  and forwarding state on rollback, failure or shutdown.
+- Keep the downstream host-ingress guard while the app runs, then remove it on
+  graceful shutdown.
+- Limit the downstream router to one five-minute DHCP lease.
+- Arm the rollback deadline when trial mode is first loaded from app options.
+- Allow 30 seconds for graceful Supervisor shutdown cleanup.
+
 ## 0.2.0
 
 - Protect HAOS host-local services from the downstream WAN interface.

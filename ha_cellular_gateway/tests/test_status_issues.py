@@ -19,9 +19,39 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertTrue(issue["repairable"])
         self.assertFalse(issue["transient"])
 
+    def test_downstream_ownership_errors_are_repairable(self) -> None:
+        expected = {
+            "USB Ethernet downstream is not present": "downstream_missing",
+            "Multiple USB Ethernet adapters detected; set downstream_mac": "downstream_ambiguous",
+            "Downstream interface has host-managed IPv4 addresses": "downstream_host_managed",
+            "App-owned downstream address is unavailable": "downstream_inactive",
+            "Downstream interface has unexpected IPv4 addresses": "downstream_address_conflict",
+        }
+        for error, issue_id in expected.items():
+            with self.subTest(error=error):
+                result = build_status_issues([error], None, {})
+                self.assertEqual(result[0]["id"], issue_id)
+                self.assertEqual(
+                    result[0]["translation_key"],
+                    "downstream_configuration",
+                )
+                self.assertTrue(result[0]["repairable"])
+
     def test_unknown_safety_error_is_ignored(self) -> None:
         result = build_status_issues(["Some random unknown error"], None, {})
         self.assertEqual(result, [])
+
+    def test_configuration_load_error_is_repairable(self) -> None:
+        result = build_status_issues(
+            ["Cannot detect management network: no default route"],
+            None,
+            {},
+        )
+        self.assertEqual(result[0]["id"], "app_configuration_unavailable")
+        self.assertEqual(
+            result[0]["translation_key"],
+            "host_configuration",
+        )
 
     def test_transient_upstream_state_produces_transient_issue(self) -> None:
         result = build_status_issues(

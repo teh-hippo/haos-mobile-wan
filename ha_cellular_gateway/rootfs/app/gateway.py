@@ -12,11 +12,9 @@ from .config import STATE_PATH, TOKEN_PATH, GatewayConfig
 from .dhcp import DnsmasqService
 from .errors import GatewayError
 from .firewall import Firewall
-from .gateway_reconcile import (
-    apply as apply_gateway,
-    cleanup as cleanup_gateway,
-    reconcile as reconcile_gateway,
-)
+from .gateway_cleanup import cleanup as cleanup_gateway
+from .gateway_reconcile import apply as apply_gateway
+from .gateway_reconcile import reconcile as reconcile_gateway
 from .gateway_runtime import (
     fail_closed,
     health,
@@ -25,6 +23,7 @@ from .gateway_runtime import (
     status,
     stop,
 )
+from .interfaces import DownstreamInterface
 from .policy import PolicyRouting
 from .safety import SafetyInspector
 from .state import StateStore
@@ -42,6 +41,7 @@ class GatewayEngine:
         runner: CommandRunner | None = None,
         read_text: Callable[[Path], str] | None = None,
         state_path: Path | None = None,
+        config_error: str | None = None,
     ) -> None:
         self.config = config
         self.runner = runner or CommandRunner()
@@ -50,18 +50,28 @@ class GatewayEngine:
         self.operation_lock = threading.RLock()
         self.firewall = Firewall(config, self._run)
         self.policy = PolicyRouting(config, self._run)
+        self.downstream = DownstreamInterface(
+            config,
+            self._run,
+            self.read_text,
+        )
         self.safety = SafetyInspector(
             config,
             self._run,
             self.read_text,
             self.firewall,
             self.policy,
+            self.downstream,
         )
         self.state_store = StateStore(state_path or STATE_PATH)
         self.upstream = IPhoneUsbUpstream(config, self._run)
 
         self.mode = "disabled"
-        self.desired_mode = config.mode if config.mode in {"trial", "active"} else "disabled"
+        self.desired_mode = (
+            config.mode
+            if not config_error and config.mode in {"trial", "active"}
+            else "disabled"
+        )
         self.last_error: str | None = None
         self.last_reconcile: float | None = None
         self.last_health_probe: float | None = None
@@ -78,7 +88,9 @@ class GatewayEngine:
         self.gateway_error = GatewayError
 
         state, state_error = self.state_store.load()
-        self.state_load_error = state_error
+        startup_errors = [
+            error for error in (config_error, state_error) if error
+        ]
         owned = state.get("owned")
         self.owned_state = owned if isinstance(owned, dict) else None
         if self.owned_state:
@@ -87,7 +99,7 @@ class GatewayEngine:
                 self.policy.route_args(self.owned_state)
             except (GatewayError, TypeError, ValueError):
                 self.owned_state = None
-                self.state_load_error = "Persistent ownership state is invalid"
+                startup_errors.append("Persistent ownership state is invalid")
                 self.desired_mode = "disabled"
         self.trial_started_at: float | None = None
         self.trial_deadline: float | None = None
@@ -106,8 +118,9 @@ class GatewayEngine:
                 self.trial_started_at = started_at
                 self.trial_deadline = deadline
             except (KeyError, TypeError, ValueError):
-                self.state_load_error = "Persistent trial state is invalid"
+                startup_errors.append("Persistent trial state is invalid")
                 self.desired_mode = "disabled"
+        self.state_load_error = "; ".join(startup_errors) or None
         if self.state_load_error:
             self.last_error = self.state_load_error
 

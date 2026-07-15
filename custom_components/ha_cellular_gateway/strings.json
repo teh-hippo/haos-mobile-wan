@@ -70,7 +70,7 @@
     },
     "downstream_configuration": {
       "title": "Gateway downstream configuration needs attention",
-      "description": "HAOS Mobile WAN disabled {entry_title} because the configured downstream NIC is missing, inactive or unsafe to use. Review the app diagnostics and correct the downstream interface before re-enabling the gateway."
+      "description": "HAOS Mobile WAN disabled {entry_title} because it could not select one safe USB Ethernet downstream adapter. Connect one adapter or set its MAC override, then leave host-managed IPv4 and IPv6 disabled on that interface."
     },
     "policy_configuration": {
       "title": "Gateway policy routing is conflicting",

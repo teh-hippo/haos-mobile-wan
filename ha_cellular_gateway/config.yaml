@@ -1,5 +1,5 @@
 name: HAOS Mobile WAN
-version: "0.2.0"
+version: "0.3.0"
 slug: ha_cellular_gateway
 description: Redundant mobile WAN gateway engine for Home Assistant OS
 url: https://github.com/teh-hippo/haos-mobile-wan
@@ -8,6 +8,8 @@ arch:
 startup: services
 boot: manual
 stage: experimental
+breaking_versions:
+  - "0.3.0"
 init: false
 host_network: true
 hassio_api: true
@@ -18,50 +20,20 @@ privileged:
   - NET_ADMIN
   - NET_RAW
 apparmor: true
+timeout: 30
 backup_exclude:
   - dnsmasq.leases
 options:
   mode: disabled
   dry_run: true
-  management_interface: end0
-  management_address: 192.168.1.2/24
   upstream_mode: hotspot_wifi
-  upstream_interface: wlan0
-  upstream_ssid: MobileHotspot
-  upstream_address: 172.20.10.4/28
-  upstream_gateway: 172.20.10.1
-  downstream_mac: ""
   downstream_address: 192.168.80.1/24
-  transit_subnet: 192.168.80.0/24
-  dhcp_start: 192.168.80.10
-  dhcp_end: 192.168.80.50
-  dns_servers:
-    - 1.1.1.1
-    - 8.8.8.8
-  routing_table: 201
-  reconcile_seconds: 5
-  trial_seconds: 300
-  api_bind: 172.30.32.1
-  api_port: 8099
 schema:
   mode: list(disabled|trial|active)
   dry_run: bool
-  management_interface: str
-  management_address: str
   upstream_mode: list(hotspot_wifi|iphone_usb)
-  upstream_interface: str
-  upstream_ssid: str
-  upstream_address: str
-  upstream_gateway: str
-  downstream_mac: str
+  downstream_mac: 'match(^$|^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$)?'
   downstream_address: str
-  transit_subnet: str
-  dhcp_start: str
-  dhcp_end: str
-  dns_servers:
-    - str
-  routing_table: int
-  reconcile_seconds: int
-  trial_seconds: int
-  api_bind: str
-  api_port: port
+  upstream_interface: 'match(^[A-Za-z0-9_.-]{1,15}$)?'
+  upstream_address: str?
+  upstream_gateway: str?

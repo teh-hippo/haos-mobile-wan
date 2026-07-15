@@ -37,8 +37,12 @@ _EXACT_ERRORS: dict[str, tuple[str, str | None, str]] = {
     "Mobile upstream has a main-table default route": ("upstream_default_route_present", "host_configuration", "The mobile upstream still has a main default route"),
     "Cannot inspect main-table default routes": ("default_routes_unavailable", "host_configuration", "The gateway could not inspect the main default routes"),
     "Configured downstream NIC is not present": ("downstream_missing", "downstream_configuration", "The configured downstream NIC is not present"),
+    "USB Ethernet downstream is not present": ("downstream_missing", "downstream_configuration", "A USB Ethernet downstream adapter is not present"),
+    "Multiple USB Ethernet adapters detected; set downstream_mac": ("downstream_ambiguous", "downstream_configuration", "More than one eligible USB Ethernet adapter is attached"),
     "Downstream NIC must differ from management and upstream interfaces": ("downstream_interface_overlap", "downstream_configuration", "The downstream NIC must differ from the management and upstream interfaces"),
-    "Downstream interface/address is not active": ("downstream_inactive", "downstream_configuration", "The downstream interface is not active"),
+    "Downstream interface has host-managed IPv4 addresses": ("downstream_host_managed", "downstream_configuration", "The downstream adapter has host-managed IPv4 configuration"),
+    "App-owned downstream address is unavailable": ("downstream_inactive", "downstream_configuration", "The app-owned downstream address is unavailable"),
+    "Downstream interface has unexpected IPv4 addresses": ("downstream_address_conflict", "downstream_configuration", "The downstream adapter has unexpected IPv4 addresses"),
     "Downstream interface is unavailable": ("downstream_unavailable", "downstream_configuration", "The downstream interface is unavailable"),
     "IPv6 is active on downstream NIC": ("downstream_ipv6_active", "downstream_configuration", "IPv6 is active on the downstream NIC"),
     "Cannot verify downstream IPv6 state": ("downstream_ipv6_unverified", "downstream_configuration", "The gateway could not verify downstream IPv6 state"),
@@ -129,6 +133,14 @@ def _issue_from_error(error: str) -> dict[str, Any] | None:
         return _issue("policy_unexpected_route", "policy_configuration", "The gateway routing table contains an unexpected route")
     if error.startswith("Required command is unavailable: "):
         return _issue("upstream_required_command_unavailable", "upstream_configuration", "A required iPhone USB command is not installed")
+    if error.startswith(
+        (
+            "Cannot read app configuration:",
+            "Cannot detect management network:",
+            "Invalid app configuration:",
+        )
+    ):
+        return _issue("app_configuration_unavailable", "host_configuration", "The app could not load a safe host configuration")
     if error.startswith("Safety inspection failed:"):
         return _issue("safety_inspection_failed", "host_configuration", "The gateway could not complete its safety inspection")
     if error.startswith("Activation failed:"):
@@ -150,4 +162,3 @@ def _issue(
         "transient": transient,
         "message": message,
     }
-

@@ -5,6 +5,7 @@ import time
 from typing import TYPE_CHECKING
 
 from .errors import GatewayError, SafetyError
+from .gateway_cleanup import cleanup
 
 if TYPE_CHECKING:
     from .gateway import GatewayEngine
@@ -12,68 +13,14 @@ if TYPE_CHECKING:
 OPERATION_ERRORS = (GatewayError, OSError, subprocess.SubprocessError, ValueError)
 
 
-def cleanup(
-    engine: GatewayEngine,
-    *,
-    preserve_desired: bool = False,
-    preserve_trial_deadline: bool = False,
-    preserve_host_protection: bool = False,
-    force: bool = False,
-) -> None:
-    with engine.operation_lock:
-        with engine.lock:
-            if engine.config.dry_run and not force:
-                engine.mode = "disabled"
-                engine.applied = False
-                if not preserve_desired:
-                    engine.desired_mode = "disabled"
-                if not preserve_trial_deadline:
-                    engine.trial_started_at = None
-                    engine.trial_deadline = None
-                engine._persist_state()
-                return
-            owned_state = engine.owned_state
-
-        downstream = None
-        try:
-            downstream = engine.safety.find_downstream()
-        except OPERATION_ERRORS:
-            pass
-        preserved_downstream = downstream
-        if (
-            not engine._protectable_downstream(preserved_downstream)
-            and isinstance(engine.owned_state, dict)
-        ):
-            candidate = engine.owned_state.get("downstream")
-            preserved_downstream = candidate if isinstance(candidate, str) else None
-        if (
-            not preserve_host_protection
-            or not engine._protectable_downstream(preserved_downstream)
-        ):
-            preserved_downstream = None
-        engine.dhcp.stop()
-        engine.firewall.cleanup(preserved_downstream)
-
-        ownerships: list[dict[str, object]] = []
-        if owned_state:
-            ownerships.append(owned_state)
-        if downstream:
-            current = engine.policy.ownership(downstream)
-            if current not in ownerships:
-                ownerships.append(current)
-        for ownership in ownerships:
-            engine.policy.cleanup(ownership)
-
-        with engine.lock:
-            engine.owned_state = None
-            engine.mode = "disabled"
-            engine.applied = False
-            if not preserve_desired:
-                engine.desired_mode = "disabled"
-            if not preserve_trial_deadline:
-                engine.trial_started_at = None
-                engine.trial_deadline = None
-            engine._persist_state()
+def _protect_host(engine: GatewayEngine, downstream: str | None) -> None:
+    if (
+        not engine.config.dry_run
+        and engine._protectable_downstream(downstream)
+        and not engine.firewall.host_protection_installed(downstream)
+    ):
+        assert downstream is not None
+        engine.firewall.protect_host(downstream)
 
 
 def apply(
@@ -91,22 +38,29 @@ def apply(
         with engine.lock:
             if not recovering:
                 engine.desired_mode = mode
-                if mode == "trial":
-                    engine.trial_started_at = time.time()
-                    engine.trial_deadline = (
-                        engine.trial_started_at + engine.config.trial_seconds
-                    )
-                else:
-                    engine.trial_started_at = None
-                    engine.trial_deadline = None
+            if mode == "trial" and (
+                not recovering or engine.trial_deadline is None
+            ):
+                engine.trial_started_at = time.time()
+                engine.trial_deadline = (
+                    engine.trial_started_at + engine.config.trial_seconds
+                )
+            elif mode == "active":
+                engine.trial_started_at = None
+                engine.trial_deadline = None
 
         downstream = engine.safety.find_downstream()
         upstream, upstream_errors = engine._resolve_upstream()
+        address_owned = engine.downstream.owns_address(
+            engine.owned_state,
+            downstream,
+        )
         errors = engine.safety.errors(
             downstream,
             upstream=upstream,
             upstream_errors=upstream_errors,
             state_error=engine.state_load_error,
+            downstream_address_owned=address_owned,
         )
         with engine.lock:
             engine.last_downstream = downstream
@@ -119,6 +73,7 @@ def apply(
                 preserve_trial_deadline=recovering or mode == "trial",
                 preserve_host_protection=True,
             )
+            _protect_host(engine, downstream)
             message = "; ".join(errors)
             with engine.lock:
                 engine.last_error = message
@@ -134,8 +89,11 @@ def apply(
         )
         with engine.lock:
             engine.owned_state = engine.policy.ownership(downstream, upstream)
+            engine.owned_state["downstream_address_owned"] = True
             engine._persist_state()
         try:
+            engine.firewall.protect_host(downstream)
+            engine.downstream.apply(downstream)
             engine.policy.apply(downstream, upstream)
             engine.firewall.apply(downstream, upstream.interface)
             engine.dhcp.start(downstream)
@@ -164,42 +122,18 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
             with engine.lock:
                 engine.last_reconcile = time.time()
                 startup_cleanup_pending = engine.startup_cleanup_pending
-                owned_state = bool(engine.owned_state)
+                owned_state = engine.owned_state
                 desired_mode = engine.desired_mode
                 trial_deadline = engine.trial_deadline
                 state_load_error = engine.state_load_error
 
             if startup_cleanup_pending:
-                preserve_host_protection = False
-                if desired_mode == "disabled" and not engine.config.dry_run:
-                    candidates: list[str] = []
-                    try:
-                        downstream = engine.safety.find_downstream()
-                    except OPERATION_ERRORS:
-                        downstream = None
-                    if engine._protectable_downstream(downstream):
-                        candidates.append(downstream)
-                    owned_downstream = (
-                        engine.owned_state.get("downstream")
-                        if isinstance(engine.owned_state, dict)
-                        else None
-                    )
-                    if (
-                        isinstance(owned_downstream, str)
-                        and engine._protectable_downstream(owned_downstream)
-                        and owned_downstream not in candidates
-                    ):
-                        candidates.append(owned_downstream)
-                    preserve_host_protection = bool(
-                        candidates
-                        and engine.firewall.host_guard_chains_installed()
-                    )
                 cleanup(
                     engine,
                     preserve_desired=True,
                     preserve_trial_deadline=True,
-                    preserve_host_protection=preserve_host_protection,
-                    force=owned_state,
+                    preserve_host_protection=not engine.config.dry_run,
+                    force=bool(owned_state),
                 )
                 with engine.lock:
                     engine.state_load_error = None
@@ -213,6 +147,10 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                     upstream=upstream,
                     upstream_errors=upstream_errors,
                     state_error=state_load_error,
+                    downstream_address_owned=engine.downstream.owns_address(
+                        engine.owned_state,
+                        downstream,
+                    ),
                 )
             except OPERATION_ERRORS as err:
                 errors = [f"Safety inspection failed: {err}"]
@@ -227,25 +165,46 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                 and time.time() >= trial_deadline
             ):
                 cleanup(engine, preserve_host_protection=True)
+                _protect_host(engine, downstream)
                 with engine.lock:
                     engine.last_error = "Trial expired and was rolled back"
                 return
 
             if desired_mode not in {"trial", "active"}:
-                if engine.owned_state or engine.applied or engine.dhcp.running:
+                managed_chains = (
+                    ("iptables", engine.firewall.INPUT_CHAIN),
+                    ("ip6tables", engine.firewall.INPUT6_CHAIN),
+                    ("iptables", engine.firewall.FORWARD_CHAIN),
+                    ("ip6tables", engine.firewall.FORWARD6_CHAIN),
+                )
+                present_chains = {
+                    (family, chain)
+                    for family, chain in managed_chains
+                    if engine.firewall.chain_exists(family, chain)
+                }
+                forwarding_present = any(
+                    chain in {
+                        engine.firewall.FORWARD_CHAIN,
+                        engine.firewall.FORWARD6_CHAIN,
+                    }
+                    for _, chain in present_chains
+                )
+                host_guard_needs_repair = bool(present_chains) and not (
+                    engine.firewall.host_protection_installed(downstream)
+                )
+                if (
+                    engine.owned_state
+                    or engine.applied
+                    or engine.dhcp.running
+                    or forwarding_present
+                    or host_guard_needs_repair
+                ):
                     cleanup(
                         engine,
-                        preserve_host_protection=engine._protectable_downstream(
-                            downstream
-                        ),
+                        preserve_host_protection=True,
                         force=bool(engine.owned_state or engine.applied),
                     )
-                elif (
-                    not engine.config.dry_run
-                    and engine._protectable_downstream(downstream)
-                    and not engine.firewall.host_protection_installed(downstream)
-                ):
-                    engine.firewall.protect_host(downstream)
+                _protect_host(engine, downstream)
                 return
 
             if errors:
@@ -253,10 +212,9 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                     engine,
                     preserve_desired=True,
                     preserve_trial_deadline=True,
-                    preserve_host_protection=engine._protectable_downstream(
-                        downstream
-                    ),
+                    preserve_host_protection=True,
                 )
+                _protect_host(engine, downstream)
                 with engine.lock:
                     engine.last_error = "; ".join(errors)
                 return

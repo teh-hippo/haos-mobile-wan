@@ -27,10 +27,20 @@ class AddonSecurityTests(unittest.TestCase):
         self.assertTrue(self.config["hassio_api"])
         self.assertTrue(self.config["usb"])
         self.assertTrue(self.config["apparmor"])
+        self.assertEqual(self.config["timeout"], 30)
         self.assertEqual(self.config["privileged"], ["NET_ADMIN", "NET_RAW"])
         self.assertNotIn("full_access", self.config)
         self.assertNotIn("host_dbus", self.config)
         self.assertNotIn("udev", self.config)
+        self.assertEqual(
+            set(self.config["options"]),
+            {
+                "mode",
+                "dry_run",
+                "upstream_mode",
+                "downstream_address",
+            },
+        )
 
     def test_apparmor_profile_is_enforcing_and_scoped(self) -> None:
         self.assertIn(

@@ -39,19 +39,10 @@ class GatewayRuntimeConfig(TypedDict):
     management_address: str
     upstream_mode: GatewayUpstreamMode
     upstream_interface: str
-    upstream_ssid: str
     upstream_address: str
     upstream_gateway: str
     downstream_mac: str
     downstream_address: str
-    transit_subnet: str
-    dhcp_start: str
-    dhcp_end: str
-    routing_table: int
-    reconcile_seconds: int
-    trial_seconds: int
-    api_bind: str
-    api_port: int
 
 
 class GatewayStatus(TypedDict):
@@ -66,6 +57,7 @@ class GatewayStatus(TypedDict):
     upstream_address: str | None
     upstream_gateway: str | None
     downstream_interface: str | None
+    downstream_mac: str | None
     downstream_present: bool
     rules_installed: bool
     dnsmasq_running: bool

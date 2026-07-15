@@ -8,6 +8,7 @@ from .command import RunCommand, run_json
 from .config import GatewayConfig
 from .errors import GatewayError
 from .firewall import Firewall
+from .interfaces import DownstreamInterface
 from .policy import PolicyRouting
 from .upstream_models import ResolvedUpstream
 
@@ -20,48 +21,20 @@ class SafetyInspector:
         read_text: Callable[[Path], str],
         firewall: Firewall,
         policy: PolicyRouting,
+        downstream: DownstreamInterface,
     ) -> None:
         self.config = config
         self.run = run
         self.read_text = read_text
         self.firewall = firewall
         self.policy = policy
+        self.downstream = downstream
 
     def interface_addresses(self, interface: str, family: int = 4) -> set[str]:
-        data = run_json(
-            self.run,
-            "ip",
-            f"-{family}",
-            "-j",
-            "address",
-            "show",
-            "dev",
-            interface,
-        )
-        addresses: set[str] = set()
-        for item in data if isinstance(data, list) else []:
-            for address in item.get("addr_info", []):
-                expected_family = "inet" if family == 4 else "inet6"
-                if address.get("family") == expected_family:
-                    addresses.add(
-                        f"{address['local']}/{address['prefixlen']}"
-                    )
-        return addresses
+        return self.downstream.addresses(interface, family=family)
 
     def find_downstream(self) -> str | None:
-        if not self.config.downstream_mac:
-            return None
-        root = Path("/sys/class/net")
-        if not root.exists():
-            return None
-        for interface in root.iterdir():
-            try:
-                address = self.read_text(interface / "address").strip().lower()
-            except OSError:
-                continue
-            if address == self.config.downstream_mac:
-                return interface.name
-        return None
+        return self.downstream.find()
 
     def _main_default_interfaces(self) -> set[str]:
         routes = run_json(
@@ -93,6 +66,7 @@ class SafetyInspector:
         upstream: ResolvedUpstream | None = None,
         upstream_errors: list[str] | None = None,
         state_error: str | None = None,
+        downstream_address_owned: bool = False,
     ) -> list[str]:
         downstream = downstream or self.find_downstream()
         errors: list[str] = []
@@ -168,9 +142,15 @@ class SafetyInspector:
             errors.append("Cannot inspect main-table default routes")
 
         if downstream is None:
-            errors.append("Configured downstream NIC is not present")
+            errors.append(self.downstream.selection_error())
         else:
-            errors.extend(self._downstream_errors(downstream, upstream_interface))
+            errors.extend(
+                self._downstream_errors(
+                    downstream,
+                    upstream_interface,
+                    address_owned=downstream_address_owned,
+                )
+            )
             try:
                 errors.extend(self.policy.conflicts(downstream, current_upstream))
             except (
@@ -192,7 +172,13 @@ class SafetyInspector:
 
         return errors
 
-    def _downstream_errors(self, downstream: str, upstream_interface: str) -> list[str]:
+    def _downstream_errors(
+        self,
+        downstream: str,
+        upstream_interface: str,
+        *,
+        address_owned: bool,
+    ) -> list[str]:
         errors: list[str] = []
         if downstream in {
             self.config.management_interface,
@@ -202,9 +188,12 @@ class SafetyInspector:
                 "Downstream NIC must differ from management and upstream interfaces"
             )
         try:
-            downstream_addresses = self.interface_addresses(downstream)
-            if self.config.downstream_address not in downstream_addresses:
-                errors.append("Downstream interface/address is not active")
+            errors.extend(
+                self.downstream.address_errors(
+                    downstream,
+                    owned=address_owned,
+                )
+            )
             if self._rp_filter(downstream) == 1:
                 errors.append("Strict rp_filter is enabled on downstream NIC")
         except (GatewayError, OSError, subprocess.SubprocessError, ValueError):

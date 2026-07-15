@@ -25,5 +25,6 @@ RUN mkdir -p /data /var/lib \
     && ln -snf /data/lockdown /var/lib/lockdown \
     && chmod 0755 \
     /app/main.py \
-    /app/udhcpc.script \
-    /etc/services.d/ha-cellular-gateway/run
+    /app/udhcpc.script
+
+CMD ["/usr/bin/python3", "-m", "app.main"]

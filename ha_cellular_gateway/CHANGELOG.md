@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- Start the gateway process directly instead of invoking the unused inherited
+  s6 entrypoint under the enforced AppArmor profile.
+
 ## 0.3.0
 
 - Reduce the normal app form to mode, dry-run, upstream mode and downstream

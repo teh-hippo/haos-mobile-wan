@@ -7,6 +7,6 @@ DEFAULT_NAME = "HAOS Mobile WAN"
 PLATFORMS = (
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
-    Platform.SELECT,
     Platform.SENSOR,
+    Platform.SWITCH,
 )

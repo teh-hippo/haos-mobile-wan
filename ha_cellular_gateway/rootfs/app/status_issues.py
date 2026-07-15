@@ -14,7 +14,6 @@ _UPSTREAM_TRANSIENT_STATES = {
 }
 
 _UPSTREAM_STABLE_STATES: dict[str, tuple[str, str]] = {
-    "dry_run_blocked": ("upstream_dry_run_blocked", "Disable dry run before commissioning an iPhone USB upstream"),
     "daemon_failed": ("upstream_daemon_failed", "The iPhone USB pairing helper failed to start"),
     "ownership_conflict": ("upstream_ownership_conflict", "The iPhone USB upstream is already managed by the host"),
     "invalid_lease": ("upstream_invalid_lease", "The iPhone USB upstream lease is invalid"),
@@ -59,6 +58,7 @@ def build_status_issues(
     safety_errors: Iterable[str],
     last_error: str | None,
     upstream_status: dict[str, Any],
+    connection_warnings: Iterable[str] = (),
 ) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -76,6 +76,16 @@ def build_status_issues(
         if error == "Safety checks have not run yet" or error in suppressed_errors:
             continue
         issue = _issue_from_error(error)
+        if issue is None:
+            continue
+        issue_id = str(issue["id"])
+        if issue_id in seen:
+            continue
+        seen.add(issue_id)
+        issues.append(issue)
+
+    for warning in connection_warnings:
+        issue = _issue_from_error(warning)
         if issue is None:
             continue
         issue_id = str(issue["id"])

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from typing import cast
-
-from homeassistant.components.select import SelectEntity
+from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -11,7 +9,6 @@ from . import GatewayConfigEntry
 from .api import GatewayApiError
 from .coordinator import GatewayCoordinator
 from .entity import GatewayEntity
-from .models import GatewaySelectableMode
 
 PARALLEL_UPDATES = 0
 
@@ -22,31 +19,32 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     async_add_entities(
-        [GatewayModeSelect(entry.runtime_data, entry.entry_id)]
+        [GatewayEnabledSwitch(entry.runtime_data, entry.entry_id)]
     )
 
 
-class GatewayModeSelect(GatewayEntity, SelectEntity):
-    _attr_translation_key = "mode_control"
+class GatewayEnabledSwitch(GatewayEntity, SwitchEntity):
+    _attr_translation_key = "enabled"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_icon = "mdi:wan"
-    _attr_options = ["disabled", "active"]
 
     def __init__(self, coordinator: GatewayCoordinator, entry_id: str) -> None:
-        super().__init__(coordinator, entry_id, "mode_control")
+        super().__init__(coordinator, entry_id, "enabled")
 
     @property
-    def current_option(self) -> GatewaySelectableMode | None:
-        mode = self.coordinator.data["mode"]
-        if mode in self.options:
-            return mode
-        return None
+    def is_on(self) -> bool:
+        return self.coordinator.data["enabled"]
 
-    async def async_select_option(self, option: str) -> None:
-        if option not in self.options:
-            raise ValueError(f"Unsupported mode: {option}")
+    async def async_turn_on(self, **kwargs: object) -> None:
+        await self._async_set_enabled(True)
+
+    async def async_turn_off(self, **kwargs: object) -> None:
+        await self._async_set_enabled(False)
+
+    async def _async_set_enabled(self, enabled: bool) -> None:
         try:
-            await self.coordinator.api.set_mode(cast(GatewaySelectableMode, option))
+            await self.coordinator.api.set_enabled(enabled)
         except GatewayApiError as err:
+            await self.coordinator.async_request_refresh()
             raise self._action_exception(err) from err
         await self.coordinator.async_request_refresh()

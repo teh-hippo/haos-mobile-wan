@@ -24,11 +24,17 @@ def main() -> None:
             timeout=kwargs.get("timeout", 20),
         )
     )
-    hotspot_error = provision_hotspot(config)
-    startup_error = "; ".join(
-        error for error in (config_error, hotspot_error) if error
-    ) or None
-    engine = GatewayEngine(config, runner=runner, config_error=startup_error)
+    hotspot_error = (
+        None
+        if config_error
+        else provision_hotspot(config)
+    )
+    engine = GatewayEngine(
+        config,
+        runner=runner,
+        config_error=config_error,
+        hotspot_error=hotspot_error,
+    )
     token = load_or_create_token()
     server = GatewayServer((config.api_bind, config.api_port), engine, token)
     worker = threading.Thread(

@@ -31,6 +31,8 @@ TO_REDACT: set[str] = {
     "api_bind",
     "last_error",
     "safety_errors",
+    "fallback_reason",
+    "connection_warnings",
     "upstream_pairing_message",
     "upstream_runtime_interface",
     "upstream_lockdown_path",

@@ -7,7 +7,13 @@ import pytest
 from homeassistant.components.button import ButtonEntityDescription
 from homeassistant.helpers.entity import EntityCategory
 
-from custom_components.ha_cellular_gateway import binary_sensor, button, entity, select, sensor
+from custom_components.ha_cellular_gateway import (
+    binary_sensor,
+    button,
+    entity,
+    sensor,
+    switch,
+)
 from custom_components.ha_cellular_gateway.binary_sensor import GatewayBinarySensorEntityDescription
 
 
@@ -61,7 +67,7 @@ async def test_button_setup_and_press(runtime_coordinator) -> None:
     runtime_coordinator.async_request_refresh.assert_awaited_once_with()
 
 
-async def test_select_setup_and_action(runtime_coordinator) -> None:
+async def test_switch_setup_and_action(runtime_coordinator) -> None:
     created: list[Any] = []
     entry_obj = type(
         "Entry",
@@ -69,25 +75,17 @@ async def test_select_setup_and_action(runtime_coordinator) -> None:
         {"runtime_data": runtime_coordinator, "entry_id": "entry-1"},
     )()
 
-    await select.async_setup_entry(None, entry_obj, created.extend)
+    await switch.async_setup_entry(None, entry_obj, created.extend)
 
-    assert created[0].current_option == "active"
-    assert created[0].options == ["disabled", "active"]
-    await created[0].async_select_option("active")
-    runtime_coordinator.api.set_mode.assert_awaited_once_with("active")
-
-
-async def test_select_current_option_when_mode_is_valid(runtime_coordinator) -> None:
-    runtime_coordinator.data["mode"] = "disabled"
-    gateway_select = select.GatewayModeSelect(runtime_coordinator, "entry-1")
-    assert gateway_select.current_option == "disabled"
+    assert created[0].is_on is True
+    await created[0].async_turn_off()
+    runtime_coordinator.api.set_enabled.assert_awaited_once_with(False)
 
 
-async def test_select_raises_for_unsupported_mode(runtime_coordinator) -> None:
-    gateway_select = select.GatewayModeSelect(runtime_coordinator, "entry-1")
-
-    with pytest.raises(ValueError, match="Unsupported mode"):
-        await gateway_select.async_select_option("standby")
+async def test_switch_reflects_disabled_state(runtime_coordinator) -> None:
+    runtime_coordinator.data["enabled"] = False
+    gateway_switch = switch.GatewayEnabledSwitch(runtime_coordinator, "entry-1")
+    assert gateway_switch.is_on is False
 
 
 async def test_sensor_setup_and_values(runtime_coordinator) -> None:
@@ -101,20 +99,24 @@ async def test_sensor_setup_and_values(runtime_coordinator) -> None:
     await sensor.async_setup_entry(None, entry_obj, created.extend)
 
     assert len(created) == len(sensor.DESCRIPTIONS)
-    assert created[0].native_value == "active"
-    runtime_coordinator.data["mode"] = None
+    assert created[0].native_value == "iphone_usb_wifi_fallback"
+    runtime_coordinator.data["mobile_connection"] = None
     assert created[0].native_value is None
 
 
 async def test_gateway_entity_sets_device_metadata(runtime_coordinator) -> None:
-    gateway_entity = entity.GatewayEntity(runtime_coordinator, "entry-1", "mode")
+    gateway_entity = entity.GatewayEntity(
+        runtime_coordinator,
+        "entry-1",
+        "mobile_connection",
+    )
 
-    assert gateway_entity.unique_id == "entry-1_mode"
+    assert gateway_entity.unique_id == "entry-1_mobile_connection"
     assert gateway_entity.has_entity_name is True
     assert gateway_entity.device_info["name"] == "HAOS Mobile WAN"
     assert gateway_entity.device_info["manufacturer"] == "teh-hippo"
 
-    assert select.GatewayModeSelect(runtime_coordinator, "entry-1").unique_id == "entry-1_mode_control"
+    assert switch.GatewayEnabledSwitch(runtime_coordinator, "entry-1").unique_id == "entry-1_enabled"
     assert binary_sensor.GatewaySafetySensor(runtime_coordinator, "entry-1").unique_id == "entry-1_safety_checks"
     assert button.GatewayButton(runtime_coordinator, "entry-1", button.DESCRIPTIONS[0]).unique_id == "entry-1_reconcile"
 
@@ -122,13 +124,18 @@ async def test_gateway_entity_sets_device_metadata(runtime_coordinator) -> None:
 async def test_entity_description_metadata(runtime_coordinator) -> None:
     sensor_desc_by_key = {d.key: d for d in sensor.DESCRIPTIONS}
 
-    assert sensor_desc_by_key["mode"].translation_key == "mode"
-    assert sensor_desc_by_key["mode"].options == ["disabled", "active"]
-    assert sensor_desc_by_key["upstream_mode"].options == ["hotspot_wifi", "iphone_usb"]
+    assert sensor_desc_by_key["mobile_connection"].options == [
+        "wifi_hotspot",
+        "iphone_usb",
+        "iphone_usb_wifi_fallback",
+    ]
+    assert sensor_desc_by_key["active_connection"].options == [
+        "wifi_hotspot",
+        "iphone_usb",
+    ]
     assert sensor_desc_by_key["upstream_pairing_state"].options == [
         "not_applicable",
         "not_ready",
-        "dry_run_blocked",
         "invalid_lease",
         "waiting_for_dhcp",
         "paired",
@@ -141,12 +148,12 @@ async def test_entity_description_metadata(runtime_coordinator) -> None:
         "waiting_for_unlock",
         "pairing_failed",
     ]
-    assert sensor_desc_by_key["desired_mode"].entity_registry_enabled_default is False
+    assert sensor_desc_by_key["mobile_connection"].entity_registry_enabled_default is False
     assert sensor_desc_by_key["public_ip"].entity_registry_enabled_default is False
 
-    mode_select = select.GatewayModeSelect(runtime_coordinator, "entry-1")
-    assert mode_select._attr_translation_key == "mode_control"
-    assert mode_select._attr_entity_category == EntityCategory.CONFIG
+    enabled_switch = switch.GatewayEnabledSwitch(runtime_coordinator, "entry-1")
+    assert enabled_switch._attr_translation_key == "enabled"
+    assert enabled_switch._attr_entity_category == EntityCategory.CONFIG
 
     assert button.DESCRIPTIONS[0].translation_key == "reconcile"
     assert button.DESCRIPTIONS[0].entity_category == EntityCategory.DIAGNOSTIC
@@ -184,23 +191,25 @@ async def test_button_press_raises_translated_auth_error(runtime_coordinator) ->
     runtime_coordinator.async_request_refresh.assert_not_awaited()
 
 
-async def test_select_raises_translated_api_error(runtime_coordinator) -> None:
+async def test_switch_raises_translated_api_error(runtime_coordinator) -> None:
     from homeassistant.exceptions import HomeAssistantError
     from custom_components.ha_cellular_gateway.api import GatewayApiError
 
-    runtime_coordinator.api.set_mode = AsyncMock(
-        side_effect=GatewayApiError("mode change rejected")
+    runtime_coordinator.api.set_enabled = AsyncMock(
+        side_effect=GatewayApiError("enabled change rejected")
     )
 
-    gateway_select = select.GatewayModeSelect(runtime_coordinator, "entry-1")
+    enabled_switch = switch.GatewayEnabledSwitch(runtime_coordinator, "entry-1")
 
     with pytest.raises(HomeAssistantError) as exc_info:
-        await gateway_select.async_select_option("active")
+        await enabled_switch.async_turn_on()
 
     assert exc_info.value.translation_domain == "ha_cellular_gateway"
     assert exc_info.value.translation_key == "api_error"
-    assert exc_info.value.translation_placeholders == {"error": "mode change rejected"}
-    runtime_coordinator.async_request_refresh.assert_not_awaited()
+    assert exc_info.value.translation_placeholders == {
+        "error": "enabled change rejected"
+    }
+    runtime_coordinator.async_request_refresh.assert_awaited_once_with()
 
 
 async def test_button_press_raises_translated_connection_error(runtime_coordinator) -> None:

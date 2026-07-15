@@ -28,10 +28,32 @@ def resolved_interface(
 ) -> LeaseResolution:
     app_lease = load_app_lease(lease_path, interface)
     if app_lease is not None:
+        state = external_lease(run, interface)
+        if state.addresses != (app_lease[0],):
+            if any(
+                address != app_lease[0]
+                for address in state.addresses
+            ):
+                return LeaseResolution(
+                    None,
+                    host_conflict_message(),
+                    "external",
+                )
+            return LeaseResolution(
+                None,
+                "iPhone USB lease is stale",
+                "app",
+            )
+        if state.has_default_route:
+            return LeaseResolution(
+                None,
+                "iPhone USB lease left a main default route",
+                "app",
+            )
         upstream, error = validate_dynamic_lease(config, interface, *app_lease)
         return LeaseResolution(upstream, error, "app")
     state = external_lease(run, interface)
-    if state.address is None and not state.has_default_route:
+    if not state.addresses and not state.has_default_route:
         return LeaseResolution(None, None, None)
     if state.address is None or state.gateway is None:
         return LeaseResolution(None, host_conflict_message(), "external")
@@ -49,10 +71,17 @@ def host_managed_conflict(
     lease_path,
     interface: str,
 ) -> bool:
-    if load_app_lease(lease_path, interface) is not None:
-        return False
     state = external_lease(run, interface)
-    return state.address is not None or state.has_default_route
+    app_lease = load_app_lease(lease_path, interface)
+    if app_lease is not None:
+        return (
+            any(
+                address != app_lease[0]
+                for address in state.addresses
+            )
+            or state.has_default_route
+        )
+    return bool(state.addresses) or state.has_default_route
 
 
 def owned_interface(lease_path, runtime_interface: str | None, current: str | None) -> str | None:

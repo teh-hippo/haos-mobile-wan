@@ -29,32 +29,27 @@ class GatewaySensorEntityDescription(SensorEntityDescription):
 
 DESCRIPTIONS = (
     GatewaySensorEntityDescription(
-        key="mode",
-        translation_key="mode",
+        key="mobile_connection",
+        translation_key="mobile_connection",
         device_class=SensorDeviceClass.ENUM,
-        options=["disabled", "active"],
-        icon="mdi:wan",
-        value_fn=lambda data: data["mode"],
-    ),
-    GatewaySensorEntityDescription(
-        key="desired_mode",
-        translation_key="desired_mode",
-        device_class=SensorDeviceClass.ENUM,
-        options=["disabled", "active"],
+        options=[
+            "wifi_hotspot",
+            "iphone_usb",
+            "iphone_usb_wifi_fallback",
+        ],
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
-        icon="mdi:target",
-        value_fn=lambda data: data["desired_mode"],
+        icon="mdi:connection",
+        value_fn=lambda data: data["mobile_connection"],
     ),
     GatewaySensorEntityDescription(
-        key="upstream_mode",
-        translation_key="upstream_mode",
+        key="active_connection",
+        translation_key="active_connection",
         device_class=SensorDeviceClass.ENUM,
-        options=["hotspot_wifi", "iphone_usb"],
+        options=["wifi_hotspot", "iphone_usb"],
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
         icon="mdi:access-point",
-        value_fn=lambda data: data["upstream_mode"],
+        value_fn=lambda data: data["active_connection"],
     ),
     GatewaySensorEntityDescription(
         key="upstream_pairing_state",
@@ -63,7 +58,6 @@ DESCRIPTIONS = (
         options=[
             "not_applicable",
             "not_ready",
-            "dry_run_blocked",
             "invalid_lease",
             "waiting_for_dhcp",
             "paired",

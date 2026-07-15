@@ -23,6 +23,8 @@ async def test_diagnostics_redacts_sensitive_values(
                 "management_address": "192.168.1.2",
                 "last_error": "Strict rp_filter is enabled on usb0",
                 "safety_errors": ["Strict rp_filter is enabled on usb0"],
+                "fallback_reason": "USB interface usb0 is unavailable",
+                "connection_warnings": ["Wi-Fi interface wlan0 is unavailable"],
                 "upstream_runtime_interface": "usb0",
                 "upstream_pairing_message": "ipheth driver is not active",
                 "upstream_lockdown_path": "/var/run/usbmuxd",
@@ -34,7 +36,7 @@ async def test_diagnostics_redacts_sensitive_values(
                 (),
                 {
                     "reconcile": AsyncMock(return_value={}),
-                    "set_mode": AsyncMock(return_value={}),
+                    "set_enabled": AsyncMock(return_value={}),
                 },
             )(),
             "async_request_refresh": AsyncMock(),
@@ -50,6 +52,8 @@ async def test_diagnostics_redacts_sensitive_values(
     assert result["status"]["management_address"] == "**REDACTED**"
     assert result["status"]["last_error"] == "**REDACTED**"
     assert result["status"]["safety_errors"] == "**REDACTED**"
+    assert result["status"]["fallback_reason"] == "**REDACTED**"
+    assert result["status"]["connection_warnings"] == "**REDACTED**"
     assert result["status"]["upstream_runtime_interface"] == "**REDACTED**"
     assert result["status"]["upstream_pairing_message"] == "**REDACTED**"
     assert result["status"]["upstream_lockdown_path"] == "**REDACTED**"
@@ -81,7 +85,7 @@ async def test_diagnostics_preserves_structured_issues(
                 (),
                 {
                     "reconcile": AsyncMock(return_value={}),
-                    "set_mode": AsyncMock(return_value={}),
+                    "set_enabled": AsyncMock(return_value={}),
                 },
             )(),
             "async_request_refresh": AsyncMock(),

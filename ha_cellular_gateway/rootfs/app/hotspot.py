@@ -19,8 +19,7 @@ def provision_hotspot(
     urlopen: UrlOpen | None = None,
 ) -> str | None:
     if (
-        config.upstream_mode != "hotspot_wifi"
-        or config.dry_run
+        not config.uses_wifi
         or not config.hotspot_credentials_configured
     ):
         return None

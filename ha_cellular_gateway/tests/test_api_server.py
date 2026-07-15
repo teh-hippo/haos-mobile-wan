@@ -9,13 +9,13 @@ from rootfs.app.api_server import GatewayServer
 class StubEngine:
     def __init__(self) -> None:
         self.cleaned = False
-        self.applied: list[str] = []
+        self.applied = False
 
     def health(self) -> dict[str, object]:
         return {"ok": True}
 
     def status(self) -> dict[str, object]:
-        return {"mode": "disabled"}
+        return {"enabled": False}
 
     def reconcile(self) -> None:
         return None
@@ -23,8 +23,8 @@ class StubEngine:
     def cleanup(self, **kwargs) -> None:
         self.cleaned = kwargs.get("preserve_host_protection") is True
 
-    def apply(self, mode: str) -> None:
-        self.applied.append(mode)
+    def apply(self) -> None:
+        self.applied = True
 
 
 class ApiServerTests(unittest.TestCase):
@@ -40,13 +40,13 @@ class ApiServerTests(unittest.TestCase):
         self.worker.join(timeout=2)
         self.server.server_close()
 
-    def _post_mode(self, mode: str) -> tuple[int, dict[str, object]]:
+    def _post_enabled(self, enabled: object) -> tuple[int, dict[str, object]]:
         connection = http.client.HTTPConnection(self.host, self.port, timeout=5)
         try:
             connection.request(
                 "POST",
-                "/v1/mode",
-                body=json.dumps({"mode": mode}),
+                "/v2/enabled",
+                body=json.dumps({"enabled": enabled}),
                 headers={
                     "Authorization": "Bearer token",
                     "Content-Type": "application/json",
@@ -58,22 +58,22 @@ class ApiServerTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_mode_rejects_unknown_values(self) -> None:
-        status, body = self._post_mode("standby")
+    def test_enabled_rejects_non_boolean_values(self) -> None:
+        status, body = self._post_enabled("yes")
 
         self.assertEqual(status, 409)
-        self.assertEqual(body, {"error": "Mode must be disabled or active"})
-        self.assertEqual(self.engine.applied, [])
+        self.assertEqual(body, {"error": "Enabled must be true or false"})
+        self.assertFalse(self.engine.applied)
         self.assertFalse(self.engine.cleaned)
 
-    def test_mode_accepts_disabled_and_active(self) -> None:
-        disabled_status, _ = self._post_mode("disabled")
-        active_status, _ = self._post_mode("active")
+    def test_enabled_accepts_false_and_true(self) -> None:
+        disabled_status, _ = self._post_enabled(False)
+        active_status, _ = self._post_enabled(True)
 
         self.assertEqual(disabled_status, 200)
         self.assertEqual(active_status, 200)
         self.assertTrue(self.engine.cleaned)
-        self.assertEqual(self.engine.applied, ["active"])
+        self.assertTrue(self.engine.applied)
 
 
 if __name__ == "__main__":

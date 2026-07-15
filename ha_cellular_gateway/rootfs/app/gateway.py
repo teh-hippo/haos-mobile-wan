@@ -24,11 +24,12 @@ from .gateway_runtime import (
     stop,
 )
 from .downstream import DownstreamInterface
+from .mobile_connection import MobileConnectionResolver
 from .policy import PolicyRouting
 from .safety import SafetyInspector
 from .state import StateStore
 from .upstream_iphone import IPhoneUsbUpstream
-from .upstream_models import ResolvedUpstream, configured_upstream
+from .upstream_models import ResolvedUpstream
 
 
 class GatewayEngine:
@@ -42,6 +43,7 @@ class GatewayEngine:
         read_text: Callable[[Path], str] | None = None,
         state_path: Path | None = None,
         config_error: str | None = None,
+        hotspot_error: str | None = None,
     ) -> None:
         self.config = config
         self.runner = runner or CommandRunner()
@@ -65,19 +67,25 @@ class GatewayEngine:
         )
         self.state_store = StateStore(state_path or STATE_PATH)
         self.upstream = IPhoneUsbUpstream(config, self._run)
-
-        self.mode = "disabled"
-        self.desired_mode = (
-            config.mode
-            if not config_error and config.mode == "active"
-            else "disabled"
+        self.connection = MobileConnectionResolver(
+            config,
+            self.upstream,
+            wifi_error=hotspot_error,
         )
+
+        self.config_error = config_error
+        self.enabled = config.enabled and not config_error
         self.last_error: str | None = None
         self.last_reconcile: float | None = None
         self.last_health_probe: float | None = None
         self.last_safety_errors = ["Safety checks have not run yet"]
         self.last_downstream: str | None = None
         self.last_upstream: ResolvedUpstream | None = None
+        self.active_connection: str | None = None
+        self.health_generation = 0
+        self.connection_warnings: list[str] = []
+        self.fallback_selected = False
+        self.fallback_reason: str | None = None
         self.upstream_healthy = False
         self.public_ip: str | None = None
         self.dhcp = DnsmasqService(config, self._run)
@@ -100,7 +108,7 @@ class GatewayEngine:
             except (GatewayError, TypeError, ValueError):
                 self.owned_state = None
                 startup_errors.append("Persistent ownership state is invalid")
-                self.desired_mode = "disabled"
+                self.enabled = False
         self.state_load_error = "; ".join(startup_errors) or None
         if self.state_load_error:
             self.last_error = self.state_load_error
@@ -119,27 +127,46 @@ class GatewayEngine:
     def cleanup(
         self,
         *,
-        preserve_desired: bool = False,
+        preserve_enabled: bool = False,
         preserve_host_protection: bool = False,
         force: bool = False,
+        owned_only: bool = False,
     ) -> None:
         cleanup_gateway(
             self,
-            preserve_desired=preserve_desired,
+            preserve_enabled=preserve_enabled,
             preserve_host_protection=preserve_host_protection,
             force=force,
+            owned_only=owned_only,
         )
 
     def _protectable_downstream(self, downstream: str | None) -> bool:
+        upstream_interface = (
+            self.last_upstream.interface
+            if self.last_upstream
+            else self.config.upstream_interface
+        )
         return bool(downstream) and downstream not in {
             self.config.management_interface,
-            self.config.upstream_interface,
+            upstream_interface,
         }
 
     def _resolve_upstream(self) -> tuple[ResolvedUpstream | None, list[str]]:
-        if self.config.upstream_mode == "iphone_usb":
-            return self.upstream.resolve(allow_mutation=not self.config.dry_run)
-        return configured_upstream(self.config), []
+        resolution = self.connection.resolve()
+        with self.lock:
+            self.connection_warnings = list(resolution.warnings)
+            self.fallback_selected = resolution.fallback_active
+            self.fallback_reason = resolution.fallback_reason
+        return resolution.upstream, list(resolution.errors)
+
+    def _record_upstream(self, upstream: ResolvedUpstream | None) -> None:
+        with self.lock:
+            if upstream != self.last_upstream:
+                self.health_generation += 1
+                self.upstream_healthy = False
+                self.public_ip = None
+                self.last_health_probe = None
+            self.last_upstream = upstream
 
     def _health_probe(self, upstream: ResolvedUpstream | None) -> tuple[bool, str | None]:
         if upstream is None:
@@ -171,8 +198,8 @@ class GatewayEngine:
     def _refresh_health_if_due(self) -> None:
         refresh_health_if_due(self)
 
-    def apply(self, mode: str, *, recovering: bool = False) -> None:
-        apply_gateway(self, mode, recovering=recovering)
+    def apply(self, *, recovering: bool = False) -> None:
+        apply_gateway(self, recovering=recovering)
 
     def reconcile(self, *, refresh_health: bool = False) -> None:
         reconcile_gateway(self, refresh_health=refresh_health)

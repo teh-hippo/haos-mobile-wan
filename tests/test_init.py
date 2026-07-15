@@ -37,13 +37,18 @@ async def test_setup_entry_and_unload(
 
     assert mock_config_entry.state is ConfigEntryState.LOADED
     assert mock_config_entry.runtime_data.data == status_payload
-    assert hass.states.get("sensor.haos_mobile_wan_mode").state == "active"
+    assert hass.states.get("switch.haos_mobile_wan_enabled").state == "on"
+    assert (
+        hass.states.get("sensor.haos_mobile_wan_active_connection").state
+        == "iphone_usb"
+    )
     assert hass.states.get("binary_sensor.haos_mobile_wan_safety_checks").state == "on"
 
     registry = er.async_get(hass)
     unique_ids = {entry.unique_id for entry in registry.entities.values()}
-    assert f"{mock_config_entry.entry_id}_mode" in unique_ids
-    assert f"{mock_config_entry.entry_id}_mode_control" in unique_ids
+    assert f"{mock_config_entry.entry_id}_mobile_connection" in unique_ids
+    assert f"{mock_config_entry.entry_id}_active_connection" in unique_ids
+    assert f"{mock_config_entry.entry_id}_enabled" in unique_ids
     assert f"{mock_config_entry.entry_id}_safety_checks" in unique_ids
     assert f"{mock_config_entry.entry_id}_reconcile" in unique_ids
 

@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from rootfs.app.config import GatewayConfig
+from rootfs.app.const import WIFI_HOTSPOT
 
 
 class Result:
@@ -300,11 +301,10 @@ class FakeRunner:
 
 def make_config(**overrides: object) -> GatewayConfig:
     values = {
-        "mode": "disabled",
-        "dry_run": True,
+        "enabled": False,
         "management_interface": "end0",
         "management_address": "192.168.1.2/24",
-        "upstream_mode": "hotspot_wifi",
+        "mobile_connection": WIFI_HOTSPOT,
         "upstream_interface": "wlan0",
         "upstream_address": "172.20.10.4/28",
         "upstream_gateway": "172.20.10.1",

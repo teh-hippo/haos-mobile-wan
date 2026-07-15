@@ -6,18 +6,25 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .config import GatewayConfig
+from .const import IPHONE_USB
 from .upstream_models import ResolvedUpstream
 
 
 @dataclass(frozen=True)
 class DynamicLease:
     interface: str
-    address: str | None
+    addresses: tuple[str, ...]
     gateway: str | None
     has_default_route: bool
 
+    @property
+    def address(self) -> str | None:
+        return self.addresses[0] if len(self.addresses) == 1 else None
 
-def load_app_lease(path: Path, interface: str) -> tuple[str, str] | None:
+
+def load_app_lease_record(
+    path: Path,
+) -> tuple[str, str, str] | None:
     if not path.exists():
         return None
     try:
@@ -26,7 +33,7 @@ def load_app_lease(path: Path, interface: str) -> tuple[str, str] | None:
         return None
     if (
         not isinstance(lease, dict)
-        or lease.get("interface") != interface
+        or not isinstance(lease.get("interface"), str)
         or "address" not in lease
         or "gateway" not in lease
     ):
@@ -34,24 +41,34 @@ def load_app_lease(path: Path, interface: str) -> tuple[str, str] | None:
     owner = str(lease.get("owner", "app"))
     if owner != "app":
         return None
-    return str(lease["address"]), str(lease["gateway"])
+    return (
+        str(lease["interface"]),
+        str(lease["address"]),
+        str(lease["gateway"]),
+    )
+
+
+def load_app_lease(path: Path, interface: str) -> tuple[str, str] | None:
+    record = load_app_lease_record(path)
+    if record is None or record[0] != interface:
+        return None
+    return record[1], record[2]
 
 
 def inspect_external_lease(
-    addresses: object,
+    address_data: object,
     routes: object,
     interface: str,
 ) -> DynamicLease:
-    address: str | None = None
+    live_addresses: list[str] = []
     gateway: str | None = None
     has_default_route = False
-    for item in addresses if isinstance(addresses, list) else []:
+    for item in address_data if isinstance(address_data, list) else []:
         for entry in item.get("addr_info", []):
             if entry.get("family") == "inet":
-                address = f"{entry['local']}/{entry['prefixlen']}"
-                break
-        if address:
-            break
+                live_addresses.append(
+                    f"{entry['local']}/{entry['prefixlen']}"
+                )
     for route in routes if isinstance(routes, list) else []:
         if route.get("dev") != interface or route.get("dst") != "default":
             continue
@@ -61,7 +78,7 @@ def inspect_external_lease(
             break
     return DynamicLease(
         interface=interface,
-        address=address,
+        addresses=tuple(live_addresses),
         gateway=gateway,
         has_default_route=has_default_route,
     )
@@ -100,7 +117,7 @@ def validate_dynamic_lease(
     if upstream.network.overlaps(downstream.network):
         return None, "iPhone USB lease overlaps the downstream network"
     return ResolvedUpstream(
-        mode=config.upstream_mode,
+        connection=IPHONE_USB,
         interface=interface,
         address=str(upstream),
         gateway=str(peer),

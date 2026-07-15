@@ -23,9 +23,14 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 @pytest.fixture
 def status_payload() -> dict[str, object]:
     return {
-        "mode": "active",
-        "desired_mode": "active",
-        "upstream_mode": "hotspot_wifi",
+        "enabled": True,
+        "configured_enabled": False,
+        "active": True,
+        "mobile_connection": "iphone_usb_wifi_fallback",
+        "active_connection": "iphone_usb",
+        "fallback_active": False,
+        "fallback_reason": None,
+        "connection_warnings": [],
         "upstream_pairing_state": "paired",
         "downstream_interface": "eth1",
         "public_ip": "203.0.113.10",
@@ -60,7 +65,7 @@ def runtime_coordinator(status_payload: dict[str, object]):
                 (),
                 {
                     "reconcile": AsyncMock(return_value={}),
-                    "set_mode": AsyncMock(return_value={}),
+                    "set_enabled": AsyncMock(return_value={}),
                 },
             )(),
             "async_request_refresh": AsyncMock(),

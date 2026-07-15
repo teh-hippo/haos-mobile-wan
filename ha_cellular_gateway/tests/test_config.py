@@ -4,6 +4,11 @@ import unittest
 from pathlib import Path
 
 from rootfs.app.config import FALLBACK_MANAGEMENT, GatewayConfig
+from rootfs.app.const import (
+    IPHONE_USB,
+    IPHONE_USB_WIFI_FALLBACK,
+    WIFI_HOTSPOT,
+)
 from rootfs.app.errors import GatewayError
 
 from helpers import FakeRunner, make_config
@@ -16,8 +21,8 @@ class GatewayConfigTests(unittest.TestCase):
             path.write_text(
                 json.dumps(
                     {
-                        "mode": "disabled",
-                        "dry_run": True,
+                        "enabled": False,
+                        "mobile_connection": "Wi-Fi hotspot",
                         "downstream_mac": "00:11:22:33:44:55",
                     }
                 ),
@@ -37,7 +42,8 @@ class GatewayConfigTests(unittest.TestCase):
             self.assertEqual(config.transit_subnet, "192.168.80.0/24")
             self.assertEqual(config.dhcp_start, "192.168.80.2")
             self.assertEqual(config.dhcp_end, "192.168.80.2")
-            self.assertEqual(config.upstream_mode, "hotspot_wifi")
+            self.assertFalse(config.enabled)
+            self.assertEqual(config.mobile_connection, WIFI_HOTSPOT)
 
     def test_rejects_non_object_options(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -49,7 +55,7 @@ class GatewayConfigTests(unittest.TestCase):
     def test_load_path_degrades_when_management_is_unavailable(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "options.json"
-            path.write_text('{"mode":"active"}', encoding="utf-8")
+            path.write_text('{"enabled":true}', encoding="utf-8")
             runner = FakeRunner()
             runner.main_default_routes = []
 
@@ -72,7 +78,7 @@ class GatewayConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "options.json"
             path.write_text(
-                '{"mode":"active","downstream_address":"203.0.113.1/24"}',
+                '{"enabled":true,"router_address":"203.0.113.1/24"}',
                 encoding="utf-8",
             )
 
@@ -85,19 +91,28 @@ class GatewayConfigTests(unittest.TestCase):
                 ),
             )
 
-            self.assertEqual(config.mode, "disabled")
+            self.assertFalse(config.enabled)
             self.assertEqual(config.downstream_address, "192.168.80.1/24")
             self.assertIn("Invalid app configuration", error)
 
-    def test_rejects_invalid_upstream_mode(self) -> None:
-        config = make_config(upstream_mode="not-real")
-        with self.assertRaisesRegex(GatewayError, "Unsupported upstream mode"):
+    def test_rejects_invalid_mobile_connection(self) -> None:
+        config = make_config(mobile_connection="not-real")
+        with self.assertRaisesRegex(GatewayError, "Unsupported mobile connection"):
             config.validate()
 
-    def test_rejects_invalid_mode(self) -> None:
-        config = make_config(mode="standby")
-        with self.assertRaisesRegex(GatewayError, "Unsupported mode"):
-            config.validate()
+    def test_maps_friendly_mobile_connection_choices(self) -> None:
+        expected = {
+            "Wi-Fi hotspot": WIFI_HOTSPOT,
+            "USB (iPhone)": IPHONE_USB,
+            "USB (iPhone), Wi-Fi fallback": IPHONE_USB_WIFI_FALLBACK,
+        }
+        for option, connection in expected.items():
+            with self.subTest(option=option):
+                config = GatewayConfig._from_data(
+                    {"mobile_connection": option},
+                    FALLBACK_MANAGEMENT,
+                )
+                self.assertEqual(config.mobile_connection, connection)
 
     def test_rejects_overlapping_networks(self) -> None:
         config = make_config(downstream_address="192.168.1.10/25")
@@ -148,9 +163,9 @@ class GatewayConfigTests(unittest.TestCase):
                 with self.assertRaisesRegex(GatewayError, "password"):
                     make_config(hotspot_ssid="Phone", hotspot_password=password).validate()
 
-    def test_usb_mode_allows_dynamic_upstream_network(self) -> None:
+    def test_usb_connection_allows_dynamic_upstream_network(self) -> None:
         config = make_config(
-            upstream_mode="iphone_usb",
+            mobile_connection=IPHONE_USB,
             upstream_interface="wlan0",
             upstream_address="0.0.0.0/32",
             upstream_gateway="0.0.0.0",

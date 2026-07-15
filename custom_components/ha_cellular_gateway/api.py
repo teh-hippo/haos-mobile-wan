@@ -5,7 +5,7 @@ from typing import Any, cast
 
 import aiohttp
 
-from .models import GatewaySelectableMode, GatewayStatus
+from .models import GatewayStatus
 
 
 class GatewayApiError(RuntimeError):
@@ -62,10 +62,14 @@ class GatewayApi:
         return cast(dict[str, object], data)
 
     async def status(self) -> GatewayStatus:
-        return cast(GatewayStatus, await self._request("GET", "/v1/status"))
+        return cast(GatewayStatus, await self._request("GET", "/v2/status"))
 
     async def reconcile(self) -> dict[str, object]:
-        return await self._request("POST", "/v1/reconcile")
+        return await self._request("POST", "/v2/reconcile")
 
-    async def set_mode(self, mode: GatewaySelectableMode) -> dict[str, object]:
-        return await self._request("POST", "/v1/mode", {"mode": mode})
+    async def set_enabled(self, enabled: bool) -> dict[str, object]:
+        return await self._request(
+            "POST",
+            "/v2/enabled",
+            {"enabled": enabled},
+        )

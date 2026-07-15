@@ -1,51 +1,24 @@
 configuration:
-  mode:
-    name: Gateway mode
-    description: >-
-      Disabled performs no forwarding. Active keeps the gateway enabled while
-      the app is running.
-  dry_run:
-    name: Dry run
-    description: >-
-      Prevent all activation changes. Leave enabled until every safety check
-      passes and the downstream cable is connected only to a router WAN port.
-  upstream_mode:
-    name: Upstream mode
-    description: >-
-      hotspot_wifi keeps the existing static Wi-Fi hotspot path. iphone_usb is
-      an experimental iPhone USB-tethering path that pairs with the phone and
-      acquires DHCP without using the management Ethernet.
+  enabled:
+    name: Enabled
+  mobile_connection:
+    name: Mobile connection
   upstream_interface:
-    name: Optional - hotspot interface override
-    description: >-
-      Used only for hotspot_wifi mode. Leave unset to use wlan0. iphone_usb
-      discovers the ipheth interface dynamically.
+    name: Wi-Fi interface
+    description: "Default: wlan0."
   upstream_address:
-    name: Optional - hotspot IPv4 address override
-    description: Used only for hotspot_wifi mode. Leave unset for 172.20.10.4/28.
+    name: Wi-Fi address
+    description: "Default: 172.20.10.4/28."
   upstream_gateway:
-    name: Optional - hotspot gateway override
-    description: >-
-      Used only for hotspot_wifi mode. Leave unset for 172.20.10.1.
+    name: Wi-Fi gateway
+    description: "Default: 172.20.10.1."
   hotspot_ssid:
-    name: Hotspot SSID
-    description: >-
-      Leave blank with Hotspot password to keep the HAOS Wi-Fi profile
-      configured outside the app. Set both values to let the app apply the
-      hotspot profile at startup.
+    name: Wi-Fi hotspot name
   hotspot_password:
-    name: Hotspot password
-    description: >-
-      Leave blank with Hotspot SSID to keep the external HAOS Wi-Fi profile.
-      When set, the password is stored only in app options and sent to
-      Supervisor during startup.
+    name: Wi-Fi hotspot password
   downstream_mac:
-    name: USB Ethernet adapter override
-    description: >-
-      Leave blank to select the only attached USB Ethernet adapter. Set its
-      MAC address only when more than one eligible adapter is attached.
-  downstream_address:
-    name: Downstream gateway address
-    description: >-
-      Private IPv4 gateway in CIDR notation. The app adds this exact address
-      during activation and removes it when disabled or during shutdown.
+    name: Router adapter MAC address
+    description: Set only when more than one USB Ethernet adapter is attached.
+  router_address:
+    name: Router WAN address
+    description: "Default: 192.168.80.1/24. Change only if it overlaps another network."

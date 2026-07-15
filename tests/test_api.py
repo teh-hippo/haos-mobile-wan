@@ -16,16 +16,16 @@ from custom_components.ha_cellular_gateway.api import (
 @pytest.mark.parametrize(
     ("method_name", "expected_method", "expected_path", "expected_payload"),
     [
-        ("status", "GET", "/v1/status", None),
-        ("reconcile", "POST", "/v1/reconcile", None),
-        ("set_mode", "POST", "/v1/mode", {"mode": "active"}),
+        ("status", "GET", "/v2/status", None),
+        ("reconcile", "POST", "/v2/reconcile", None),
+        ("set_enabled", "POST", "/v2/enabled", {"enabled": True}),
     ],
 )
 async def test_gateway_api_requests(
     method_name: str,
     expected_method: str,
     expected_path: str,
-    expected_payload: dict[str, str] | None,
+    expected_payload: dict[str, object] | None,
 ) -> None:
     response = AsyncMock(status=200)
     response.json = AsyncMock(return_value={"ok": True})
@@ -34,7 +34,7 @@ async def test_gateway_api_requests(
     api = GatewayApi(session, "http://gateway.local:8099/", "secret")
 
     result = await getattr(api, method_name)(
-        *(["active"] if method_name == "set_mode" else [])
+        *([True] if method_name == "set_enabled" else [])
     )
 
     assert result == {"ok": True}

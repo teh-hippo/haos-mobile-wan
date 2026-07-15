@@ -6,17 +6,18 @@ from typing import TYPE_CHECKING
 
 from .errors import GatewayError, SafetyError
 from .gateway_cleanup import cleanup
+from .gateway_transition import cleanup_changed_ownership
 
 if TYPE_CHECKING:
     from .gateway import GatewayEngine
+    from .upstream_models import ResolvedUpstream
 
 OPERATION_ERRORS = (GatewayError, OSError, subprocess.SubprocessError, ValueError)
 
 
 def _protect_host(engine: GatewayEngine, downstream: str | None) -> None:
     if (
-        not engine.config.dry_run
-        and engine._protectable_downstream(downstream)
+        engine._protectable_downstream(downstream)
         and not engine.firewall.host_protection_installed(downstream)
     ):
         assert downstream is not None
@@ -25,22 +26,23 @@ def _protect_host(engine: GatewayEngine, downstream: str | None) -> None:
 
 def apply(
     engine: GatewayEngine,
-    mode: str,
     *,
     recovering: bool = False,
+    upstream: ResolvedUpstream | None = None,
+    upstream_errors: list[str] | None = None,
 ) -> None:
-    if mode != "active":
-        raise GatewayError("Mode must be active")
-    if engine.config.dry_run:
-        raise SafetyError("Mutation is disabled while dry_run is true")
+    if engine.config_error:
+        raise GatewayError(engine.config_error)
 
     with engine.operation_lock:
         with engine.lock:
             if not recovering:
-                engine.desired_mode = mode
+                engine.enabled = True
 
         downstream = engine.safety.find_downstream()
-        upstream, upstream_errors = engine._resolve_upstream()
+        if upstream_errors is None:
+            upstream, upstream_errors = engine._resolve_upstream()
+        cleanup_changed_ownership(engine, downstream, upstream)
         address_owned = engine.downstream.owns_address(
             engine.owned_state,
             downstream,
@@ -54,12 +56,12 @@ def apply(
         )
         with engine.lock:
             engine.last_downstream = downstream
-            engine.last_upstream = upstream
             engine.last_safety_errors = errors
+        engine._record_upstream(upstream)
         if errors:
             cleanup(
                 engine,
-                preserve_desired=True,
+                preserve_enabled=True,
                 preserve_host_protection=True,
             )
             _protect_host(engine, downstream)
@@ -72,7 +74,7 @@ def apply(
 
         cleanup(
             engine,
-            preserve_desired=True,
+            preserve_enabled=True,
             preserve_host_protection=True,
         )
         with engine.lock:
@@ -88,7 +90,7 @@ def apply(
         except OPERATION_ERRORS as err:
             cleanup(
                 engine,
-                preserve_desired=True,
+                preserve_enabled=True,
                 preserve_host_protection=True,
             )
             message = f"Activation failed: {err}"
@@ -97,8 +99,8 @@ def apply(
             raise GatewayError(message) from err
 
         with engine.lock:
-            engine.mode = mode
             engine.applied = True
+            engine.active_connection = upstream.connection
             engine.last_error = None
             engine._persist_state()
 
@@ -110,22 +112,36 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                 engine.last_reconcile = time.time()
                 startup_cleanup_pending = engine.startup_cleanup_pending
                 owned_state = engine.owned_state
-                desired_mode = engine.desired_mode
+                enabled = engine.enabled
                 state_load_error = engine.state_load_error
 
             if startup_cleanup_pending:
                 cleanup(
                     engine,
-                    preserve_desired=True,
-                    preserve_host_protection=not engine.config.dry_run,
+                    preserve_enabled=True,
+                    preserve_host_protection=not engine.config_error,
                     force=bool(owned_state),
+                    owned_only=bool(engine.config_error),
                 )
                 with engine.lock:
-                    engine.state_load_error = None
                     engine.startup_cleanup_pending = False
-                    state_load_error = None
+                    if not engine.config_error:
+                        engine.state_load_error = None
+                        state_load_error = None
+            if engine.config_error:
+                with engine.lock:
+                    engine.last_downstream = None
+                    engine.last_safety_errors = [engine.config_error]
+                    engine.last_error = engine.config_error
+                engine._record_upstream(None)
+                return
             downstream = engine.safety.find_downstream()
             upstream, upstream_errors = engine._resolve_upstream()
+            cleanup_changed_ownership(
+                engine,
+                downstream,
+                upstream,
+            )
             try:
                 errors = engine.safety.errors(
                     downstream,
@@ -141,10 +157,10 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                 errors = [f"Safety inspection failed: {err}"]
             with engine.lock:
                 engine.last_downstream = downstream
-                engine.last_upstream = upstream
                 engine.last_safety_errors = errors
+            engine._record_upstream(upstream)
 
-            if desired_mode != "active":
+            if not enabled:
                 managed_chains = (
                     ("iptables", engine.firewall.INPUT_CHAIN),
                     ("ip6tables", engine.firewall.INPUT6_CHAIN),
@@ -184,7 +200,7 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
             if errors:
                 cleanup(
                     engine,
-                    preserve_desired=True,
+                    preserve_enabled=True,
                     preserve_host_protection=True,
                 )
                 _protect_host(engine, downstream)
@@ -193,7 +209,7 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                 return
 
             if (
-                engine.mode != desired_mode
+                not engine.applied
                 or not engine.policy.installed(downstream, upstream)
                 or not engine.firewall.installed(
                     downstream,
@@ -201,7 +217,12 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                 )
                 or not engine.dhcp.running
             ):
-                apply(engine, desired_mode, recovering=True)
+                apply(
+                    engine,
+                    recovering=True,
+                    upstream=upstream,
+                    upstream_errors=upstream_errors,
+                )
     finally:
         if refresh_health:
             engine._refresh_health_if_due()

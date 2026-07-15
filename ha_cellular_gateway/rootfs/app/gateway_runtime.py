@@ -14,11 +14,17 @@ def refresh_health_if_due(engine: GatewayEngine) -> None:
     with engine.lock:
         last_probe = engine.last_health_probe
         upstream = engine.last_upstream
+        generation = engine.health_generation
     now = time.time()
     if last_probe is not None and now - last_probe < engine.HEALTH_PROBE_INTERVAL:
         return
     healthy, public_ip = engine._health_probe(upstream)
     with engine.lock:
+        if (
+            engine.last_upstream != upstream
+            or engine.health_generation != generation
+        ):
+            return
         engine.upstream_healthy = healthy
         engine.public_ip = public_ip
         engine.last_health_probe = time.time()
@@ -29,7 +35,7 @@ def fail_closed(engine: GatewayEngine, error: Exception) -> None:
         cleanup_error: Exception | None = None
         try:
             engine.cleanup(
-                preserve_desired=True,
+                preserve_enabled=True,
                 preserve_host_protection=True,
             )
         except (
@@ -40,8 +46,8 @@ def fail_closed(engine: GatewayEngine, error: Exception) -> None:
         ) as err:
             cleanup_error = err
         with engine.lock:
-            engine.mode = "disabled"
             engine.applied = False
+            engine.active_connection = None
             engine.last_error = (
                 f"{error}; cleanup failed: {cleanup_error}"
                 if cleanup_error
@@ -58,14 +64,18 @@ def status(engine: GatewayEngine) -> dict[str, object]:
             engine.last_safety_errors,
             engine.last_error,
             upstream_status,
+            engine.connection_warnings,
         )
         return {
-            "mode": engine.mode,
-            "desired_mode": engine.desired_mode,
-            "configured_mode": engine.config.mode,
-            "dry_run": engine.config.dry_run,
+            "enabled": engine.enabled,
+            "configured_enabled": engine.config.enabled,
+            "active": engine.applied,
             "management_interface": engine.config.management_interface,
-            "upstream_mode": engine.config.upstream_mode,
+            "mobile_connection": engine.config.mobile_connection,
+            "active_connection": engine.active_connection,
+            "fallback_active": engine.applied and engine.fallback_selected,
+            "fallback_reason": engine.fallback_reason,
+            "connection_warnings": list(engine.connection_warnings),
             "configured_upstream_interface": engine.config.upstream_interface,
             "upstream_interface": (
                 upstream.interface
@@ -127,7 +137,7 @@ def stop(engine: GatewayEngine) -> None:
         cleanup_error: Exception | None = None
         try:
             engine.cleanup(
-                preserve_desired=True,
+                preserve_enabled=True,
                 force=force,
             )
         except (
@@ -157,11 +167,10 @@ def stop(engine: GatewayEngine) -> None:
 def _status_config(engine: GatewayEngine) -> dict[str, object]:
     config = engine.config
     return {
-        "mode": config.mode,
-        "dry_run": config.dry_run,
+        "enabled": config.enabled,
         "management_interface": config.management_interface,
         "management_address": config.management_address,
-        "upstream_mode": config.upstream_mode,
+        "mobile_connection": config.mobile_connection,
         "upstream_interface": config.upstream_interface,
         "upstream_address": config.upstream_address,
         "upstream_gateway": config.upstream_gateway,

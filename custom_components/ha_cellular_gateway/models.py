@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from typing import Literal, NotRequired, TypeAlias, TypedDict
 
-GatewayMode: TypeAlias = Literal["disabled", "active"]
-GatewaySelectableMode: TypeAlias = Literal["disabled", "active"]
-GatewayUpstreamMode: TypeAlias = Literal["hotspot_wifi", "iphone_usb"]
+GatewayMobileConnection: TypeAlias = Literal[
+    "wifi_hotspot",
+    "iphone_usb",
+    "iphone_usb_wifi_fallback",
+]
+GatewayActiveConnection: TypeAlias = Literal["wifi_hotspot", "iphone_usb"]
 GatewayPairingState: TypeAlias = Literal[
     "not_applicable",
     "not_ready",
-    "dry_run_blocked",
     "invalid_lease",
     "waiting_for_dhcp",
     "paired",
@@ -33,11 +35,10 @@ class GatewayIssue(TypedDict):
 
 
 class GatewayRuntimeConfig(TypedDict):
-    mode: GatewayMode
-    dry_run: bool
+    enabled: bool
     management_interface: str
     management_address: str
-    upstream_mode: GatewayUpstreamMode
+    mobile_connection: GatewayMobileConnection
     upstream_interface: str
     upstream_address: str
     upstream_gateway: str
@@ -47,12 +48,15 @@ class GatewayRuntimeConfig(TypedDict):
 
 
 class GatewayStatus(TypedDict):
-    mode: GatewayMode
-    desired_mode: GatewayMode
-    configured_mode: GatewayMode
-    dry_run: bool
+    enabled: bool
+    configured_enabled: bool
+    active: bool
     management_interface: str
-    upstream_mode: GatewayUpstreamMode
+    mobile_connection: GatewayMobileConnection
+    active_connection: GatewayActiveConnection | None
+    fallback_active: bool
+    fallback_reason: str | None
+    connection_warnings: list[str]
     configured_upstream_interface: str
     upstream_interface: str | None
     upstream_address: str | None

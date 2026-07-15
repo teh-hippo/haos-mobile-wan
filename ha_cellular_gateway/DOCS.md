@@ -1,54 +1,36 @@
 # HAOS Mobile WAN
 
-HAOS Mobile WAN turns a Home Assistant OS host into an isolated mobile WAN
-gateway. It does not know about or control the downstream router. The router
-only needs a WAN Ethernet port configured as a DHCP client.
+HAOS Mobile WAN lets Home Assistant OS provide a mobile fallback connection to
+a router WAN port.
 
-## Network roles
+```text
+Phone -> Home Assistant OS -> USB Ethernet -> Router WAN
+```
 
-| Interface | Role |
-|---|---|
-| Management Ethernet, usually `end0` | Normal Home Assistant LAN and main default route |
-| Wi-Fi, usually `wlan0` | Default phone hotspot upstream |
-| `ipheth`, dynamic name such as `eth0` | Optional experimental iPhone USB-tethering upstream |
-| USB Ethernet | Isolated downstream connection to a router WAN port |
+The Home Assistant management Ethernet remains unchanged and stays the only
+main default route. Mobile traffic uses an isolated policy table and cannot
+fall back through the management network.
 
-The app:
+## Before you start
 
-- serves DHCP only on the USB Ethernet interface;
-- routes that transit subnet through a dedicated policy table;
-- permits forwarding only between the USB Ethernet interface and Wi-Fi;
-- masquerades only the configured transit subnet;
-- blocks IPv6 on the fallback path;
-- protects HAOS host-local services from the downstream interface;
-- keeps iPhone USB DHCP off the main routing table;
-- fails closed instead of falling back through the management LAN.
-
-## Safety first
-
-Before commissioning:
-
-1. Take a full Home Assistant backup.
-2. Leave the USB adapter's RJ45 cable disconnected.
+1. Take a Home Assistant backup.
+2. Leave the router WAN cable disconnected from the HAOS USB Ethernet adapter.
 3. Keep the app on manual boot.
-4. Keep `mode: disabled`.
-5. Keep `dry_run: true`.
-6. Do not connect the downstream adapter to a normal LAN port. It runs an
-   authoritative DHCP server when enabled.
+4. Keep **Enabled** off.
+5. Do not connect the router-facing adapter to a normal LAN port. The app
+   serves DHCP on that interface when enabled.
 
-Manual boot means the app does not restart automatically after HAOS reboots.
-Enable start-on-boot in the Apps panel only after successful hardware validation.
+Manual boot means the app does not start automatically after an HAOS reboot.
+Enable start-on-boot only after the complete gateway path has been tested.
 
-## Configure HAOS networking
+## Prepare HAOS networking
 
-The app discovers and validates the management network but never changes it.
-The USB Ethernet profile must be left without host-managed IP addressing. The
-app then owns one exact runtime address on that interface and can remove it
-cleanly when disabled, on failure or during shutdown.
+The app detects the management interface and its current IPv4 address. It does
+not change that interface or its NetworkManager profile.
 
 Use the Terminal & SSH app or another supported HAOS console.
 
-### 1. Inspect interfaces
+### Inspect the interfaces
 
 ```sh
 ha --raw-json network info
@@ -56,47 +38,68 @@ ha network info end0
 ha network info wlan0
 ```
 
-After attaching the USB Ethernet adapter, run `ha --raw-json network info`
-again. Record its interface name and MAC address.
+Attach the USB Ethernet adapter that will connect to the router WAN, then run
+the network command again. The app selects the only eligible USB Ethernet
+adapter automatically.
 
-### 2. Preserve management Ethernet
+If more than one eligible adapter is attached, set the optional **Router
+adapter MAC address**.
 
-Do not change the management interface. Confirm it has one unambiguous IPv4
-address and is the only interface with a main default route. The app detects
-both values at startup.
+### Keep the management connection unchanged
 
-### 3. Choose the upstream mode
+Confirm that the management Ethernet:
 
-`upstream_mode: hotspot_wifi` is the default. Leave `hotspot_ssid` and
-`hotspot_password` empty to keep the current externally configured HAOS Wi-Fi
-profile. Set both values to let the app apply the hotspot Wi-Fi profile through
-Supervisor when the app starts.
+- has one unambiguous IPv4 address;
+- remains reachable;
+- is the only interface with a main default route.
 
-`upstream_mode: iphone_usb` is experimental. The app:
+The app detects this baseline at startup and disables gateway service if it
+changes unexpectedly.
 
-- requires the app's `usb: true` permission;
-- starts `usbmuxd` inside the container;
-- persists `/var/lib/lockdown` under `/data/lockdown`;
-- pairs only after you unlock the iPhone and tap **Trust**;
-- owns DHCP on the detected `ipheth` interface itself.
+### Prepare the router-facing adapter
 
-If pairing, `ipheth` or DHCP never become ready, the app stays disabled and
-reports a focused preflight error instead of guessing.
+Replace `enp1s0u1` with the detected USB Ethernet interface:
 
-### 3a. Keep `ipheth` app-owned
+```sh
+ha network update enp1s0u1 \
+  --ipv4-method disabled \
+  --ipv6-method disabled
+```
 
-Do not configure the dynamic `ipheth` interface in HAOS. Leave IPv4, DHCP and
-the main default route unmanaged on that interface so the app can own them.
+Do not configure an address, gateway or DNS server on this interface. When
+enabled, the app owns one exact address and removes it during disable, failure
+or shutdown.
 
-If `ipheth` already has a host-managed IPv4 address or main default route, the
-app reports an ownership conflict and stays disabled instead of racing HAOS or
-NetworkManager for DHCP.
+The default router WAN transit address is `192.168.80.1/24`. The app leases
+`192.168.80.2` to the router and advertises `.1` as its gateway.
 
-### 4. Configure the phone hotspot interface
+This subnet is not detected from the phone or router. It is a private default
+that must not overlap the Home Assistant management network, the phone network
+or the router LAN. If it does, set the optional **Router WAN address**.
 
-When `hotspot_ssid` and `hotspot_password` are both empty, configure the HAOS
-Wi-Fi profile outside the app. The example defaults match an iPhone Personal
-Hotspot:
+## Choose the mobile connection
+
+### Wi-Fi hotspot
+
+HAOS connects to the phone over Wi-Fi.
+
+Leave the Wi-Fi hotspot name and password empty to keep an existing HAOS Wi-Fi
+profile. Set both values to let the app apply the profile through Supervisor
+when it starts.
+
+The default Wi-Fi settings are:
+
+| Setting | Default |
+|---|---|
+| Interface | `wlan0` |
+| HAOS address | `172.20.10.4/28` |
+| Phone gateway | `172.20.10.1` |
+| IPv6 | Disabled |
+
+The app intentionally omits a Wi-Fi main-table gateway. It installs the phone
+gateway only in its own routing table.
+
+To configure the profile outside the app:
 
 ```sh
 ha network update wlan0 \
@@ -111,134 +114,143 @@ ha network update wlan0 \
   --ipv6-method disabled
 ```
 
-Do not configure an IPv4 gateway on `wlan0`. The app adds the phone gateway
-only to its dedicated policy table. Verify that `wlan0` does not appear as a
-main-table default route.
+Do not add an IPv4 gateway to this HAOS profile.
 
-When both hotspot credential options are set, the app applies the same static
-profile at startup using the configured `upstream_interface`,
-`upstream_address`, public DNS servers and disabled IPv6. It intentionally omits
-an IPv4 gateway from the Supervisor request. Restart the app after changing
-these options.
+### USB (iPhone)
 
-### 5. Configure the USB Ethernet interface
+The app:
 
-Replace `enp1s0u1` with the detected interface:
+- starts `usbmuxd` inside the container;
+- keeps pairing records in `/data/lockdown`;
+- discovers the dynamic `ipheth` interface;
+- owns DHCP on that interface;
+- keeps the USB default route out of the main table.
 
-```sh
-ha network update enp1s0u1 \
-  --ipv4-method disabled \
-  --ipv6-method disabled
-```
+Connect the unlocked iPhone with a data-capable cable, enable **Personal
+Hotspot** and **Allow Others to Join**, then accept **Trust** if prompted.
 
-Do not configure an address, gateway or DNS servers on this interface. The app
-rejects host-managed IPv4 addresses, installs its configured downstream address
-only during activation, and deletes that exact address when it rolls back.
+Do not configure `ipheth` in HAOS. If the host already owns an address or main
+default route on that interface, the app reports an ownership conflict and
+does not race NetworkManager.
 
-With one eligible USB Ethernet adapter attached, the app selects it
-automatically. If more than one is attached, set `downstream_mac` to the
-intended adapter's MAC address.
+iPhone USB remains experimental because it depends on the HAOS kernel,
+`ipheth`, the cable and the phone trust workflow.
 
-### 6. Verify the host baseline
+### USB (iPhone), Wi-Fi fallback
 
-Confirm:
+This strategy prepares both mobile paths.
 
-- management remains reachable;
-- the management interface is the only main default route;
-- `wlan0` has the expected static address and no main default route;
-- the USB interface has no host-managed IPv4 address;
-- IPv6 is disabled on Wi-Fi and USB Ethernet;
-- the three configured IPv4 networks do not overlap.
+- USB is selected while the iPhone is paired, `ipheth` is available and its
+  app-owned DHCP lease is valid.
+- Wi-Fi is selected when USB is not ready.
+- USB is selected again as soon as it recovers.
+- The management Ethernet is never considered as a fallback.
+
+The app removes forwarding before changing routes and NAT, so source
+transitions remain fail closed.
+
+Internet health checks remain diagnostic. They do not trigger source changes
+in this release.
 
 ## App options
 
-The defaults are examples and must match the target host.
+### Normal options
 
-| Normal option | Purpose |
+| Option | Purpose |
 |---|---|
-| `mode` | `disabled` or `active` startup state |
-| `dry_run` | Blocks every downstream mutation while preflight checks run |
-| `upstream_mode` | `hotspot_wifi` for the existing Wi-Fi path, `iphone_usb` for experimental USB tethering |
-| `hotspot_ssid` | Optional app-managed hotspot SSID for `hotspot_wifi`; leave empty with `hotspot_password` for the legacy manual profile path |
-| `hotspot_password` | Optional masked hotspot WPA passphrase; set only with `hotspot_ssid` |
-| `downstream_address` | Private gateway address and subnet used only for the router WAN transit |
+| **Enabled** | Starts or stops gateway service to the router |
+| **Mobile connection** | Selects Wi-Fi, USB (iPhone), or USB-preferred Wi-Fi fallback |
+| **Wi-Fi hotspot name** | Optional app-managed Wi-Fi name |
+| **Wi-Fi hotspot password** | Optional app-managed Wi-Fi password |
 
-The optional `downstream_mac`, `upstream_interface`, `upstream_address` and
-`upstream_gateway` fields are hidden with the unused optional settings. The MAC
-selects between multiple USB Ethernet adapters. The hotspot network fields
-override the standard `wlan0`, `172.20.10.4/28` and `172.20.10.1` defaults.
+The Wi-Fi name and password must both be set or both be empty.
 
-The transit subnet is derived from `downstream_address`. The app offers one
-five-minute DHCP lease to the router, uses public IPv4 resolvers, policy table
-201, a five-second reconciliation interval, and the fixed
-Supervisor-local API endpoint. These are implementation details rather than
-user settings.
+### Optional advanced options
+
+| Option | Default | Use |
+|---|---|---|
+| Router adapter MAC address | Automatic | Select between multiple USB Ethernet adapters |
+| Router WAN address | `192.168.80.1/24` | Avoid a subnet overlap |
+| Wi-Fi interface | `wlan0` | Override the hotspot interface |
+| Wi-Fi address | `172.20.10.4/28` | Override the HAOS hotspot address |
+| Wi-Fi gateway | `172.20.10.1` | Override the phone address |
 
 Options are read when the app starts. Restart the app after changing them.
+The app option controls startup state. The optional integration switch controls
+the current app process and does not rewrite saved app options.
 
-## Commissioning
+## Upgrade to 0.4.0
 
-1. Start the app with disabled mode and dry-run enabled.
-2. Review the logs and safety-check status. Resolve every reported error.
-3. Set `dry_run: false`, keep `mode: disabled`, save and restart.
-   This permits iPhone USB pairing when selected and installs only the
-   downstream host-ingress guard. The downstream address, forwarding, DHCP and
-   policy routing remain absent.
-4. If using `iphone_usb`, connect the iPhone by USB, unlock it, enable Personal
-   Hotspot and tap **Trust** when prompted. Then press **Reapply gateway state**
-   until the pairing state becomes `paired`.
-5. Confirm the selected upstream is ready while the gateway still remains
+Version 0.4.0 is a breaking app and integration update. The old option names,
+mode API and select entities are not retained.
+
+1. Disable the 0.3 gateway and let cleanup finish.
+2. Update the HAOS app.
+3. Select the required **Mobile connection** again.
+4. Re-enter **Router WAN address** only if the default
+   `192.168.80.1/24` is unsuitable.
+5. Confirm the Wi-Fi hotspot fields, then restart the app.
+6. Update the HACS integration to 0.4.0.
+7. Restart Home Assistant.
+8. Remove any unavailable legacy Mode select or Mode sensors from the entity
+   registry.
+9. Repeat the disabled commissioning checks before enabling the gateway.
+
+The app and integration use API v2. The integration is expected to be
+unavailable while only one side of the breaking update has been installed.
+
+## Commission the gateway
+
+1. Start the app with **Enabled** off.
+2. Review the logs, **Safety checks**, **USB pairing** and **Last error**.
+3. Resolve every host or ownership error.
+4. If using USB, connect and trust the iPhone.
+5. Confirm the selected mobile connection is ready while the gateway remains
    disabled.
-6. Connect the USB Ethernet cable only to the intended router WAN port.
-7. Select `active` mode.
-8. Confirm the router receives an address from the configured DHCP range.
-9. Confirm DNS and HTTPS traffic use the selected mobile upstream.
-10. Confirm Home Assistant management remains reachable.
-11. Confirm no transit traffic can use the management interface.
+6. Connect the prepared USB Ethernet adapter only to the intended router WAN
+   port.
+7. Turn **Enabled** on.
+8. Confirm the router receives the single WAN lease.
+9. Confirm DNS and HTTPS traffic use the selected mobile connection.
+10. Confirm Home Assistant remains reachable through management Ethernet.
+11. Confirm router traffic cannot use the management interface.
 
-Set `mode: disabled` to tear down the transient downstream address, DHCP,
-forwarding, NAT and policy routing. The host-ingress guard remains while the app
-is running. Enable start-on-boot only after reboot recovery has also been
-tested.
+While disabled, the app may prepare Wi-Fi, pair the iPhone, maintain the USB
+lease and protect HAOS from the router-facing interface. It does not install
+the router-facing address, router DHCP, forwarding, NAT or policy routing.
 
-## Failure and recovery behaviour
+Turning **Enabled** off removes gateway service while keeping the host
+protection rule until the app stops.
 
-If Wi-Fi, the USB adapter, addressing, firewall backend or policy ownership
-becomes unsafe, the app:
+## Failure and recovery
 
-- stops DHCP;
-- removes its tagged forwarding and NAT rules;
-- removes only the exact policy rules and routes it owns;
-- removes the exact transient downstream address it added;
-- retains its downstream host-ingress guard while the app is running;
-- keeps the requested active mode so it can recover automatically when every
-  safety check passes again.
+If the mobile connection, USB Ethernet adapter, addressing, firewall backend or
+policy ownership becomes unsafe, the app:
 
-The app never flushes host firewall base chains or deletes policy rules by
-priority alone. It never changes the management NetworkManager profile or the
-USB Ethernet NetworkManager profile. It changes the Wi-Fi profile only at
-startup when both hotspot credential options are set.
+- stops router DHCP;
+- removes its forwarding and NAT rules;
+- removes only the policy rules and routes it owns;
+- removes the exact router-facing address it added;
+- retains the host protection rule while the app remains running;
+- keeps the enabled request and retries every five seconds.
 
-On graceful stop, the same cleanup also removes the host-ingress guard before
-the container exits. The Supervisor allows 30 seconds for this teardown. If the
-process is killed without cleanup, `/data/state.json` records the exact owned
-address, routes and rules so the next start removes them before reconciliation.
-An HAOS reboot also clears transient interface and firewall state.
+On graceful stop, cleanup also removes the host protection rule and shuts down
+the app-owned iPhone DHCP client. `/data/state.json` records exact ownership so
+the next start can clean interrupted state before reconciliation.
 
-The downstream router can retain its last DHCP lease for up to five minutes
-after the app stops. It receives no usable gateway service during that period.
+The router can retain its five-minute DHCP lease after gateway service stops,
+but the lease has no usable gateway during that time.
 
-To recover:
+To recover manually:
 
-1. Keep Home Assistant connected through the management interface.
-2. Stop the app from the Apps panel.
-3. Disconnect the USB Ethernet cable from the downstream router.
-4. Correct HAOS interface configuration or app options.
-5. Restart in disabled dry-run mode.
+1. Keep Home Assistant connected through management Ethernet.
+2. Turn **Enabled** off or stop the app.
+3. Disconnect the router WAN cable.
+4. Correct the HAOS interface profile or app options.
+5. Restart the app and repeat commissioning.
 
-Before uninstalling, return to disabled mode and let the app complete one
-reconcile or stop cleanly. If the USB adapter will be reused for ordinary
-networking, restore its HAOS profile afterwards, for example:
+Before uninstalling, turn **Enabled** off and let cleanup finish. Restore the
+USB Ethernet profile if the adapter will return to ordinary networking:
 
 ```sh
 ha network update enp1s0u1 \
@@ -246,59 +258,38 @@ ha network update enp1s0u1 \
   --ipv6-method auto
 ```
 
-## iPhone USB feasibility and limits
-
-This path is intentionally experimental on stock HAOS 18.1:
-
-- it depends on the host `ipheth` kernel driver appearing for the connected
-  iPhone;
-- it depends on container USB access plus `usbmuxd`/`libimobiledevice`;
-- the interface name is discovered dynamically and must not be hard-coded;
-- the trust workflow is still user-driven on the phone;
-- real hardware validation is still required for every target HAOS build.
-
-If the phone is visible over USB but pairing cannot complete, the app fails
-closed and keeps downstream forwarding disabled.
-
 ## Optional Home Assistant integration
 
-The app is fully operable without the custom integration. The optional
-`ha_cellular_gateway` integration adds status entities and runtime controls.
-Adding this Apps repository does not install the integration.
+The optional HACS integration adds:
 
-## Security status
+- an **Enabled** switch;
+- mobile and active connection sensors;
+- iPhone USB pairing status;
+- safety, DHCP, rule and interface sensors;
+- Repairs and redacted diagnostics;
+- an immediate reconciliation button.
 
-The app uses `host_network: true`, `NET_ADMIN`, `NET_RAW`, `hassio_api: true`,
-`hassio_role: manager` and `usb: true`, without `full_access`, host D-Bus or
-`udev`.
+The integration polls the app every 30 seconds. It is separate from the app and
+requires a Home Assistant restart after installation or update.
 
-- `host_network` is required because the app validates and mutates the HAOS
-  host firewall, routing tables and real network interfaces.
-- `NET_ADMIN` is required for the app's tagged `iptables`/`ip6tables`, route
-  and policy-rule ownership model.
-- `NET_RAW` remains required because `dnsmasq` and `udhcpc` own DHCP on the
-  downstream and `iphone_usb` interfaces.
-- `hassio_role: manager` is required because app-managed hotspot credentials
-  use the Supervisor `/network` API. `hassio_api: true` alone can publish
-  discovery but cannot update a network interface.
-- `usb: true` remains required for the supported `iphone_usb` path because
-  Home Assistant App permissions are static per app and cannot be toggled per
-  `upstream_mode`.
+## Security
 
-That static-permission model is the supported exemption for hotspot-only
-deployments: `hotspot_wifi` does not use USB at runtime, but the app still
-ships with the minimal shared permission set needed for the existing iPhone USB
-path. If dormant USB exposure is unacceptable on a given host, this app does
-not currently offer a separate hotspot-only package.
+The app uses `host_network`, `NET_ADMIN`, `NET_RAW`, `hassio_api`,
+`hassio_role: manager` and `usb: true`.
 
-The enforced AppArmor profile is limited to the app payload, its own `/data`
-state, `/run/ha-cellgw`, the `usbmuxd` runtime socket, the required `ip`,
-`iptables`, `dnsmasq`, `curl`, `usbmuxd`, `idevice*`, `udhcpc` and `/bin/sh`
-executables (the shell is required by the udhcpc DHCP callback script), the
-specific `/proc/sys/net/ipv4` checks, `/sys/class/net`, `/sys/devices` (sysfs
-symlink traversal for ipheth network interface detection), `ipheth` USB sysfs
-inspection and `/dev/bus/usb`.
+- Host networking and `NET_ADMIN` are required for real HAOS interfaces,
+  policy routing and tagged firewall rules.
+- `NET_RAW` is required by the DHCP services.
+- Supervisor manager access is required to apply app-managed Wi-Fi profiles.
+- USB access is required by the iPhone path and is static for the app package.
 
-The API binds to the Supervisor-side host address and requires a generated
-Bearer token. Diagnostics redact credentials, public addressing and network
-topology.
+The app does not use `full_access`, host D-Bus or `udev`.
+
+The enforced AppArmor profile limits the process to its networking tools,
+app-owned data, required `/proc` and sysfs reads, and the iPhone USB paths.
+The API binds to the Supervisor-side address and requires a generated bearer
+token. Diagnostics redact credentials, addressing, interface names and iPhone
+identifiers.
+
+Generic Android, RNDIS and CDC USB tethering is not yet supported. It is
+tracked in [issue #96](https://github.com/teh-hippo/haos-mobile-wan/issues/96).

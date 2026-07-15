@@ -5,6 +5,7 @@ import urllib.error
 import urllib.request
 
 from helpers import make_config
+from rootfs.app.const import IPHONE_USB, IPHONE_USB_WIFI_FALLBACK
 from rootfs.app.hotspot import provision_hotspot
 
 
@@ -12,36 +13,40 @@ class HotspotProvisioningTests(unittest.TestCase):
     def test_empty_credentials_do_not_call_supervisor(self) -> None:
         calls: list[urllib.request.Request] = []
         error = provision_hotspot(
-            make_config(dry_run=False),
+            make_config(),
             token="token",
             urlopen=lambda request, **kwargs: calls.append(request),
         )
         self.assertIsNone(error)
         self.assertEqual(calls, [])
 
-    def test_dry_run_and_iphone_usb_do_not_call_supervisor(self) -> None:
-        for config in (
+    def test_iphone_usb_does_not_call_supervisor(self) -> None:
+        calls: list[urllib.request.Request] = []
+        error = provision_hotspot(
             make_config(
-                dry_run=True,
+                mobile_connection=IPHONE_USB,
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",
             ),
+            token="token",
+            urlopen=lambda request, **kwargs: calls.append(request),
+        )
+        self.assertIsNone(error)
+        self.assertEqual(calls, [])
+
+    def test_combined_connection_provisions_wifi(self) -> None:
+        calls: list[urllib.request.Request] = []
+        error = provision_hotspot(
             make_config(
-                dry_run=False,
-                upstream_mode="iphone_usb",
+                mobile_connection=IPHONE_USB_WIFI_FALLBACK,
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",
             ),
-        ):
-            with self.subTest(config=config):
-                calls: list[urllib.request.Request] = []
-                error = provision_hotspot(
-                    config,
-                    token="token",
-                    urlopen=lambda request, **kwargs: calls.append(request),
-                )
-                self.assertIsNone(error)
-                self.assertEqual(calls, [])
+            token="token",
+            urlopen=lambda request, **kwargs: calls.append(request),
+        )
+        self.assertIsNone(error)
+        self.assertEqual(len(calls), 1)
 
     def test_sends_exact_supervisor_payload(self) -> None:
         captured: dict[str, object] = {}
@@ -53,7 +58,6 @@ class HotspotProvisioningTests(unittest.TestCase):
 
         error = provision_hotspot(
             make_config(
-                dry_run=False,
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",
             ),
@@ -107,7 +111,6 @@ class HotspotProvisioningTests(unittest.TestCase):
 
         error = provision_hotspot(
             make_config(
-                dry_run=False,
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",
             ),

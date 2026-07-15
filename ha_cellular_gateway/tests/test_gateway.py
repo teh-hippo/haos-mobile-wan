@@ -5,6 +5,11 @@ import time
 import unittest
 from pathlib import Path
 
+from rootfs.app.const import (
+    IPHONE_USB,
+    IPHONE_USB_WIFI_FALLBACK,
+    WIFI_HOTSPOT,
+)
 from rootfs.app.errors import GatewayError, SafetyError
 from rootfs.app.gateway import GatewayEngine
 from rootfs.app.upstream_iphone import IPhoneUsbUpstream
@@ -41,7 +46,7 @@ class GatewayEngineTests(unittest.TestCase):
     def _restart_disabled_engine(self) -> GatewayEngine:
         values = sysctl_values()
         restarted = GatewayEngine(
-            make_config(mode="disabled", dry_run=False),
+            make_config(enabled=False),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,
@@ -50,10 +55,10 @@ class GatewayEngineTests(unittest.TestCase):
         restarted.safety.errors = lambda *args, **kwargs: []
         return restarted
 
-    def _prepare_active_engine(self, mode: str = "active") -> GatewayEngine:
+    def _prepare_active_engine(self, enabled: bool = True) -> GatewayEngine:
         values = sysctl_values()
         engine = GatewayEngine(
-            make_config(mode=mode, dry_run=False),
+            make_config(enabled=enabled),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,
@@ -76,7 +81,7 @@ class GatewayEngineTests(unittest.TestCase):
         ipv6_input_rules: tuple[str, ...],
     ) -> None:
         engine = self._prepare_active_engine()
-        engine.apply("active")
+        engine.apply()
 
         restarted = self._restart_disabled_engine()
         install_realistic_firewall_state(
@@ -105,60 +110,126 @@ class GatewayEngineTests(unittest.TestCase):
             restarted.runner.interface_addresses,
         )
 
-    def test_dry_run_refuses_mutation(self) -> None:
-        with self.assertRaisesRegex(SafetyError, "dry_run"):
-            self.engine.apply("active")
-
-    def test_fresh_dry_run_reconcile_does_not_mutate_host(self) -> None:
+    def test_disabled_reconcile_does_not_activate_gateway(self) -> None:
+        self.engine.safety.errors = lambda *args, **kwargs: []
         self.engine.reconcile()
-        mutating_commands = [
-            command
-            for command in self.runner.commands
-            if (
-                command[:3]
-                in (
-                    ["ip", "rule", "del"],
-                    ["ip", "route", "del"],
-                )
-                or (
-                    command[0] in {"iptables", "ip6tables"}
-                    and any(
-                        operation in command
-                        for operation in ("-A", "-D", "-I", "-N", "-F", "-X")
-                    )
-                )
+        self.assertFalse(self.engine.enabled)
+        self.assertFalse(self.engine.applied)
+        self.assertFalse(self.engine.dhcp.running)
+        self.assertNotIn(
+            "enx001122334455",
+            self.runner.interface_addresses,
+        )
+        self.assertFalse(
+            any(
+                command[:3] in (["ip", "rule", "add"], ["ip", "route", "replace"])
+                for command in self.runner.commands
             )
-        ]
-        self.assertEqual(mutating_commands, [])
+        )
+        self.assertTrue(
+            self.engine.firewall.host_protection_installed(
+                "enx001122334455"
+            )
+        )
 
     def test_config_error_still_cleans_owned_host_state(self) -> None:
         active = self._prepare_active_engine()
-        active.apply("active")
+        active.apply()
         values = sysctl_values()
         degraded = GatewayEngine(
-            make_config(mode="active", dry_run=False),
+            make_config(enabled=True),
             runner=active.runner,
             read_text=lambda path: values[path],
             state_path=self.state_path,
             config_error="Cannot detect management network: no default route",
         )
-        degraded.safety.find_downstream = lambda: "enx001122334455"
-        degraded.safety.errors = lambda *args, **kwargs: []
+        degraded.safety.find_downstream = lambda: (_ for _ in ()).throw(
+            AssertionError("downstream discovery must stay blocked")
+        )
+        degraded.upstream.resolve = lambda: (_ for _ in ()).throw(
+            AssertionError("upstream preparation must stay blocked")
+        )
 
         degraded.reconcile()
 
-        self.assertEqual(degraded.desired_mode, "disabled")
+        self.assertFalse(degraded.enabled)
         self.assertIsNone(degraded.owned_state)
         self.assertNotIn(
             "enx001122334455",
             degraded.runner.interface_addresses,
         )
-        self.assertTrue(
+        self.assertFalse(
             degraded.firewall.host_protection_installed(
                 "enx001122334455"
             )
         )
         self.assertIn("Cannot detect management network", degraded.last_error)
+
+    def test_config_error_without_owned_state_does_not_mutate_host(self) -> None:
+        values = sysctl_values()
+        engine = GatewayEngine(
+            make_config(enabled=True),
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+            config_error="Cannot detect management network: no default route",
+        )
+        engine.safety.find_downstream = lambda: (_ for _ in ()).throw(
+            AssertionError("downstream discovery must stay blocked")
+        )
+        engine.upstream.resolve = lambda: (_ for _ in ()).throw(
+            AssertionError("upstream preparation must stay blocked")
+        )
+
+        engine.reconcile()
+
+        self.assertFalse(engine.enabled)
+        self.assertFalse(engine.applied)
+        self.assertIsNone(engine.last_downstream)
+        self.assertIn("Cannot detect management network", engine.last_error)
+
+    def test_config_error_rejects_direct_enable_without_mutation(self) -> None:
+        values = sysctl_values()
+        engine = GatewayEngine(
+            make_config(enabled=True),
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+            config_error="Cannot detect management network: no default route",
+        )
+        engine.safety.find_downstream = lambda: (_ for _ in ()).throw(
+            AssertionError("downstream discovery must stay blocked")
+        )
+        engine.upstream.resolve = lambda: (_ for _ in ()).throw(
+            AssertionError("upstream preparation must stay blocked")
+        )
+
+        with self.assertRaisesRegex(
+            GatewayError,
+            "Cannot detect management network",
+        ):
+            engine.apply()
+
+        self.assertFalse(engine.enabled)
+        self.assertFalse(engine.applied)
+
+    def test_config_error_forces_owned_only_direct_cleanup(self) -> None:
+        values = sysctl_values()
+        engine = GatewayEngine(
+            make_config(),
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+            config_error="Cannot detect management network: no default route",
+        )
+        engine.safety.find_downstream = lambda: (_ for _ in ()).throw(
+            AssertionError("downstream discovery must stay blocked")
+        )
+
+        engine.cleanup()
+
+        self.assertFalse(engine.enabled)
+        self.assertFalse(engine.applied)
 
     def test_status_uses_cached_health(self) -> None:
         self.engine.upstream_healthy = True
@@ -168,6 +239,78 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertEqual(len(self.runner.commands), before)
         self.assertTrue(status["upstream_healthy"])
         self.assertEqual(status["public_ip"], "203.0.113.10")
+
+    def test_upstream_change_invalidates_cached_health(self) -> None:
+        wifi = ResolvedUpstream(
+            connection=WIFI_HOTSPOT,
+            interface="wlan0",
+            address="172.20.10.4/28",
+            gateway="172.20.10.1",
+        )
+        usb = ResolvedUpstream(
+            connection=IPHONE_USB,
+            interface="eth0",
+            address="172.20.10.2/28",
+            gateway="172.20.10.1",
+        )
+        self.engine._record_upstream(wifi)
+        self.engine.upstream_healthy = True
+        self.engine.public_ip = "203.0.113.10"
+        self.engine.last_health_probe = time.time()
+
+        self.engine._record_upstream(usb)
+
+        self.assertFalse(self.engine.upstream_healthy)
+        self.assertIsNone(self.engine.public_ip)
+        self.assertIsNone(self.engine.last_health_probe)
+
+    def test_stale_health_probe_result_is_discarded(self) -> None:
+        wifi = ResolvedUpstream(
+            connection=WIFI_HOTSPOT,
+            interface="wlan0",
+            address="172.20.10.4/28",
+            gateway="172.20.10.1",
+        )
+        usb = ResolvedUpstream(
+            connection=IPHONE_USB,
+            interface="eth0",
+            address="172.20.10.2/28",
+            gateway="172.20.10.1",
+        )
+        self.engine._record_upstream(wifi)
+
+        def stale_probe(upstream):
+            self.engine._record_upstream(usb)
+            return True, "203.0.113.10"
+
+        self.engine._health_probe = stale_probe
+        self.engine._refresh_health_if_due()
+
+        self.assertEqual(self.engine.last_upstream, usb)
+        self.assertFalse(self.engine.upstream_healthy)
+        self.assertIsNone(self.engine.public_ip)
+        self.assertIsNone(self.engine.last_health_probe)
+
+    def test_health_probe_result_is_discarded_after_cleanup(self) -> None:
+        wifi = ResolvedUpstream(
+            connection=WIFI_HOTSPOT,
+            interface="wlan0",
+            address="172.20.10.4/28",
+            gateway="172.20.10.1",
+        )
+        self.engine._record_upstream(wifi)
+
+        def stale_probe(upstream):
+            self.engine.cleanup()
+            return True, "203.0.113.10"
+
+        self.engine._health_probe = stale_probe
+        self.engine._refresh_health_if_due()
+
+        self.assertEqual(self.engine.last_upstream, wifi)
+        self.assertFalse(self.engine.upstream_healthy)
+        self.assertIsNone(self.engine.public_ip)
+        self.assertIsNone(self.engine.last_health_probe)
 
     def test_manual_reconcile_does_not_run_external_health_probe(self) -> None:
         self.engine.startup_cleanup_pending = False
@@ -179,23 +322,22 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_active_mode_recovers_after_transient_safety_failure(self) -> None:
         engine = self._prepare_active_engine()
-        engine.apply("active")
-        self.assertEqual(engine.mode, "active")
+        engine.apply()
+        self.assertTrue(engine.applied)
 
         engine.safety.errors = lambda *args, **kwargs: ["Upstream unavailable"]
         engine.startup_cleanup_pending = False
         engine.reconcile()
-        self.assertEqual(engine.mode, "disabled")
-        self.assertEqual(engine.desired_mode, "active")
+        self.assertFalse(engine.applied)
+        self.assertTrue(engine.enabled)
 
         engine.safety.errors = lambda *args, **kwargs: []
         engine.reconcile()
-        self.assertEqual(engine.mode, "active")
         self.assertTrue(engine.applied)
 
     def test_activation_failure_is_cleaned_and_retried(self) -> None:
         engine = self._prepare_active_engine()
-        engine.apply("active")
+        engine.apply()
         self.assertTrue(
             engine.firewall.host_protection_installed("enx001122334455")
         )
@@ -205,9 +347,9 @@ class GatewayEngineTests(unittest.TestCase):
 
         engine.firewall.apply = fail_firewall
         with self.assertRaisesRegex(GatewayError, "Activation failed"):
-            engine.apply("active")
-        self.assertEqual(engine.mode, "disabled")
-        self.assertEqual(engine.desired_mode, "active")
+            engine.apply()
+        self.assertFalse(engine.applied)
+        self.assertTrue(engine.enabled)
         self.assertTrue(
             engine.firewall.host_protection_installed("enx001122334455")
         )
@@ -216,11 +358,11 @@ class GatewayEngineTests(unittest.TestCase):
         engine.firewall.apply = lambda downstream, upstream_interface=None: None
         engine.startup_cleanup_pending = False
         engine.reconcile()
-        self.assertEqual(engine.mode, "active")
+        self.assertTrue(engine.applied)
 
     def test_apply_safety_failure_cleans_host_state(self) -> None:
         engine = self._prepare_active_engine()
-        engine.apply("active")
+        engine.apply()
         self.assertTrue(
             engine.firewall.host_protection_installed("enx001122334455")
         )
@@ -229,10 +371,10 @@ class GatewayEngineTests(unittest.TestCase):
         engine.safety.errors = lambda *args, **kwargs: ["Upstream unavailable"]
 
         with self.assertRaisesRegex(SafetyError, "Upstream unavailable"):
-            engine.apply("active")
+            engine.apply()
 
-        self.assertEqual(engine.mode, "disabled")
-        self.assertEqual(engine.desired_mode, "active")
+        self.assertFalse(engine.applied)
+        self.assertTrue(engine.enabled)
         self.assertTrue(
             engine.firewall.host_protection_installed("enx001122334455")
         )
@@ -240,7 +382,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_active_mode_reapplies_when_policy_state_is_missing(self) -> None:
         engine = self._prepare_active_engine()
-        engine.apply("active")
+        engine.apply()
         before = len(engine.runner.commands)
 
         engine.startup_cleanup_pending = False
@@ -263,9 +405,9 @@ class GatewayEngineTests(unittest.TestCase):
             engine.firewall,
             engine.firewall.__class__,
         )
-        engine.mode = "active"
-        engine.desired_mode = "active"
+        engine.enabled = True
         engine.applied = True
+        engine.active_connection = WIFI_HOTSPOT
         engine.startup_cleanup_pending = False
         engine.policy.installed = lambda downstream, upstream=None: True
         engine.dhcp.process = FakeProcess()
@@ -295,7 +437,7 @@ class GatewayEngineTests(unittest.TestCase):
     ) -> None:
         values = sysctl_values()
         engine = GatewayEngine(
-            make_config(mode="active", dry_run=False, upstream_mode="iphone_usb"),
+            make_config(enabled=True, mobile_connection=IPHONE_USB),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,
@@ -303,12 +445,12 @@ class GatewayEngineTests(unittest.TestCase):
         engine.safety.find_downstream = lambda: "enx001122334455"
         engine.safety.errors = lambda *args, **kwargs: []
         resolved = ResolvedUpstream(
-            mode="iphone_usb",
+            connection=IPHONE_USB,
             interface="eth0",
             address="172.20.10.6/28",
             gateway="172.20.10.1",
         )
-        engine.upstream.resolve = lambda *, allow_mutation: (resolved, [])
+        engine.upstream.resolve = lambda: (resolved, [])
         install_realistic_firewall_state(
             engine.runner,
             engine.firewall,
@@ -329,9 +471,9 @@ class GatewayEngineTests(unittest.TestCase):
             engine.policy,
             engine.policy.__class__,
         )
-        engine.mode = "active"
-        engine.desired_mode = "active"
+        engine.enabled = True
         engine.applied = True
+        engine.active_connection = IPHONE_USB
         engine.startup_cleanup_pending = False
         engine.owned_state = engine.policy.ownership("enx001122334455", resolved)
         engine.dhcp.process = FakeProcess()
@@ -365,9 +507,64 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertEqual(mutating_commands, [])
         self.assertEqual(dnsmasq_starts, [])
 
+    def test_combined_connection_fails_over_and_returns_to_usb(self) -> None:
+        values = sysctl_values()
+        engine = GatewayEngine(
+            make_config(
+                enabled=True,
+                mobile_connection=IPHONE_USB_WIFI_FALLBACK,
+            ),
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda: "enx001122334455"
+
+        def safety_errors(*args, upstream=None, **kwargs):
+            if (
+                upstream is not None
+                and engine.owned_state
+                and engine.active_connection != upstream.connection
+            ):
+                return ["Previous connection ownership is still installed"]
+            return []
+
+        engine.safety.errors = safety_errors
+        engine.dhcp.start = lambda downstream: setattr(
+            engine.dhcp,
+            "process",
+            FakeProcess(),
+        )
+        usb = ResolvedUpstream(
+            connection=IPHONE_USB,
+            interface="eth0",
+            address="172.20.10.2/28",
+            gateway="172.20.10.1",
+        )
+        results = [
+            (usb, []),
+            (None, ["waiting for device"]),
+            (usb, []),
+        ]
+        engine.upstream.resolve = lambda: results.pop(0)
+
+        engine.reconcile()
+        self.assertEqual(engine.active_connection, IPHONE_USB)
+        self.assertFalse(engine.status()["fallback_active"])
+
+        engine.reconcile()
+        self.assertEqual(engine.active_connection, WIFI_HOTSPOT)
+        self.assertTrue(engine.status()["fallback_active"])
+        self.assertEqual(engine.fallback_reason, "waiting for device")
+
+        engine.reconcile()
+        self.assertEqual(engine.active_connection, IPHONE_USB)
+        self.assertFalse(engine.status()["fallback_active"])
+        self.assertIsNone(engine.fallback_reason)
+
     def test_cleanup_removes_host_protection_when_adapter_probe_fails(self) -> None:
         engine = self._prepare_active_engine()
-        engine.apply("active")
+        engine.apply()
         engine.firewall.netfilter.chain_exists = lambda family, chain: True
         engine.safety.find_downstream = lambda: (_ for _ in ()).throw(
             OSError("adapter probe failed")
@@ -393,7 +590,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_cleanup_keeps_host_guard_if_address_removal_fails(self) -> None:
         engine = self._prepare_active_engine()
-        engine.apply("active")
+        engine.apply()
 
         def fail_address_cleanup(ownership) -> None:
             raise GatewayError("address still present")
@@ -410,10 +607,31 @@ class GatewayEngineTests(unittest.TestCase):
             )
         )
 
+    def test_usb_cleanup_ignores_unused_invalid_wifi_settings(self) -> None:
+        values = sysctl_values()
+        config = make_config(
+            mobile_connection=IPHONE_USB,
+            upstream_address="not-an-address",
+            upstream_gateway="not-a-gateway",
+        )
+        config.validate()
+        engine = GatewayEngine(
+            config,
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda: "enx001122334455"
+
+        engine.cleanup()
+
+        self.assertFalse(engine.applied)
+        self.assertIsNone(engine.owned_state)
+
     def test_disabled_mode_reconcile_preserves_host_guard(self) -> None:
         values = sysctl_values()
         engine = GatewayEngine(
-            make_config(mode="disabled", dry_run=False),
+            make_config(enabled=False),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,
@@ -461,7 +679,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_disabled_restart_cleanup_preserves_valid_host_guard(self) -> None:
         engine = self._prepare_active_engine()
-        engine.apply("active")
+        engine.apply()
 
         restarted = self._restart_disabled_engine()
         install_realistic_firewall_state(
@@ -522,7 +740,7 @@ class GatewayEngineTests(unittest.TestCase):
     ) -> None:
         values = sysctl_values()
         engine = GatewayEngine(
-            make_config(mode="disabled", dry_run=False),
+            make_config(enabled=False),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,
@@ -573,8 +791,8 @@ class GatewayEngineTests(unittest.TestCase):
         )
         engine = self._prepare_active_engine()
         engine.reconcile()
-        self.assertEqual(engine.mode, "active")
-        self.assertEqual(engine.desired_mode, "active")
+        self.assertTrue(engine.applied)
+        self.assertTrue(engine.enabled)
         self.assertNotIn("unused", self.state_path.read_text(encoding="utf-8"))
 
     def test_status_and_state_do_not_disclose_hotspot_password(self) -> None:
@@ -597,20 +815,20 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_unexpected_reconcile_error_fails_closed(self) -> None:
         engine = self._prepare_active_engine()
-        engine.apply("active")
+        engine.apply()
         engine.safety.errors = lambda *args, **kwargs: (_ for _ in ()).throw(
             OSError("inspection failed")
         )
         engine.startup_cleanup_pending = False
         engine.reconcile()
-        self.assertEqual(engine.mode, "disabled")
         self.assertFalse(engine.applied)
+        self.assertTrue(engine.enabled)
         self.assertIn("Safety inspection failed", engine.last_error)
 
     def test_status_remains_responsive_during_blocking_upstream_resolution(self) -> None:
         values = sysctl_values()
         engine = GatewayEngine(
-            make_config(mode="disabled", dry_run=False, upstream_mode="iphone_usb"),
+            make_config(enabled=False, mobile_connection=IPHONE_USB),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,
@@ -619,7 +837,7 @@ class GatewayEngineTests(unittest.TestCase):
         started = threading.Event()
         release = threading.Event()
 
-        def slow_resolve(*, allow_mutation: bool):
+        def slow_resolve():
             started.set()
             release.wait(timeout=2)
             return None, ["waiting for usb"]
@@ -636,11 +854,11 @@ class GatewayEngineTests(unittest.TestCase):
         release.set()
         worker.join(timeout=2)
         self.assertLess(elapsed, 0.5)
-        self.assertEqual(status["mode"], "disabled")
+        self.assertFalse(status["enabled"])
 
     def test_stop_cleans_upstream_after_gateway_cleanup_failure(self) -> None:
         engine = self._prepare_active_engine()
-        engine.apply("active")
+        engine.apply()
         upstream_cleaned = False
 
         def fail_cleanup(**kwargs) -> None:
@@ -658,7 +876,7 @@ class GatewayEngineTests(unittest.TestCase):
 
         self.assertTrue(upstream_cleaned)
 
-    def test_stop_after_dry_run_detected_usb_does_not_flush_external_interface(self) -> None:
+    def test_stop_after_detected_usb_does_not_flush_external_interface(self) -> None:
         values = sysctl_values()
         runner = FakeRunner()
         runner.interface_addresses["eth0"] = ("172.20.10.2", 28)
@@ -666,7 +884,7 @@ class GatewayEngineTests(unittest.TestCase):
             {"dst": "default", "gateway": "172.20.10.1", "dev": "eth0"}
         )
         engine = GatewayEngine(
-            make_config(upstream_mode="iphone_usb"),
+            make_config(mobile_connection=IPHONE_USB),
             runner=runner,
             read_text=lambda path: values[path],
             state_path=self.state_path,
@@ -708,16 +926,12 @@ class GatewayEngineTests(unittest.TestCase):
                 which=lambda command: f"/usr/bin/{command}",
                 popen=lambda *args, **kwargs: FakeProcess(),
             )
-            resolved, errors = engine.upstream.resolve(allow_mutation=False)
-            self.assertEqual(errors, [])
-            self.assertIsNotNone(resolved)
-
             runner.commands.clear()
             engine.stop()
 
         self.assertFalse(
             any(
-                command[:4] == ["ip", "-4", "address", "flush"]
+                command[:4] == ["ip", "-4", "address", "del"]
                 or command[:5] == ["ip", "route", "del", "default", "dev"]
                 for command in runner.commands
             )

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0
+
+- Replace gateway mode and dry-run with a single Enabled control.
+- Add USB-preferred Wi-Fi fallback with automatic return to iPhone USB.
+- Block fallback when USB ownership is uncertain and remove only the exact
+  app-owned USB address during cleanup.
+- Show configured and active mobile connections in the optional integration.
+- Simplify app settings and move the router WAN address to optional advanced
+  configuration.
+- Move the breaking app and integration contract to API v2.
+- Rewrite the user documentation around providing fallback WAN service.
+
 ## 0.3.19
 
 - Allow the iPhone USB preflight to enumerate the exact USB sysfs directory

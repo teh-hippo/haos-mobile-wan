@@ -36,13 +36,15 @@ class AddonSecurityTests(unittest.TestCase):
         self.assertEqual(
             set(self.config["options"]),
             {
-                "mode",
-                "dry_run",
-                "upstream_mode",
+                "enabled",
+                "mobile_connection",
                 "hotspot_ssid",
                 "hotspot_password",
-                "downstream_address",
             },
+        )
+        self.assertEqual(
+            self.config["schema"]["router_address"],
+            "str?",
         )
 
     def test_apparmor_profile_is_enforcing_and_scoped(self) -> None:

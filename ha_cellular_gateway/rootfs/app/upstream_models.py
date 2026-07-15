@@ -4,11 +4,12 @@ import ipaddress
 from dataclasses import dataclass
 
 from .config import GatewayConfig
+from .const import WIFI_HOTSPOT
 
 
 @dataclass(frozen=True)
 class ResolvedUpstream:
-    mode: str
+    connection: str
     interface: str
     address: str
     gateway: str
@@ -24,7 +25,7 @@ class ResolvedUpstream:
 
 def configured_upstream(config: GatewayConfig) -> ResolvedUpstream:
     return ResolvedUpstream(
-        mode=config.upstream_mode,
+        connection=WIFI_HOTSPOT,
         interface=config.upstream_interface,
         address=config.upstream_address,
         gateway=config.upstream_gateway,

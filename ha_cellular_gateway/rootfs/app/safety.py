@@ -79,7 +79,11 @@ class SafetyInspector:
         errors: list[str] = []
         current_upstream = upstream
         upstream_interface = (
-            current_upstream.interface if current_upstream else self.config.upstream_interface
+            current_upstream.interface
+            if current_upstream
+            else self.config.upstream_interface
+            if self.config.uses_wifi
+            else None
         )
         if state_error:
             errors.append(state_error)
@@ -101,12 +105,14 @@ class SafetyInspector:
         except (OSError, ValueError):
             errors.append("Cannot verify host IPv4 forwarding")
 
-        for interface in (
+        interfaces = [
             "all",
             "default",
             self.config.management_interface,
-            upstream_interface,
-        ):
+        ]
+        if upstream_interface:
+            interfaces.append(upstream_interface)
+        for interface in interfaces:
             try:
                 if self._rp_filter(interface) == 1:
                     errors.append(f"Strict rp_filter is enabled on {interface}")
@@ -143,7 +149,10 @@ class SafetyInspector:
                     "Unexpected main-table default route: "
                     + ",".join(sorted(unexpected_defaults))
                 )
-            if upstream_interface in default_interfaces:
+            if (
+                upstream_interface
+                and upstream_interface in default_interfaces
+            ):
                 errors.append("Mobile upstream has a main-table default route")
         except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
             errors.append("Cannot inspect main-table default routes")
@@ -159,7 +168,13 @@ class SafetyInspector:
                 )
             )
             try:
-                errors.extend(self.policy.conflicts(downstream, current_upstream))
+                if current_upstream is not None:
+                    errors.extend(
+                        self.policy.conflicts(
+                            downstream,
+                            current_upstream,
+                        )
+                    )
             except (
                 GatewayError,
                 OSError,
@@ -169,7 +184,10 @@ class SafetyInspector:
                 errors.append("Cannot inspect policy-routing ownership")
 
         try:
-            if self._has_non_link_local_ipv6(upstream_interface):
+            if (
+                upstream_interface
+                and self._has_non_link_local_ipv6(upstream_interface)
+            ):
                 errors.append("IPv6 is active on mobile upstream")
         except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
             errors.append("Cannot verify upstream IPv6 state")
@@ -179,7 +197,7 @@ class SafetyInspector:
     def _downstream_errors(
         self,
         downstream: str,
-        upstream_interface: str,
+        upstream_interface: str | None,
         *,
         address_owned: bool,
     ) -> list[str]:

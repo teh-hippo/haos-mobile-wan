@@ -5,8 +5,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helpers import FakeProcess, FakeRunner, make_config
+from helpers import FakeProcess, FakeRunner, Result, make_config
+from rootfs.app.const import IPHONE_USB
+from rootfs.app.errors import GatewayError
 from rootfs.app.upstream_iphone import IPhoneUsbUpstream
+from rootfs.app.upstream_iphone_resolver import LeaseResolution
+from rootfs.app.upstream_models import ResolvedUpstream
 
 
 class IPhoneUsbUpstreamTests(unittest.TestCase):
@@ -36,7 +40,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         popen=None,
     ) -> IPhoneUsbUpstream:
         return IPhoneUsbUpstream(
-            make_config(upstream_mode="iphone_usb"),
+            make_config(mobile_connection=IPHONE_USB),
             lambda *args, **kwargs: runner.run(list(args), **kwargs),
             run_dir=self.run_dir,
             lockdown_dir=self.lockdown_dir,
@@ -62,6 +66,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
 
     def _write_app_lease(
         self,
+        runner: FakeRunner,
         interface: str,
         address: str,
         gateway: str,
@@ -78,6 +83,8 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
+        ip, prefix = address.rsplit("/", 1)
+        runner.interface_addresses[interface] = (ip, int(prefix))
 
     def test_resolve_usb_upstream_uses_app_owned_lease(self) -> None:
         runner = FakeRunner()
@@ -88,29 +95,36 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
 
         def popen(args, **kwargs):
             if args[0] == "udhcpc":
-                self._write_app_lease("eth0", "172.20.10.2/28", "172.20.10.1")
+                self._write_app_lease(
+                    runner,
+                    "eth0",
+                    "172.20.10.2/28",
+                    "172.20.10.1",
+                )
             return FakeProcess()
 
-        upstream, errors = self._manager(runner, popen=popen).resolve(allow_mutation=True)
+        upstream, errors = self._manager(runner, popen=popen).resolve()
 
         self.assertEqual(errors, [])
         assert upstream is not None
         self.assertEqual(upstream.interface, "eth0")
         self.assertEqual(upstream.address, "172.20.10.2/28")
         self.assertEqual(upstream.gateway, "172.20.10.1")
+        self.assertEqual(upstream.connection, IPHONE_USB)
 
     def test_pairing_guidance_fails_closed(self) -> None:
         runner = FakeRunner()
         runner.idevice_udids = ["iphone-udid"]
         self._add_apple_usb_device()
 
-        upstream, errors = self._manager(runner).resolve(allow_mutation=True)
+        manager = self._manager(runner)
+        upstream, errors = manager.resolve()
 
         self.assertIsNone(upstream)
         self.assertEqual(len(errors), 1)
         self.assertIn("tap Trust", errors[0])
 
-    def test_dry_run_external_lease_is_not_flushed_on_cleanup(self) -> None:
+    def test_external_lease_is_not_flushed_on_cleanup(self) -> None:
         runner = FakeRunner()
         runner.interface_addresses["eth0"] = ("172.20.10.2", 28)
         runner.main_default_routes.append(
@@ -120,14 +134,10 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         self._add_apple_usb_device()
         upstream = self._manager(runner)
 
-        resolved, errors = upstream.resolve(allow_mutation=False)
-
-        self.assertEqual(errors, [])
-        self.assertIsNotNone(resolved)
         upstream.cleanup()
         self.assertFalse(
             any(
-                command[:4] == ["ip", "-4", "address", "flush"]
+                command[:4] == ["ip", "-4", "address", "del"]
                 or command[:5] == ["ip", "route", "del", "default", "dev"]
                 for command in runner.commands
             )
@@ -144,7 +154,8 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         self._add_ipheth_interface()
         self._add_apple_usb_device()
 
-        upstream, errors = self._manager(runner).resolve(allow_mutation=True)
+        manager = self._manager(runner)
+        upstream, errors = manager.resolve()
 
         self.assertIsNone(upstream)
         self.assertEqual(
@@ -153,32 +164,200 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
                 "iPhone USB interface is already host-managed; leave ipheth unmanaged so the app can own DHCP and the main default route"
             ],
         )
+        self.assertFalse(manager.fallback_safe)
+
+    def test_host_managed_usb_blocks_fallback_without_detected_phone(self) -> None:
+        runner = FakeRunner()
+        runner.interface_addresses["eth0"] = ("172.20.10.2", 28)
+        self._add_ipheth_interface()
+        self._add_apple_usb_device()
+        manager = self._manager(runner)
+
+        upstream, errors = manager.resolve()
+
+        self.assertIsNone(upstream)
+        self.assertEqual(errors, [manager.HOST_CONFLICT_MESSAGE])
+        self.assertFalse(manager.fallback_allowed())
+
+    def test_mixed_usb_addresses_block_fallback_and_preserve_host_address(
+        self,
+    ) -> None:
+        runner = FakeRunner()
+        runner.idevice_udids = ["iphone-udid"]
+        runner.idevice_validate_result.returncode = 0
+        self._add_ipheth_interface()
+        self._add_apple_usb_device()
+        self._write_app_lease(
+            runner,
+            "eth0",
+            "172.20.10.2/28",
+            "172.20.10.1",
+        )
+        runner.interface_addresses["eth0"] = [
+            ("172.20.10.2", 28),
+            ("192.168.1.20", 24),
+        ]
+        manager = self._manager(runner)
+
+        upstream, errors = manager.resolve()
+
+        self.assertIsNone(upstream)
+        self.assertEqual(errors, [manager.HOST_CONFLICT_MESSAGE])
+        self.assertFalse(manager.fallback_allowed())
+
+        manager.cleanup()
+
+        self.assertEqual(
+            runner.interface_addresses["eth0"],
+            ("192.168.1.20", 24),
+        )
+        self.assertFalse((self.run_dir / "iphone-usb-lease.json").exists())
+
+    def test_external_lease_owner_is_never_accepted(self) -> None:
+        runner = FakeRunner()
+        runner.idevice_udids = ["iphone-udid"]
+        runner.idevice_validate_result.returncode = 0
+        self._add_ipheth_interface()
+        self._add_apple_usb_device()
+        manager = self._manager(runner)
+        manager._resolved_interface = lambda interface: LeaseResolution(
+            ResolvedUpstream(
+                connection=IPHONE_USB,
+                interface=interface,
+                address="172.20.10.2/28",
+                gateway="172.20.10.1",
+            ),
+            None,
+            "external",
+        )
+
+        upstream, errors = manager.resolve()
+
+        self.assertIsNone(upstream)
+        self.assertEqual(errors, [manager.HOST_CONFLICT_MESSAGE])
+        self.assertFalse(manager.fallback_allowed())
 
     def test_rejects_invalid_dynamic_lease(self) -> None:
         runner = FakeRunner()
-        runner.interface_addresses["eth0"] = ("172.20.10.0", 28)
-        runner.main_default_routes.append(
-            {"dst": "default", "gateway": "172.20.10.1", "dev": "eth0"}
-        )
+        runner.idevice_udids = ["iphone-udid"]
+        runner.idevice_validate_result.returncode = 0
+        self._add_apple_usb_device()
         self._add_ipheth_interface()
+        self._write_app_lease(
+            runner,
+            "eth0",
+            "172.20.10.0/28",
+            "172.20.10.1",
+        )
 
-        upstream, errors = self._manager(runner).resolve(allow_mutation=False)
+        upstream, errors = self._manager(runner).resolve()
 
         self.assertIsNone(upstream)
         self.assertEqual(errors, ["iPhone USB lease address is not a usable host address"])
+        self.assertFalse((self.run_dir / "iphone-usb-lease.json").exists())
 
     def test_rejects_overlapping_dynamic_lease(self) -> None:
         runner = FakeRunner()
-        runner.interface_addresses["eth0"] = ("192.168.1.20", 24)
-        runner.main_default_routes.append(
-            {"dst": "default", "gateway": "192.168.1.1", "dev": "eth0"}
-        )
+        runner.idevice_udids = ["iphone-udid"]
+        runner.idevice_validate_result.returncode = 0
+        self._add_apple_usb_device()
         self._add_ipheth_interface()
+        self._write_app_lease(
+            runner,
+            "eth0",
+            "192.168.1.20/24",
+            "192.168.1.1",
+        )
 
-        upstream, errors = self._manager(runner).resolve(allow_mutation=False)
+        upstream, errors = self._manager(runner).resolve()
 
         self.assertIsNone(upstream)
         self.assertEqual(errors, ["iPhone USB lease overlaps the management network"])
+        self.assertFalse((self.run_dir / "iphone-usb-lease.json").exists())
+
+    def test_failed_invalid_lease_cleanup_blocks_fallback(self) -> None:
+        runner = FakeRunner()
+        runner.idevice_udids = ["iphone-udid"]
+        runner.idevice_validate_result.returncode = 0
+        self._add_apple_usb_device()
+        self._add_ipheth_interface()
+        self._write_app_lease(
+            runner,
+            "eth0",
+            "192.168.1.20/24",
+            "192.168.1.1",
+        )
+        manager = self._manager(runner)
+        original_run = manager.run
+
+        def fail_cleanup(*args, **kwargs):
+            if args[:4] == ("ip", "-4", "address", "del"):
+                return Result(returncode=1)
+            return original_run(*args, **kwargs)
+
+        manager.run = fail_cleanup
+
+        upstream, errors = manager.resolve()
+
+        self.assertIsNone(upstream)
+        self.assertIn("cleanup failed", errors[0])
+        self.assertFalse(manager.fallback_allowed())
+        self.assertTrue((self.run_dir / "iphone-usb-lease.json").exists())
+        self.assertIn("eth0", runner.interface_addresses)
+
+    def test_cleanup_uses_recorded_interface_when_discovery_is_unavailable(
+        self,
+    ) -> None:
+        runner = FakeRunner()
+        self._add_ipheth_interface()
+        self._write_app_lease(
+            runner,
+            "eth0",
+            "172.20.10.2/28",
+            "172.20.10.1",
+        )
+        manager = self._manager(runner)
+        manager.interface = None
+
+        manager.cleanup()
+
+        self.assertNotIn("eth0", runner.interface_addresses)
+        self.assertFalse((self.run_dir / "iphone-usb-lease.json").exists())
+
+    def test_invalid_lease_record_is_retained(self) -> None:
+        runner = FakeRunner()
+        self.run_dir.mkdir(parents=True)
+        lease_path = self.run_dir / "iphone-usb-lease.json"
+        lease_path.write_text("{}", encoding="utf-8")
+        manager = self._manager(runner)
+
+        with self.assertRaisesRegex(GatewayError, "lease record is invalid"):
+            manager.cleanup()
+
+        self.assertTrue(lease_path.exists())
+
+    def test_stale_app_lease_is_discarded(self) -> None:
+        runner = FakeRunner()
+        runner.idevice_udids = ["iphone-udid"]
+        runner.idevice_validate_result.returncode = 0
+        self._add_apple_usb_device()
+        self._add_ipheth_interface()
+        self._write_app_lease(
+            runner,
+            "eth0",
+            "172.20.10.2/28",
+            "172.20.10.1",
+        )
+        runner.interface_addresses.pop("eth0")
+        manager = self._manager(runner)
+
+        upstream, errors = manager.resolve()
+
+        self.assertIsNone(upstream)
+        self.assertEqual(errors, ["iPhone USB lease is stale"])
+        self.assertEqual(manager.pairing_state, "waiting_for_dhcp")
+        self.assertTrue(manager.fallback_safe)
+        self.assertFalse((self.run_dir / "iphone-usb-lease.json").exists())
 
     def test_usbmuxd_startup_failure_surfaces_output(self) -> None:
         runner = FakeRunner()
@@ -196,7 +375,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         upstream, errors = self._manager(
             runner,
             popen=popen,
-        ).resolve(allow_mutation=True)
+        ).resolve()
 
         self.assertIsNone(upstream)
         self.assertEqual(
@@ -220,7 +399,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         manager = self._manager(runner, popen=popen)
         manager._ipheth_driver_active = lambda: True
 
-        upstream, errors = manager.resolve(allow_mutation=True)
+        upstream, errors = manager.resolve()
 
         self.assertIsNone(upstream)
         self.assertEqual(
@@ -248,7 +427,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
             kwargs["stdout"].flush()
             return DelayedExitProcess(returncode=1)
 
-        upstream, errors = self._manager(runner, popen=popen).resolve(allow_mutation=True)
+        upstream, errors = self._manager(runner, popen=popen).resolve()
 
         self.assertIsNone(upstream)
         self.assertEqual(errors, ["usbmuxd failed to start: late startup failure"])
@@ -265,15 +444,25 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
             if args[0] == "udhcpc":
                 interface = args[3]
                 if interface == "eth0":
-                    self._write_app_lease("eth0", "172.20.10.2/28", "172.20.10.1")
+                    self._write_app_lease(
+                        runner,
+                        "eth0",
+                        "172.20.10.2/28",
+                        "172.20.10.1",
+                    )
                 else:
-                    self._write_app_lease("eth1", "172.20.10.6/28", "172.20.10.1")
+                    self._write_app_lease(
+                        runner,
+                        "eth1",
+                        "172.20.10.6/28",
+                        "172.20.10.1",
+                    )
             process = FakeProcess()
             processes.append(process)
             return process
 
         manager = self._manager(runner, popen=popen)
-        first, errors = manager.resolve(allow_mutation=True)
+        first, errors = manager.resolve()
         self.assertEqual(errors, [])
         assert first is not None
         self.assertEqual(first.interface, "eth0")
@@ -282,7 +471,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         runner.commands.clear()
         (self.run_dir / "iphone-usb-lease.json").unlink()
         self._add_ipheth_interface("eth1")
-        second, errors = manager.resolve(allow_mutation=True)
+        second, errors = manager.resolve()
 
         self.assertEqual(errors, [])
         assert second is not None
@@ -300,18 +489,23 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
 
         def popen(args, **kwargs):
             if args[0] == "udhcpc":
-                self._write_app_lease("eth0", "172.20.10.2/28", "172.20.10.1")
+                self._write_app_lease(
+                    runner,
+                    "eth0",
+                    "172.20.10.2/28",
+                    "172.20.10.1",
+                )
             process = FakeProcess()
             processes.append(process)
             return process
 
         manager = self._manager(runner, popen=popen)
-        upstream, errors = manager.resolve(allow_mutation=True)
+        upstream, errors = manager.resolve()
         self.assertEqual(errors, [])
         self.assertIsNotNone(upstream)
 
         processes[-1].running = False
-        upstream, errors = manager.resolve(allow_mutation=True)
+        upstream, errors = manager.resolve()
 
         self.assertEqual(errors, [])
         self.assertIsNotNone(upstream)

@@ -175,15 +175,16 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertIn("downstream_missing", ids)
         self.assertIn("ipv4_forwarding_disabled", ids)
 
-    def test_iphone_dry_run_blocked_is_repairable(self) -> None:
+    def test_connection_warning_is_repairable(self) -> None:
         result = build_status_issues(
             [],
             None,
-            {"upstream_pairing_state": "dry_run_blocked"},
+            {},
+            ["Hotspot Wi-Fi provisioning failed: rejected"],
         )
         self.assertEqual(len(result), 1)
         issue = result[0]
-        self.assertEqual(issue["id"], "upstream_dry_run_blocked")
+        self.assertEqual(issue["id"], "hotspot_configuration_failed")
         self.assertTrue(issue["repairable"])
         self.assertFalse(issue["transient"])
 

@@ -41,7 +41,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
             code = HTTPStatus.OK if health["ok"] else HTTPStatus.SERVICE_UNAVAILABLE
             self._json(code, health)
             return
-        if self.path == "/v1/status":
+        if self.path == "/v2/status":
             if not self._authorized():
                 self._json(HTTPStatus.UNAUTHORIZED, {"error": "unauthorized"})
                 return
@@ -54,25 +54,25 @@ class GatewayHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.UNAUTHORIZED, {"error": "unauthorized"})
             return
         try:
-            if self.path == "/v1/reconcile":
+            if self.path == "/v2/reconcile":
                 self.server.engine.reconcile()
                 self._json(HTTPStatus.OK, self.server.engine.status())
                 return
-            if self.path == "/v1/mode":
-                self._set_mode()
+            if self.path == "/v2/enabled":
+                self._set_enabled()
                 return
             self._json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
         except (GatewayError, OSError, ValueError) as err:
             self._json(HTTPStatus.CONFLICT, {"error": str(err)})
 
-    def _set_mode(self) -> None:
-        mode = str(self._body().get("mode", ""))
-        if mode not in {"disabled", "active"}:
-            raise GatewayError("Mode must be disabled or active")
-        if mode == "disabled":
+    def _set_enabled(self) -> None:
+        enabled = self._body().get("enabled")
+        if not isinstance(enabled, bool):
+            raise GatewayError("Enabled must be true or false")
+        if not enabled:
             self.server.engine.cleanup(preserve_host_protection=True)
         else:
-            self.server.engine.apply(mode)
+            self.server.engine.apply()
         self._json(HTTPStatus.OK, self.server.engine.status())
 
 

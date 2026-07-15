@@ -9,6 +9,12 @@ from pathlib import Path
 from typing import ClassVar
 
 from .command import CommandRunner, RunCommand
+from .const import (
+    DEFAULT_MOBILE_CONNECTION_OPTION,
+    IPHONE_USB_WIFI_FALLBACK,
+    MOBILE_CONNECTION_OPTIONS,
+    WIFI_HOTSPOT,
+)
 from .errors import GatewayError
 from .config_validation import validate_config
 from .management import ManagementBaseline, detect_management
@@ -28,11 +34,10 @@ FALLBACK_MANAGEMENT = ManagementBaseline(
 
 @dataclass(frozen=True)
 class GatewayConfig:
-    mode: str
-    dry_run: bool
+    enabled: bool
     management_interface: str
     management_address: str
-    upstream_mode: str
+    mobile_connection: str
     upstream_interface: str
     upstream_address: str
     upstream_gateway: str
@@ -115,12 +120,17 @@ class GatewayConfig:
         data: dict[str, object],
         management: ManagementBaseline,
     ) -> "GatewayConfig":
+        mobile_connection = str(
+            data.get("mobile_connection", DEFAULT_MOBILE_CONNECTION_OPTION)
+        )
         return cls(
-            mode=str(data.get("mode", "disabled")),
-            dry_run=bool(data.get("dry_run", True)),
+            enabled=bool(data.get("enabled", False)),
             management_interface=management.interface,
             management_address=management.address,
-            upstream_mode=str(data.get("upstream_mode", "hotspot_wifi")),
+            mobile_connection=MOBILE_CONNECTION_OPTIONS.get(
+                mobile_connection,
+                mobile_connection,
+            ),
             upstream_interface=str(data.get("upstream_interface", "wlan0")),
             upstream_address=str(data.get("upstream_address", "172.20.10.4/28")),
             upstream_gateway=str(data.get("upstream_gateway", "172.20.10.1")),
@@ -128,7 +138,7 @@ class GatewayConfig:
             hotspot_password=str(data.get("hotspot_password", "")),
             downstream_mac=str(data.get("downstream_mac", "")).lower(),
             downstream_address=str(
-                data.get("downstream_address", "192.168.80.1/24")
+                data.get("router_address", "192.168.80.1/24")
             ),
         )
 
@@ -138,6 +148,13 @@ class GatewayConfig:
     @property
     def hotspot_credentials_configured(self) -> bool:
         return bool(self.hotspot_ssid and self.hotspot_password)
+
+    @property
+    def uses_wifi(self) -> bool:
+        return self.mobile_connection in {
+            WIFI_HOTSPOT,
+            IPHONE_USB_WIFI_FALLBACK,
+        }
 
     @property
     def upstream_ip(self) -> str:

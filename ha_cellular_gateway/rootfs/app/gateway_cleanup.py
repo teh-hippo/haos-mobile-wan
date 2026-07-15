@@ -26,26 +26,25 @@ def _attempt(
 def cleanup(
     engine: GatewayEngine,
     *,
-    preserve_desired: bool = False,
+    preserve_enabled: bool = False,
     preserve_host_protection: bool = False,
     force: bool = False,
+    owned_only: bool = False,
 ) -> None:
+    if engine.config_error:
+        owned_only = True
+        preserve_host_protection = False
+
     with engine.operation_lock:
         with engine.lock:
-            if engine.config.dry_run and not force:
-                engine.mode = "disabled"
-                engine.applied = False
-                if not preserve_desired:
-                    engine.desired_mode = "disabled"
-                engine._persist_state()
-                return
             owned_state = engine.owned_state
 
         downstream = None
-        try:
-            downstream = engine.safety.find_downstream()
-        except OPERATION_ERRORS:
-            pass
+        if not owned_only:
+            try:
+                downstream = engine.safety.find_downstream()
+            except OPERATION_ERRORS:
+                pass
         protected_downstream = downstream
         if (
             not engine._protectable_downstream(protected_downstream)
@@ -73,8 +72,14 @@ def cleanup(
         ownerships: list[dict[str, object]] = []
         if owned_state:
             ownerships.append(owned_state)
-        if downstream:
-            current = engine.policy.ownership(downstream)
+        if not owned_only and downstream and (
+            engine.last_upstream is not None
+            or engine.config.uses_wifi
+        ):
+            current = engine.policy.ownership(
+                downstream,
+                engine.last_upstream,
+            )
             if current not in ownerships:
                 ownerships.append(current)
         for ownership in ownerships:
@@ -100,10 +105,14 @@ def cleanup(
         with engine.lock:
             if not errors:
                 engine.owned_state = None
-            engine.mode = "disabled"
             engine.applied = False
-            if not preserve_desired:
-                engine.desired_mode = "disabled"
+            engine.active_connection = None
+            engine.health_generation += 1
+            engine.upstream_healthy = False
+            engine.public_ip = None
+            engine.last_health_probe = None
+            if not preserve_enabled:
+                engine.enabled = False
             engine._persist_state()
         if errors:
             raise GatewayError("Cleanup failed: " + "; ".join(errors))

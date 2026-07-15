@@ -4,6 +4,7 @@ import ipaddress
 import re
 from typing import TYPE_CHECKING
 
+from .const import MOBILE_CONNECTIONS
 from .errors import GatewayError
 
 if TYPE_CHECKING:
@@ -17,11 +18,13 @@ PRIVATE_NETWORKS = tuple(
 
 
 def validate_config(config: GatewayConfig) -> None:
-    if config.mode not in {"disabled", "active"}:
-        raise GatewayError(f"Unsupported mode: {config.mode}")
-    if config.upstream_mode not in {"hotspot_wifi", "iphone_usb"}:
-        raise GatewayError(f"Unsupported upstream mode: {config.upstream_mode}")
-    if not config.management_interface or not config.upstream_interface:
+    if config.mobile_connection not in MOBILE_CONNECTIONS:
+        raise GatewayError(
+            f"Unsupported mobile connection: {config.mobile_connection}"
+        )
+    if not config.management_interface or (
+        config.uses_wifi and not config.upstream_interface
+    ):
         raise GatewayError("Network interface names must not be empty")
     validate_hotspot_credentials(config.hotspot_ssid, config.hotspot_password)
     _validate_addresses(config)
@@ -68,7 +71,7 @@ def _validate_addresses(config: GatewayConfig) -> None:
 def _hotspot_interface(
     config: GatewayConfig,
 ) -> ipaddress.IPv4Interface | ipaddress.IPv6Interface | None:
-    if config.upstream_mode != "hotspot_wifi":
+    if not config.uses_wifi:
         return None
     try:
         upstream = ipaddress.ip_interface(config.upstream_address)
@@ -78,7 +81,7 @@ def _hotspot_interface(
 
 
 def _hotspot_gateway(config: GatewayConfig) -> ipaddress.IPv4Address | None:
-    if config.upstream_mode != "hotspot_wifi":
+    if not config.uses_wifi:
         return None
     try:
         gateway = ipaddress.ip_address(config.upstream_gateway)

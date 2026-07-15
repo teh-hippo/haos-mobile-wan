@@ -159,18 +159,40 @@ class DistributionMetadataTests(unittest.TestCase):
             "| Gateway rules applied | `binary_sensor` |",
             "| DHCP server running | `binary_sensor` |",
             "| Safety checks | `binary_sensor` |",
-            "| Desired mode | `sensor` |",
-            "| Upstream pairing | `sensor` |",
+            "| Mobile connection | `sensor` |",
+            "| Active connection | `sensor` |",
+            "| USB pairing | `sensor` |",
             "| Public IP | `sensor` |",
-            "| Mode | `select` | Runtime control for `disabled` and `active` |",
+            "| Enabled | `switch` |",
             "| Reapply gateway state | `button` |",
         ):
             self.assertIn(table_row, text)
         self.assertIn("every 30 seconds", text)
 
-    def test_readme_validation_matches_ci_checks(self) -> None:
+    def test_readme_uses_human_fallback_wan_language(self) -> None:
+        text = README.read_text(encoding="utf-8")
+        self.assertIn("provide a fallback Internet connection", text)
+        self.assertIn("to your router during a fixed-line outage", text)
+        self.assertIn("- a phone Wi-Fi hotspot;", text)
+        self.assertIn("- iPhone USB tethering;", text)
+        self.assertIn("- automatic USB-preferred Wi-Fi fallback;", text)
+        self.assertNotIn("It does not know about or control", text)
+        self.assertNotIn("The router only needs a WAN Ethernet port", text)
+        self.assertNotIn("## Architecture", text)
+        self.assertNotIn("## Network roles", text)
+
+    def test_readme_keeps_ci_as_source_of_truth(self) -> None:
         text = README.read_text(encoding="utf-8")
         workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn(
+            "[`.github/workflows/validate.yml`](.github/workflows/validate.yml)",
+            text,
+        )
+        for snippet in (
+            "python -m unittest discover -s ha_cellular_gateway/tests -v",
+            'python -c "import app.main"',
+        ):
+            self.assertIn(snippet, text)
         for snippet in (
             "--cov-report=json",
             "coverage.json",
@@ -183,7 +205,6 @@ class DistributionMetadataTests(unittest.TestCase):
             "docker buildx build",
         ):
             self.assertIn(snippet, workflow)
-            self.assertIn(snippet, text)
 
 
 if __name__ == "__main__":

@@ -31,7 +31,10 @@ class ApiServerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.engine = StubEngine()
         self.server = GatewayServer(("127.0.0.1", 0), self.engine, "token")
-        self.worker = threading.Thread(target=self.server.serve_forever)
+        self.worker = threading.Thread(
+            target=self.server.serve_forever,
+            kwargs={"poll_interval": 0.01},
+        )
         self.worker.start()
         self.host, self.port = self.server.server_address
 

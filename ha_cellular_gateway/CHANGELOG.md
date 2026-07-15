@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.8
+
+- Allow the network inspection paths reported by the live AppArmor audit.
+
 ## 0.3.7
 
 - Allow the two package and SSL paths reported by the runtime AppArmor audit.

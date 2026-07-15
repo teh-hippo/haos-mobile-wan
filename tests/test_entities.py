@@ -125,6 +125,22 @@ async def test_entity_description_metadata(runtime_coordinator) -> None:
     assert sensor_desc_by_key["mode"].translation_key == "mode"
     assert sensor_desc_by_key["mode"].options == ["disabled", "trial", "active"]
     assert sensor_desc_by_key["upstream_mode"].options == ["hotspot_wifi", "iphone_usb"]
+    assert sensor_desc_by_key["upstream_pairing_state"].options == [
+        "not_applicable",
+        "not_ready",
+        "dry_run_blocked",
+        "invalid_lease",
+        "waiting_for_dhcp",
+        "paired",
+        "daemon_failed",
+        "waiting_for_device",
+        "multiple_devices",
+        "waiting_for_interface",
+        "ownership_conflict",
+        "waiting_for_trust",
+        "waiting_for_unlock",
+        "pairing_failed",
+    ]
     assert sensor_desc_by_key["desired_mode"].entity_registry_enabled_default is False
     assert sensor_desc_by_key["public_ip"].entity_registry_enabled_default is False
 

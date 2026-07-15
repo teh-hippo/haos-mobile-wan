@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.13
+
+- Allow creation of the gateway runtime directory under AppArmor.
+
 ## 0.3.12
 
 - Allow unavoidable IPv6 link-local addresses while rejecting routed IPv6.

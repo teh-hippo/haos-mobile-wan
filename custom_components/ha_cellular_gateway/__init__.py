@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_URL
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import GatewayApi, GatewayApiError
+from .api import GatewayApi
 from .const import CONF_TOKEN, PLATFORMS
 from .coordinator import GatewayCoordinator
 
@@ -16,14 +16,16 @@ type GatewayConfigEntry = ConfigEntry[GatewayCoordinator]
 async def async_setup_entry(hass: HomeAssistant, entry: GatewayConfigEntry) -> bool:
     api = GatewayApi(
         async_get_clientsession(hass),
-        entry.data["url"],
+        entry.data[CONF_URL],
         entry.data[CONF_TOKEN],
     )
-    coordinator = GatewayCoordinator(hass, api)
-    try:
-        await coordinator.async_config_entry_first_refresh()
-    except GatewayApiError as err:
-        raise ConfigEntryNotReady from err
+    coordinator = GatewayCoordinator(
+        hass,
+        api,
+        entry_id=entry.entry_id,
+        entry_title=entry.title,
+    )
+    await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -31,4 +33,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GatewayConfigEntry) -> b
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: GatewayConfigEntry) -> bool:
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded:
+        await entry.runtime_data.async_clear_repairs()
+    return unloaded

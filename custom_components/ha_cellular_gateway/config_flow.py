@@ -7,9 +7,15 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_URL
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers import selector
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 
-from .api import GatewayApi, GatewayApiError
+from .api import (
+    GatewayApi,
+    GatewayApiAuthError,
+    GatewayApiConnectionError,
+    GatewayApiError,
+)
 from .const import CONF_TOKEN, DEFAULT_NAME, DOMAIN
 
 
@@ -30,6 +36,54 @@ class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
                 return entry
         return None
 
+    def _entry_for_unique_id(self, unique_id: str) -> ConfigEntry | None:
+        for entry in self._async_current_entries(include_ignore=True):
+            if entry.unique_id == unique_id:
+                return entry
+        return None
+
+    @staticmethod
+    def _error_key(err: GatewayApiError) -> str:
+        if isinstance(err, GatewayApiAuthError):
+            return "invalid_auth"
+        if isinstance(err, GatewayApiConnectionError):
+            return "cannot_connect"
+        return "unknown"
+
+    @staticmethod
+    def _credentials_schema(url: str = "", token: str = "") -> vol.Schema:
+        return vol.Schema(
+            {
+                vol.Required(CONF_URL, default=url): selector.TextSelector(
+                    selector.TextSelectorConfig(
+                        type=selector.TextSelectorType.URL,
+                    )
+                ),
+                vol.Required(CONF_TOKEN, default=token): selector.TextSelector(
+                    selector.TextSelectorConfig(
+                        type=selector.TextSelectorType.PASSWORD,
+                    )
+                ),
+            }
+        )
+
+    @staticmethod
+    def _token_schema(token: str = "") -> vol.Schema:
+        return vol.Schema(
+            {
+                vol.Required(CONF_TOKEN, default=token): selector.TextSelector(
+                    selector.TextSelectorConfig(
+                        type=selector.TextSelectorType.PASSWORD,
+                    )
+                ),
+            }
+        )
+
+    def _context_entry(self) -> ConfigEntry:
+        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        assert entry is not None
+        return entry
+
     async def _validate(self, url: str, token: str) -> None:
         api = GatewayApi(async_get_clientsession(self.hass), url, token)
         await api.status()
@@ -44,8 +98,8 @@ class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
             token = user_input[CONF_TOKEN]
             try:
                 await self._validate(url, token)
-            except GatewayApiError:
-                errors["base"] = "cannot_connect"
+            except GatewayApiError as err:
+                errors["base"] = self._error_key(err)
             else:
                 if entry := self._entry_for_url(url):
                     return self.async_update_reload_and_abort(
@@ -63,11 +117,69 @@ class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_URL): str,
-                    vol.Required(CONF_TOKEN): str,
-                }
+            data_schema=self._credentials_schema(),
+            errors=errors,
+        )
+
+    async def async_step_reauth(self, _: dict[str, Any]) -> ConfigFlowResult:
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self,
+        user_input: dict[str, str] | None = None,
+    ) -> ConfigFlowResult:
+        entry = self._context_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            token = user_input[CONF_TOKEN]
+            try:
+                await self._validate(
+                    self._normalize_url(str(entry.data[CONF_URL])),
+                    token,
+                )
+            except GatewayApiError as err:
+                errors["base"] = self._error_key(err)
+            else:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data_updates={CONF_TOKEN: token},
+                    reason="reauth_successful",
+                )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=self._token_schema(str(entry.data.get(CONF_TOKEN, ""))),
+            errors=errors,
+        )
+
+    async def async_step_reconfigure(
+        self,
+        user_input: dict[str, str] | None = None,
+    ) -> ConfigFlowResult:
+        entry = self._context_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            url = self._normalize_url(user_input[CONF_URL])
+            token = user_input[CONF_TOKEN]
+            try:
+                await self._validate(url, token)
+            except GatewayApiError as err:
+                errors["base"] = self._error_key(err)
+            else:
+                if existing_entry := self._entry_for_url(url):
+                    if existing_entry.entry_id != entry.entry_id:
+                        return self.async_abort(reason="single_instance_allowed")
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data_updates={CONF_URL: url, CONF_TOKEN: token},
+                    reason="reconfigure_successful",
+                )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self._credentials_schema(
+                str(entry.data.get(CONF_URL, "")),
+                str(entry.data.get(CONF_TOKEN, "")),
             ),
             errors=errors,
         )
@@ -81,22 +193,33 @@ class GatewayConfigFlow(ConfigFlow, domain=DOMAIN):
         token = str(config["token"])
         try:
             await self._validate(url, token)
-        except GatewayApiError:
-            return self.async_abort(reason="cannot_connect")
-        if entry := self._entry_for_url(url):
+        except GatewayApiError as err:
+            return self.async_abort(reason=self._error_key(err))
+        unique_id_entry = self._entry_for_unique_id(discovery_info.uuid)
+        url_entry = self._entry_for_url(url)
+        if unique_id_entry is not None:
+            if url_entry is not None and url_entry.entry_id != unique_id_entry.entry_id:
+                return self.async_abort(reason="single_instance_allowed")
             return self.async_update_reload_and_abort(
-                entry,
+                unique_id_entry,
+                data_updates={CONF_URL: url, CONF_TOKEN: token},
+                reload_even_if_entry_is_unchanged=False,
+                reason="already_configured",
+            )
+        if url_entry is not None:
+            return self.async_update_reload_and_abort(
+                url_entry,
                 unique_id=discovery_info.uuid,
                 data_updates={CONF_URL: url, CONF_TOKEN: token},
                 reload_even_if_entry_is_unchanged=False,
                 reason="already_configured",
             )
-        if self._existing_entry() is not None:
-            return self.async_abort(reason="single_instance_allowed")
         await self.async_set_unique_id(discovery_info.uuid)
         self._abort_if_unique_id_configured(
             updates={CONF_URL: url, CONF_TOKEN: token}
         )
+        if self._existing_entry() is not None:
+            return self.async_abort(reason="single_instance_allowed")
         return self.async_create_entry(
             title=discovery_info.name or DEFAULT_NAME,
             data={CONF_URL: url, CONF_TOKEN: token},

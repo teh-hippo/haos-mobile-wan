@@ -10,23 +10,9 @@ import urllib.request
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from gateway import GatewayEngine, GatewayError, GatewayConfig, load_or_create_token
-
-
-def scan_access_points(interface: str) -> list[dict[str, object]]:
-    supervisor_token = os.environ.get("SUPERVISOR_TOKEN")
-    if not supervisor_token:
-        raise GatewayError("Supervisor token is unavailable")
-    request = urllib.request.Request(
-        f"http://supervisor/network/interface/{interface}/accesspoints",
-        headers={"Authorization": f"Bearer {supervisor_token}"},
-    )
-    try:
-        response = urllib.request.urlopen(request, timeout=20)
-        payload = json.loads(response.read())
-    except (OSError, urllib.error.URLError, ValueError) as err:
-        raise GatewayError("Unable to scan Wi-Fi access points") from err
-    return list(payload.get("data", {}).get("accesspoints", []))
+from .config import GatewayConfig
+from .errors import GatewayError
+from .gateway import GatewayEngine, load_or_create_token
 
 
 class GatewayHandler(BaseHTTPRequestHandler):
@@ -44,7 +30,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _authorized(self) -> bool:
-        return self.headers.get("Authorization") == f"Bearer {self.server.api_token}"
+        expected = f"Bearer {self.server.api_token}"
+        return self.headers.get("Authorization") == expected
 
     def _body(self) -> dict[str, object]:
         length = int(self.headers.get("Content-Length", "0"))
@@ -54,9 +41,13 @@ class GatewayHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if self.path == "/health":
-            status = self.server.engine.status()
-            code = HTTPStatus.OK if not status["safety_errors"] else HTTPStatus.SERVICE_UNAVAILABLE
-            self._json(code, {"ok": code == HTTPStatus.OK})
+            health = self.server.engine.health()
+            code = (
+                HTTPStatus.OK
+                if health["ok"]
+                else HTTPStatus.SERVICE_UNAVAILABLE
+            )
+            self._json(code, health)
             return
         if self.path == "/v1/status":
             if not self._authorized():
@@ -83,29 +74,14 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     self.server.engine.apply(mode)
                 self._json(HTTPStatus.OK, self.server.engine.status())
                 return
-            if self.path == "/v1/seek":
-                try:
-                    access_points = scan_access_points(
-                        self.server.engine.config.upstream_interface
-                    )
-                except GatewayError as err:
-                    self._json(
-                        HTTPStatus.OK,
-                        {"visible": False, "error": str(err)},
-                    )
-                    return
-                visible = any(
-                    item.get("ssid") == self.server.engine.config.upstream_ssid
-                    for item in access_points
-                )
-                self._json(HTTPStatus.OK, {"visible": visible})
-                return
             self._json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
         except (GatewayError, OSError, ValueError) as err:
             self._json(HTTPStatus.CONFLICT, {"error": str(err)})
 
 
 class GatewayServer(ThreadingHTTPServer):
+    daemon_threads = True
+
     def __init__(
         self,
         address: tuple[str, int],
@@ -151,12 +127,20 @@ def main() -> None:
     engine = GatewayEngine(config)
     token = load_or_create_token()
     server = GatewayServer((config.api_bind, config.api_port), engine, token)
-    worker = threading.Thread(target=engine.run_loop, name="gateway-reconcile", daemon=True)
+    worker = threading.Thread(
+        target=engine.run_loop,
+        name="gateway-reconcile",
+        daemon=True,
+    )
     worker.start()
     publish_discovery(config, token)
 
     def stop(*_: object) -> None:
-        server.shutdown()
+        threading.Thread(
+            target=server.shutdown,
+            name="gateway-api-shutdown",
+            daemon=True,
+        ).start()
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)

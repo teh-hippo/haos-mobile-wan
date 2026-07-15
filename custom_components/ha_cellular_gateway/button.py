@@ -1,33 +1,33 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import GatewayConfigEntry
+from .api import GatewayApiError
+from .coordinator import GatewayCoordinator
 from .entity import GatewayEntity
 
-
-@dataclass(frozen=True, kw_only=True)
-class GatewayButtonEntityDescription(ButtonEntityDescription):
-    action: str
-
+PARALLEL_UPDATES = 0
 
 DESCRIPTIONS = (
-    GatewayButtonEntityDescription(
+    ButtonEntityDescription(
         key="reconcile",
-        name="Reconcile",
-        action="reconcile",
-    ),
-    GatewayButtonEntityDescription(
-        key="seek_hotspot",
-        name="Scan for hotspot",
-        action="seek",
+        translation_key="reconcile",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        icon="mdi:sync",
     ),
 )
 
 
-async def async_setup_entry(hass, entry: GatewayConfigEntry, async_add_entities) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: GatewayConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     async_add_entities(
         GatewayButton(entry.runtime_data, entry.entry_id, description)
         for description in DESCRIPTIONS
@@ -37,17 +37,16 @@ async def async_setup_entry(hass, entry: GatewayConfigEntry, async_add_entities)
 class GatewayButton(GatewayEntity, ButtonEntity):
     def __init__(
         self,
-        coordinator,
+        coordinator: GatewayCoordinator,
         entry_id: str,
-        description: GatewayButtonEntityDescription,
+        description: ButtonEntityDescription,
     ) -> None:
         super().__init__(coordinator, entry_id, description.key)
         self.entity_description = description
-        self._attr_name = description.name
 
     async def async_press(self) -> None:
-        if self.entity_description.action == "reconcile":
+        try:
             await self.coordinator.api.reconcile()
-        else:
-            await self.coordinator.api.seek()
+        except GatewayApiError as err:
+            raise self._action_exception(err) from err
         await self.coordinator.async_request_refresh()

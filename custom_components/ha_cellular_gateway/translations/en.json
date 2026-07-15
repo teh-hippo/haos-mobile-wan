@@ -6,14 +6,168 @@
         "data": {
           "url": "App API URL",
           "token": "API token"
+        },
+        "data_description": {
+          "url": "Enter the base URL for the gateway app API.",
+          "token": "Enter the bearer token accepted by the gateway app API."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect HAOS Mobile WAN",
+        "data": {
+          "token": "API token"
+        },
+        "data_description": {
+          "token": "Enter a current bearer token for the configured gateway app."
+        }
+      },
+      "reconfigure": {
+        "title": "Update HAOS Mobile WAN",
+        "data": {
+          "url": "App API URL",
+          "token": "API token"
+        },
+        "data_description": {
+          "url": "Update the base URL for the gateway app API.",
+          "token": "Update the bearer token accepted by the gateway app API."
         }
       }
     },
     "error": {
-      "cannot_connect": "Unable to connect to the gateway app"
+      "cannot_connect": "Unable to connect to the gateway app",
+      "invalid_auth": "Authentication was rejected by the gateway app",
+      "unknown": "The gateway app returned an unexpected error"
     },
     "abort": {
-      "already_configured": "This gateway is already configured"
+      "already_configured": "This gateway is already configured",
+      "cannot_connect": "Unable to connect to the gateway app",
+      "invalid_auth": "Authentication was rejected by the gateway app",
+      "unknown": "The gateway app returned an unexpected error",
+      "single_instance_allowed": "Only one gateway can be configured at a time",
+      "reauth_successful": "HAOS Mobile WAN reconnected successfully",
+      "reconfigure_successful": "HAOS Mobile WAN configuration updated successfully"
+    }
+  },
+  "exceptions": {
+    "cannot_connect": {
+      "message": "Unable to connect to the gateway app"
+    },
+    "invalid_auth": {
+      "message": "Authentication was rejected by the gateway app"
+    },
+    "api_error": {
+      "message": "The gateway app rejected the request: {error}"
+    }
+  },
+  "issues": {
+    "state_invalid": {
+      "title": "Gateway state is invalid",
+      "description": "HAOS Mobile WAN disabled {entry_title} because its saved ownership or trial state is invalid. Review the app diagnostics, correct the host state if needed, and then reapply the desired mode."
+    },
+    "host_configuration": {
+      "title": "Gateway host safety checks are failing",
+      "description": "HAOS Mobile WAN disabled {entry_title} because required host safety or routing checks are failing. Review the app diagnostics and correct the host firewall, routing, forwarding or kernel settings before re-enabling the gateway."
+    },
+    "downstream_configuration": {
+      "title": "Gateway downstream configuration needs attention",
+      "description": "HAOS Mobile WAN disabled {entry_title} because the configured downstream NIC is missing, inactive or unsafe to use. Review the app diagnostics and correct the downstream interface before re-enabling the gateway."
+    },
+    "policy_configuration": {
+      "title": "Gateway policy routing is conflicting",
+      "description": "HAOS Mobile WAN disabled {entry_title} because the required policy-routing state conflicts with existing host rules or routes. Review the app diagnostics and remove the conflicting host policy state before re-enabling the gateway."
+    },
+    "upstream_configuration": {
+      "title": "Gateway upstream configuration needs attention",
+      "description": "HAOS Mobile WAN could not prepare {entry_title}'s upstream because commissioning or host ownership checks failed. Review the app diagnostics, correct the USB or upstream configuration, and then retry."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "upstream_healthy": {
+        "name": "Upstream healthy"
+      },
+      "downstream_present": {
+        "name": "Downstream interface present"
+      },
+      "rules_installed": {
+        "name": "Gateway rules applied"
+      },
+      "dnsmasq_running": {
+        "name": "DHCP server running"
+      },
+      "rollback_armed": {
+        "name": "Rollback armed"
+      },
+      "safety_checks": {
+        "name": "Safety checks"
+      }
+    },
+    "button": {
+      "reconcile": {
+        "name": "Reapply gateway state"
+      }
+    },
+    "select": {
+      "mode_control": {
+        "name": "Mode",
+        "state": {
+          "disabled": "Disabled",
+          "trial": "Trial"
+        }
+      }
+    },
+    "sensor": {
+      "mode": {
+        "name": "Mode",
+        "state": {
+          "disabled": "Disabled",
+          "trial": "Trial",
+          "active": "Active"
+        }
+      },
+      "desired_mode": {
+        "name": "Desired mode",
+        "state": {
+          "disabled": "Disabled",
+          "trial": "Trial",
+          "active": "Active"
+        }
+      },
+      "upstream_mode": {
+        "name": "Upstream mode",
+        "state": {
+          "hotspot_wifi": "Wi-Fi hotspot",
+          "iphone_usb": "iPhone USB"
+        }
+      },
+      "upstream_pairing_state": {
+        "name": "Upstream pairing",
+        "state": {
+          "not_applicable": "Not applicable",
+          "not_ready": "Not ready",
+          "dry_run_blocked": "Dry-run blocked",
+          "invalid_lease": "Invalid lease",
+          "waiting_for_dhcp": "Waiting for DHCP",
+          "paired": "Paired",
+          "daemon_failed": "Daemon failed",
+          "waiting_for_device": "Waiting for device",
+          "multiple_devices": "Multiple devices",
+          "waiting_for_interface": "Waiting for interface",
+          "ownership_conflict": "Ownership conflict",
+          "waiting_for_trust": "Waiting for trust",
+          "waiting_for_unlock": "Waiting for unlock",
+          "pairing_failed": "Pairing failed"
+        }
+      },
+      "downstream_interface": {
+        "name": "Downstream interface"
+      },
+      "public_ip": {
+        "name": "Public IP"
+      },
+      "last_error": {
+        "name": "Last error"
+      }
     }
   }
 }

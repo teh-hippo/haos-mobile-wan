@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, cast
 
 import aiohttp
 
+from .models import GatewaySelectableMode, GatewayStatus
+
 
 class GatewayApiError(RuntimeError):
+    pass
+
+
+class GatewayApiAuthError(GatewayApiError):
+    pass
+
+
+class GatewayApiConnectionError(GatewayApiError):
     pass
 
 
@@ -26,7 +36,7 @@ class GatewayApi:
         method: str,
         path: str,
         payload: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         try:
             async with asyncio.timeout(10):
                 response = await self._session.request(
@@ -35,21 +45,27 @@ class GatewayApi:
                     headers=self._headers,
                     json=payload,
                 )
+                if response.status in {401, 403}:
+                    response.release()
+                    raise GatewayApiAuthError("Authentication rejected by gateway app")
                 data = await response.json()
-        except (aiohttp.ClientError, TimeoutError, ValueError) as err:
-            raise GatewayApiError("Unable to communicate with gateway app") from err
+        except (aiohttp.ClientError, TimeoutError) as err:
+            raise GatewayApiConnectionError(
+                "Unable to communicate with gateway app"
+            ) from err
+        except ValueError as err:
+            raise GatewayApiError("Invalid response from gateway app") from err
+        if not isinstance(data, dict):
+            raise GatewayApiError("Gateway app returned an invalid response")
         if response.status >= 400:
             raise GatewayApiError(str(data.get("error", f"HTTP {response.status}")))
-        return data
+        return cast(dict[str, object], data)
 
-    async def status(self) -> dict[str, Any]:
-        return await self._request("GET", "/v1/status")
+    async def status(self) -> GatewayStatus:
+        return cast(GatewayStatus, await self._request("GET", "/v1/status"))
 
-    async def reconcile(self) -> dict[str, Any]:
+    async def reconcile(self) -> dict[str, object]:
         return await self._request("POST", "/v1/reconcile")
 
-    async def seek(self) -> dict[str, Any]:
-        return await self._request("POST", "/v1/seek")
-
-    async def set_mode(self, mode: str) -> dict[str, Any]:
+    async def set_mode(self, mode: GatewaySelectableMode) -> dict[str, object]:
         return await self._request("POST", "/v1/mode", {"mode": mode})

@@ -1,16 +1,29 @@
-ARG BUILD_FROM=ghcr.io/home-assistant/aarch64-base:3.22
-FROM ${BUILD_FROM}
+FROM ghcr.io/home-assistant/base:3.24
+
+ARG BUILD_VERSION
+ARG BUILD_ARCH
+
+LABEL \
+    io.hass.version="${BUILD_VERSION}" \
+    io.hass.type="app" \
+    io.hass.arch="${BUILD_ARCH}"
+
+ENV PYTHONDONTWRITEBYTECODE=1
 
 RUN apk add --no-cache \
-    conntrack-tools \
     curl \
     dnsmasq \
     iproute2 \
     iptables \
-    python3
+    libimobiledevice \
+    python3 \
+    usbmuxd
 
 COPY rootfs /
 
-RUN chmod 0755 \
+RUN mkdir -p /data /var/lib \
+    && ln -snf /data/lockdown /var/lib/lockdown \
+    && chmod 0755 \
     /app/main.py \
+    /app/udhcpc.script \
     /etc/services.d/ha-cellular-gateway/run

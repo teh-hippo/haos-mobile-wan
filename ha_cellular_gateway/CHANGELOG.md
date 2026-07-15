@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.16
+
+- Mark the live-commissioned 0.3 baseline as the current release for continued
+  pre-1.0 testing.
+
 ## 0.3.15
 
 - Keep the dnsmasq pidfile under the app-owned runtime directory.

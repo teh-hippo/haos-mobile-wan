@@ -46,6 +46,7 @@ class DnsmasqService:
                     + ",".join(self.config.dns_servers)
                 ),
                 f"dhcp-leasefile={self.lease_path}",
+                f"pid-file={self.run_dir / 'dnsmasq.pid'}",
                 "no-hosts",
                 "no-resolv",
                 "",

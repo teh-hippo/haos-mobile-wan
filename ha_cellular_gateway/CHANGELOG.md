@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.15
+
+- Keep the dnsmasq pidfile under the app-owned runtime directory.
+- Allow dnsmasq to read the standard group database.
+
 ## 0.3.14
 
 - Allow dnsmasq to bind its DHCP service port under AppArmor.

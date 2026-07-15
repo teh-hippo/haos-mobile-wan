@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.7
+
+- Allow the two package and SSL paths reported by the runtime AppArmor audit.
+
 ## 0.3.6
 
 - Execute the gateway script directly without package discovery at startup.

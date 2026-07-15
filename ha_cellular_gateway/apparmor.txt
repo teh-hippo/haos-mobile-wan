@@ -7,8 +7,10 @@ profile ha_cellular_gateway flags=(attach_disconnected,mediate_deleted) {
   capability net_raw,
   network,
 
+  / r,
   /app/ r,
   /app/** r,
+  /etc/ssl/openssl.cnf r,
   /data/** rwk,
   /run/ha-cellgw/** rwk,
   /run/usbmuxd rw,

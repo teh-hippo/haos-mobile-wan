@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3
+
+- Start from the image root so Python can import the gateway package.
+
 ## 0.3.2
 
 - Override the base image entrypoint so the gateway starts without `/init`.

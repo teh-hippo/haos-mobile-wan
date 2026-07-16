@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.7
+
+- Surface an immediate router DHCP process exit instead of repeatedly
+  reapplying gateway state without an error.
+- Send dnsmasq diagnostics to the managed app log.
+
 ## 0.4.6
 
 - Read the iPhone gateway from NetworkManager's table 202 default route because

@@ -9,5 +9,5 @@
   "issue_tracker": "https://github.com/teh-hippo/haos-mobile-wan/issues",
   "iot_class": "local_polling",
   "loggers": ["custom_components.ha_cellular_gateway"],
-  "version": "0.4.6"
+  "version": "0.4.7"
 }

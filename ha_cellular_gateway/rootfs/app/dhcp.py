@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import ipaddress
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 from .command import RunCommand, stop_process
 from .config import LEASE_PATH, RUN_DIR, GatewayConfig
+from .errors import GatewayError
 
 
 class DnsmasqService:
@@ -16,11 +18,13 @@ class DnsmasqService:
         *,
         run_dir: Path = RUN_DIR,
         lease_path: Path = LEASE_PATH,
+        popen: Callable[..., subprocess.Popen[str]] | None = None,
     ) -> None:
         self.config = config
         self.run = run
         self.run_dir = run_dir
         self.lease_path = lease_path
+        self.popen = popen or subprocess.Popen
         self.process: subprocess.Popen[str] | None = None
 
     @property
@@ -47,6 +51,7 @@ class DnsmasqService:
                 ),
                 f"dhcp-leasefile={self.lease_path}",
                 f"pid-file={self.run_dir / 'dnsmasq.pid'}",
+                "log-facility=-",
                 "no-hosts",
                 "no-resolv",
                 "",
@@ -63,9 +68,17 @@ class DnsmasqService:
             encoding="utf-8",
         )
         self.run("dnsmasq", "--test", f"--conf-file={config_path}")
-        self.process = subprocess.Popen(
+        self.process = self.popen(
             ["dnsmasq", "--keep-in-foreground", f"--conf-file={config_path}"],
             text=True,
+        )
+        try:
+            returncode = self.process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            return
+        self.process = None
+        raise GatewayError(
+            f"Router DHCP service exited with status {returncode}"
         )
 
     def stop(self) -> None:

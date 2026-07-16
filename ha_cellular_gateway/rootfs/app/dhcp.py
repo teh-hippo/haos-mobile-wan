@@ -52,8 +52,6 @@ class DnsmasqService:
                 f"dhcp-leasefile={self.lease_path}",
                 f"pid-file={self.run_dir / 'dnsmasq.pid'}",
                 "log-facility=-",
-                "user=root",
-                "group=root",
                 "no-hosts",
                 "no-resolv",
                 "",
@@ -71,7 +69,7 @@ class DnsmasqService:
         )
         self.run("dnsmasq", "--test", f"--conf-file={config_path}")
         self.process = self.popen(
-            ["dnsmasq", "--keep-in-foreground", f"--conf-file={config_path}"],
+            ["dnsmasq", "--no-daemon", f"--conf-file={config_path}"],
             text=True,
         )
         try:

@@ -13,6 +13,7 @@ class DnsmasqServiceTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.root = Path(self.directory.name)
         self.runner = FakeRunner()
+        self.popen_args: list[str] = []
 
     def tearDown(self) -> None:
         self.directory.cleanup()
@@ -23,7 +24,9 @@ class DnsmasqServiceTests(unittest.TestCase):
             lambda *args, **kwargs: self.runner.run(list(args), **kwargs),
             run_dir=self.root / "run",
             lease_path=self.root / "leases",
-            popen=lambda *args, **kwargs: process,
+            popen=lambda args, **kwargs: (
+                self.popen_args.extend(args) or process
+            ),
         )
 
     def test_running_process_is_retained(self) -> None:
@@ -37,7 +40,7 @@ class DnsmasqServiceTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("log-facility=-\n", config)
-        self.assertIn("user=root\ngroup=root\n", config)
+        self.assertIn("--no-daemon", self.popen_args)
 
     def test_early_exit_is_reported(self) -> None:
         process = FakeProcess(running=False, returncode=2)

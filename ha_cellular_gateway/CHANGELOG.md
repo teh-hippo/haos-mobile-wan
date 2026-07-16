@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.9
+
+- Run dnsmasq with its supervised `--no-daemon` mode so it does not attempt a
+  user or group transition unavailable inside the confined app container.
+
 ## 0.4.8
 
 - Keep dnsmasq as root inside the AppArmor-confined container because the app

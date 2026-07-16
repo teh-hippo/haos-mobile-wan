@@ -299,6 +299,33 @@ class NetworkManagerInspectTests(unittest.TestCase):
         self.assertEqual(result.state, "waiting")
         self.assertTrue(result.safe)
 
+    def test_missing_table_default_while_active_is_transient(self) -> None:
+        cli = healthy_cli()
+        cli.table_routes = [cli.table_routes[1]]
+
+        result = self._manager(cli).inspect("eth0")
+
+        self.assertEqual(result.state, "waiting")
+        self.assertTrue(result.safe)
+
+    def test_multiple_table_defaults_fail_closed(self) -> None:
+        cli = healthy_cli()
+        cli.table_routes.append(dict(cli.table_routes[0]))
+
+        result = self._manager(cli).inspect("eth0")
+
+        self.assertEqual(result.state, "invalid")
+        self.assertFalse(result.safe)
+
+    def test_foreign_table_interface_fails_closed(self) -> None:
+        cli = healthy_cli()
+        cli.table_routes[0]["dev"] = "wg0"
+
+        result = self._manager(cli).inspect("eth0")
+
+        self.assertEqual(result.state, "invalid")
+        self.assertFalse(result.safe)
+
     def test_wrong_table_gateway_fails_closed(self) -> None:
         cli = healthy_cli()
         cli.table_routes[0]["gateway"] = "172.20.10.2"
@@ -317,9 +344,9 @@ class NetworkManagerInspectTests(unittest.TestCase):
         self.assertEqual(result.state, "invalid")
         self.assertFalse(result.safe)
 
-    def test_duplicate_table_route_fails_closed(self) -> None:
+    def test_duplicate_connected_route_fails_closed(self) -> None:
         cli = healthy_cli()
-        cli.table_routes.append(dict(cli.table_routes[0]))
+        cli.table_routes.append(dict(cli.table_routes[1]))
 
         result = self._manager(cli).inspect("eth0")
 

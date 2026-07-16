@@ -8,7 +8,9 @@ from .command import RunCommand
 from .config import GatewayConfig
 from .networkmanager_invariants import (
     main_default_present,
+    networkmanager_routes,
     rule_selects_table,
+    table_gateway,
     table_routes_state,
 )
 from .networkmanager_profile import (
@@ -106,24 +108,24 @@ class NetworkManagerIphone:
             return NetworkManagerResult(
                 None, "invalid", MULTIPLE_ADDRESS_MESSAGE, False
             )
-        gateways = self._device_values(interface, "IP4.GATEWAY")
-        if not addresses or not gateways:
+        if not addresses:
+            return NetworkManagerResult(None, "waiting", LEASE_MESSAGE, True)
+        routes = networkmanager_routes(self.run, ROUTE_TABLE)
+        gateway, gateway_state = table_gateway(routes, interface)
+        if gateway_state == "invalid":
+            return NetworkManagerResult(None, "invalid", TABLE_MESSAGE, False)
+        if gateway is None:
             return NetworkManagerResult(None, "waiting", LEASE_MESSAGE, True)
         upstream, error = validate_dynamic_lease(
             self.config,
             interface,
             addresses[0],
-            gateways[0],
+            gateway,
         )
         if error:
             return NetworkManagerResult(None, "invalid", error, False)
         assert upstream is not None
-        route_state = table_routes_state(
-            self.run,
-            ROUTE_TABLE,
-            interface,
-            upstream,
-        )
+        route_state = table_routes_state(routes, interface, upstream)
         if route_state == "invalid":
             return NetworkManagerResult(None, "invalid", TABLE_MESSAGE, False)
         if route_state == "waiting":

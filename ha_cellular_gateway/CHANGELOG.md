@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.6
+
+- Read the iPhone gateway from NetworkManager's table 202 default route because
+  `IP4.GATEWAY` is empty when DHCP routes use a non-main table.
+
 ## 0.4.5
 
 - Use NetworkManager's documented single-connection default instead of

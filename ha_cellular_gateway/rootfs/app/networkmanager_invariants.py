@@ -36,12 +36,10 @@ def rule_selects_table(run: RunCommand, table: int) -> bool:
     )
 
 
-def table_routes_state(
+def networkmanager_routes(
     run: RunCommand,
     table: int,
-    interface: str,
-    upstream: ResolvedUpstream,
-) -> str:
+) -> list[dict[str, object]]:
     routes = run_json_table(
         run,
         "ip",
@@ -52,8 +50,38 @@ def table_routes_state(
         "table",
         str(table),
     )
-    entries = [route for route in routes if isinstance(route, dict)]
-    if not entries:
+    return [route for route in routes if isinstance(route, dict)]
+
+
+def table_gateway(
+    routes: list[dict[str, object]],
+    interface: str,
+) -> tuple[str | None, str]:
+    if any(route.get("dev") != interface for route in routes):
+        return None, "invalid"
+    defaults = [
+        route
+        for route in routes
+        if route.get("dst") == "default" and route.get("dev") == interface
+    ]
+    if not defaults:
+        return None, "waiting"
+    gateways = {
+        str(route.get("gateway", ""))
+        for route in defaults
+        if route.get("gateway")
+    }
+    if len(defaults) != 1 or len(gateways) != 1:
+        return None, "invalid"
+    return gateways.pop(), "ready"
+
+
+def table_routes_state(
+    routes: list[dict[str, object]],
+    interface: str,
+    upstream: ResolvedUpstream,
+) -> str:
+    if not routes:
         return "waiting"
     address = str(ipaddress.ip_interface(upstream.address).ip)
     expected = {
@@ -67,8 +95,8 @@ def table_routes_state(
             str(route.get("gateway", "")),
             str(route.get("prefsrc", address)),
         )
-        for route in entries
+        for route in routes
     }
-    if len(entries) != len(actual) or not actual.issubset(expected):
+    if len(routes) != len(actual) or not actual.issubset(expected):
         return "invalid"
     return "ready" if actual == expected else "waiting"

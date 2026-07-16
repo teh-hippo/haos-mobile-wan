@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.5
+
+- Use NetworkManager's documented single-connection default instead of
+  repeatedly setting a value that HAOS serialises as default.
+
 ## 0.4.4
 
 - Reconcile the persistent NetworkManager profile once per app process instead

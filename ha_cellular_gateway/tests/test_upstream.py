@@ -166,18 +166,6 @@ class NetworkManagerProfileTests(unittest.TestCase):
             [],
         )
 
-    def test_enum_representation_is_not_treated_as_drift(self) -> None:
-        cli = FakeNetworkManagerCli()
-        cli.profile = converged_profile()
-        cli.profile["connection.multi-connect"] = "1 (single)"
-
-        self._manager(cli).ensure_profile()
-
-        self.assertEqual(
-            [c for c in cli.commands if c[1:3] == ["connection", "modify"]],
-            [],
-        )
-
     def test_drifted_profile_is_repaired_without_recreating(self) -> None:
         cli = FakeNetworkManagerCli()
         cli.profile = converged_profile()

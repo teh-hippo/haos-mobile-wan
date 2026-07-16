@@ -11,7 +11,6 @@ MODIFY_SETTINGS: tuple[tuple[str, str], ...] = (
     ("connection.autoconnect", "yes"),
     ("connection.autoconnect-priority", "999"),
     ("connection.autoconnect-retries", "0"),
-    ("connection.multi-connect", "single"),
     ("match.driver", "ipheth"),
     ("ipv4.method", "auto"),
     ("ipv4.route-table", str(ROUTE_TABLE)),

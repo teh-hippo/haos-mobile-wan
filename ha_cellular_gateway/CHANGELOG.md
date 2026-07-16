@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4
+
+- Reconcile the persistent NetworkManager profile once per app process instead
+  of rewriting it on every five-second status cycle.
+- Log only the names of drifted profile fields when a startup repair is needed.
+
 ## 0.4.3
 
 - Hand iPhone USB discovery, DHCP, address, renewals and DHCP-derived routes to

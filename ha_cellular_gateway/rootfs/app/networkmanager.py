@@ -64,15 +64,32 @@ class NetworkManagerIphone:
         self._monotonic = monotonic
         self._last_activation: float | None = None
         self._needs_reactivation = False
+        self._profile_checked = False
 
     def ensure_profile(self) -> None:
+        if self._profile_checked:
+            return
         settings = self._profile_settings()
         if settings is None:
             self._create_profile()
-            return
-        if self._drifted(settings):
-            self._apply_settings()
-            self._needs_reactivation = True
+        else:
+            drifted = self._drifted_fields(settings)
+            if drifted:
+                print(
+                    "networkmanager: repairing profile fields: "
+                    + ",".join(drifted),
+                    flush=True,
+                )
+                self._apply_settings()
+                self._needs_reactivation = True
+        self._profile_checked = True
+
+    def _drifted_fields(self, settings: dict[str, str]) -> list[str]:
+        return [
+            field
+            for field, expected in EXPECTED_SETTINGS.items()
+            if normalise_setting(settings.get(field, "")) != expected
+        ]
 
     def inspect(self, interface: str) -> NetworkManagerResult:
         state = self._ensure_active(interface)
@@ -130,12 +147,6 @@ class NetworkManagerIphone:
             field: values[index].strip() if index < len(values) else ""
             for index, field in enumerate(READ_FIELDS)
         }
-
-    def _drifted(self, settings: dict[str, str]) -> bool:
-        return any(
-            normalise_setting(settings.get(field, "")) != expected
-            for field, expected in EXPECTED_SETTINGS.items()
-        )
 
     def _create_profile(self) -> None:
         arguments = [

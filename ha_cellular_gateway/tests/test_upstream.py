@@ -183,15 +183,18 @@ class NetworkManagerProfileTests(unittest.TestCase):
         cli.profile = converged_profile()
         cli.profile["ipv4.route-table"] = "254"
 
-        self._manager(cli).ensure_profile()
+        manager = self._manager(cli)
+        manager.ensure_profile()
 
         self.assertEqual(
             [c for c in cli.commands if c[1:3] == ["connection", "add"]],
             [],
         )
+        self.assertEqual(cli.profile["ipv4.route-table"], str(ROUTE_TABLE))
+        cli.profile["ipv4.route-table"] = "254"
+        manager.ensure_profile()
         modify = [c for c in cli.commands if c[1:3] == ["connection", "modify"]]
         self.assertEqual(len(modify), 1)
-        self.assertEqual(cli.profile["ipv4.route-table"], str(ROUTE_TABLE))
 
     def test_drifted_active_profile_is_reactivated_once(self) -> None:
         cli = healthy_cli()

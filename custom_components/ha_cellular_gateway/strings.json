@@ -134,17 +134,18 @@
         "state": {
           "not_applicable": "Not applicable",
           "not_ready": "Not ready",
-          "invalid_lease": "Invalid lease",
-          "waiting_for_dhcp": "Waiting for DHCP",
-          "paired": "Paired",
-          "daemon_failed": "Daemon failed",
           "waiting_for_device": "Waiting for device",
           "multiple_devices": "Multiple devices",
           "waiting_for_interface": "Waiting for interface",
-          "ownership_conflict": "Ownership conflict",
           "waiting_for_trust": "Waiting for trust",
           "waiting_for_unlock": "Waiting for unlock",
-          "pairing_failed": "Pairing failed"
+          "pairing_failed": "Pairing failed",
+          "daemon_failed": "Daemon failed",
+          "profile_failed": "Profile setup failed",
+          "waiting_for_profile": "Waiting for NetworkManager",
+          "profile_conflict": "Profile conflict",
+          "invalid_lease": "Invalid lease",
+          "paired": "Paired"
         }
       },
       "downstream_interface": {

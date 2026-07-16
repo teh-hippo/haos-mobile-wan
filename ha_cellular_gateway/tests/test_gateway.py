@@ -896,13 +896,11 @@ class GatewayEngineTests(unittest.TestCase):
             sys_net_root = root / "sys" / "class" / "net"
             sys_usb_root = root / "sys" / "bus" / "usb" / "devices"
             driver_root = root / "drivers"
-            udhcpc_script = root / "udhcpc.script"
             run_dir = root / "run"
             usb_root.mkdir(parents=True)
             sys_net_root.mkdir(parents=True)
             sys_usb_root.mkdir(parents=True)
             driver_root.mkdir(parents=True)
-            udhcpc_script.write_text("#!/bin/sh\n", encoding="utf-8")
 
             target = driver_root / "ipheth"
             target.mkdir()
@@ -922,7 +920,6 @@ class GatewayEngineTests(unittest.TestCase):
                 usb_root=usb_root,
                 sys_net_root=sys_net_root,
                 sys_usb_root=sys_usb_root,
-                udhcpc_script=udhcpc_script,
                 which=lambda command: f"/usr/bin/{command}",
                 popen=lambda *args, **kwargs: FakeProcess(),
             )
@@ -933,6 +930,7 @@ class GatewayEngineTests(unittest.TestCase):
             any(
                 command[:4] == ["ip", "-4", "address", "del"]
                 or command[:5] == ["ip", "route", "del", "default", "dev"]
+                or command[:1] == ["nmcli"]
                 for command in runner.commands
             )
         )

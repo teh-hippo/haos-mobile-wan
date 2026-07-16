@@ -32,9 +32,13 @@ to clear. It only removes addresses, routes and firewall rules that it owns.
 
 With **USB (iPhone), Wi-Fi fallback** selected, the app:
 
-1. uses iPhone USB while trust, `ipheth` and DHCP are ready;
+1. uses iPhone USB while trust, `ipheth` and the NetworkManager lease are ready;
 2. switches to the configured Wi-Fi hotspot when USB is unavailable;
 3. returns to USB when it becomes ready again.
+
+Host NetworkManager owns the iPhone USB connection through a persistent profile
+matched to the `ipheth` driver. The app reads that lease and keeps its policy
+routing separate from the NetworkManager route table.
 
 Internet health checks are reported for diagnostics. This release switches
 sources based on connection readiness, not an external connectivity probe.
@@ -234,7 +238,7 @@ interface names and iPhone identifiers.
 | Problem | Check |
 |---|---|
 | The gateway remains inactive while Enabled is on | Review **Safety checks** and **Last error** |
-| USB is not selected | Unlock the iPhone, enable **Allow Others to Join** under Personal Hotspot, accept Trust and check `ipheth` |
+| USB is not selected | Unlock the iPhone, enable **Allow Others to Join** under Personal Hotspot, accept Trust, check `ipheth`, and confirm no other `ipheth` profile is configured in HAOS |
 | Wi-Fi fallback is unavailable | Check the Wi-Fi hotspot profile and app credentials, then restart the app |
 | The router receives no WAN lease | Confirm the router-facing USB adapter has HAOS IPv4 and IPv6 disabled |
 | More than one USB Ethernet adapter is attached | Set the optional router adapter MAC address |
@@ -243,14 +247,16 @@ interface names and iPhone identifiers.
 
 ## Safety and security
 
-The app uses `host_network`, `NET_ADMIN`, `NET_RAW`, Supervisor manager access
-and USB access because it manages real HAOS interfaces, policy routing,
-firewall rules, DHCP and optional iPhone pairing. It does not use
-`full_access`, host D-Bus or `udev`.
+The app uses `host_network`, `host_dbus`, `NET_ADMIN`, `NET_RAW`, Supervisor
+manager access and USB access because it manages real HAOS interfaces, policy
+routing, firewall rules, DHCP and optional iPhone pairing. Host D-Bus lets
+`nmcli` drive the host NetworkManager iPhone USB profile. It does not use
+`full_access` or `udev`.
 
 An enforced AppArmor profile limits access to the required networking tools,
-USB paths, sysfs entries and app-owned runtime data. The local API uses a
-generated bearer token and binds to the Supervisor-side host address.
+the NetworkManager D-Bus service, USB paths, sysfs entries and app-owned
+runtime data. The local API uses a generated bearer token and binds to the
+Supervisor-side host address.
 
 ## Development
 

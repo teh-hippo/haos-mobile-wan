@@ -5,8 +5,7 @@ from typing import Any
 
 _UPSTREAM_TRANSIENT_STATES = {
     "waiting_for_device": ("upstream_waiting_for_device", "Waiting for an iPhone USB upstream"),
-    "waiting_for_dhcp": ("upstream_waiting_for_dhcp", "Waiting for the iPhone USB upstream DHCP lease"),
-    "multiple_devices": ("upstream_multiple_devices", "Multiple iPhone USB upstream devices detected"),
+    "waiting_for_profile": ("upstream_waiting_for_profile", "Waiting for the NetworkManager iPhone USB profile"),
     "waiting_for_interface": ("upstream_waiting_for_interface", "Waiting for the iPhone USB network interface"),
     "not_ready": ("upstream_not_ready", "Upstream connectivity is not ready"),
     "waiting_for_trust": ("upstream_waiting_for_trust", "Waiting for iPhone USB trust confirmation"),
@@ -15,9 +14,10 @@ _UPSTREAM_TRANSIENT_STATES = {
 
 _UPSTREAM_STABLE_STATES: dict[str, tuple[str, str]] = {
     "daemon_failed": ("upstream_daemon_failed", "The iPhone USB pairing helper failed to start"),
-    "dhcp_failed": ("upstream_dhcp_failed", "The iPhone USB DHCP client failed"),
-    "ownership_conflict": ("upstream_ownership_conflict", "The iPhone USB upstream is already managed by the host"),
-    "invalid_lease": ("upstream_invalid_lease", "The iPhone USB upstream lease is invalid"),
+    "profile_failed": ("upstream_profile_failed", "The NetworkManager iPhone USB profile could not be configured"),
+    "profile_conflict": ("upstream_profile_conflict", "A different NetworkManager profile controls the iPhone USB interface"),
+    "invalid_lease": ("upstream_invalid_lease", "The iPhone USB NetworkManager lease is invalid"),
+    "multiple_devices": ("upstream_multiple_devices", "Multiple iPhone USB upstream devices detected"),
     "pairing_failed": ("upstream_pairing_failed", "iPhone USB pairing failed"),
 }
 
@@ -48,7 +48,6 @@ _EXACT_ERRORS: dict[str, tuple[str, str | None, str]] = {
     "IPv6 is active on mobile upstream": ("upstream_ipv6_active", "host_configuration", "IPv6 is active on the mobile upstream"),
     "Cannot verify upstream IPv6 state": ("upstream_ipv6_unverified", "host_configuration", "The gateway could not verify mobile upstream IPv6 state"),
     "Cannot inspect policy-routing ownership": ("policy_ownership_unavailable", "policy_configuration", "The gateway could not inspect policy-routing ownership"),
-    "Required udhcpc helper script is unavailable": ("upstream_udhcpc_script_unavailable", "upstream_configuration", "The required iPhone USB DHCP helper script is missing"),
     "USB device access is unavailable; enable the app usb permission": ("upstream_usb_access_unavailable", "upstream_configuration", "USB device access is unavailable; enable the app USB permission"),
 }
 

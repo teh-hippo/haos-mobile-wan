@@ -105,7 +105,7 @@ jobs:
           assert app["apparmor"] is True
           assert app["privileged"] == ["NET_ADMIN", "NET_RAW"]
           assert app.get("full_access") in (None, False)
-          assert app.get("host_dbus") in (None, False)
+          assert app["host_dbus"] is True
           assert app.get("udev") in (None, False)
           strings = json.loads(
               Path(
@@ -153,6 +153,8 @@ jobs:
           for fragment in (
               "capability net_admin,",
               "capability net_raw,",
+              "/run/dbus/system_bus_socket rw,",
+              "peer=(name=org.freedesktop.NetworkManager),",
               "/run/ha-cellgw/** rwk,",
               "/run/usbmuxd rw,",
               "/run/usbmuxd/** rwk,",
@@ -160,12 +162,15 @@ jobs:
               "/var/lib/lockdown/** rwk,",
               "/proc/sys/net/ipv4/** r,",
               "/dev/bus/usb/** rw,",
+              "/usr/bin/nmcli rix,",
               "/sys/bus/usb/devices/ r,",
               "/sys/bus/usb/devices/** r,",
               "/sys/bus/usb/drivers/ipheth/** r,",
               "/sys/module/ipheth/** r,",
           ):
               assert fragment in profile
+          assert "/sbin/udhcpc" not in profile
+          assert "udhcpc.script" not in profile
           PY
 
       - name: Parse AppArmor profile

@@ -1,46 +1,448 @@
-import fcntl
+from __future__ import annotations
+
 import json
-import shutil
-import subprocess
-import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from tempfile import TemporaryDirectory
 
 from helpers import FakeProcess, FakeRunner, Result, make_config
 from rootfs.app.const import IPHONE_USB
-from rootfs.app.errors import GatewayError
-from rootfs.app.upstream_iphone import IPhoneUsbUpstream
-from rootfs.app.upstream_iphone_resolver import (
-    LeaseResolution,
-    external_lease,
+from rootfs.app.networkmanager import (
+    ACTIVATION_COOLDOWN_SECONDS,
+    EXPECTED_SETTINGS,
+    LEASE_OWNER,
+    MULTIPLE_ADDRESS_MESSAGE,
+    PROFILE_NAME,
+    PROFILE_UUID,
+    ROUTE_TABLE,
+    NetworkManagerIphone,
+    NetworkManagerResult,
 )
+from rootfs.app.upstream_iphone import IPhoneUsbUpstream
 from rootfs.app.upstream_models import ResolvedUpstream
+
+
+def converged_profile() -> dict[str, str]:
+    return dict(EXPECTED_SETTINGS)
+
+
+class FakeNetworkManagerCli:
+    """Simulate the nmcli and ip surface used by NetworkManagerIphone."""
+
+    def __init__(self) -> None:
+        self.profile: dict[str, str] | None = None
+        self.active: dict[str, str] = {}
+        self.addresses: dict[str, list[str]] = {}
+        self.gateways: dict[str, str] = {}
+        self.table_routes: list[dict[str, object]] = []
+        self.main_default: list[dict[str, object]] = []
+        self.rules: list[dict[str, object]] = []
+        self.commands: list[list[str]] = []
+        self.up_calls = 0
+        self.activate_on_up: tuple[str, str] | None = None
+        self.clock = 1000.0
+
+    def monotonic(self) -> float:
+        return self.clock
+
+    def run(self, *args: str, check: bool = True, timeout: int = 20) -> Result:
+        argv = list(args)
+        self.commands.append(argv)
+        if argv[0] == "nmcli":
+            return self._nmcli(argv[1:])
+        if argv[0] == "ip":
+            return self._ip(argv)
+        return Result()
+
+    def _nmcli(self, argv: list[str]) -> Result:
+        if argv[:1] == ["--wait"]:
+            argv = argv[2:]
+        if argv[:1] == ["-g"]:
+            return self._nmcli_get(argv[1], argv[2], argv[-1])
+        if argv[:2] == ["connection", "add"]:
+            self.profile = {
+                "connection.type": "802-3-ethernet",
+                "connection.uuid": PROFILE_UUID,
+                "connection.interface-name": "",
+            }
+            for field in EXPECTED_SETTINGS:
+                if field in argv:
+                    self.profile[field] = argv[argv.index(field) + 1]
+            return Result()
+        if argv[:2] == ["connection", "modify"]:
+            pairs = argv[3:]
+            if self.profile is None:
+                self.profile = {}
+            for index in range(0, len(pairs) - 1, 2):
+                self.profile[pairs[index]] = pairs[index + 1]
+            return Result()
+        if argv[:2] == ["connection", "up"]:
+            self.up_calls += 1
+            if self.activate_on_up is not None:
+                interface, connection = self.activate_on_up
+                self.active[interface] = connection
+            return Result()
+        return Result()
+
+    def _nmcli_get(self, fields: str, target: str, name: str) -> Result:
+        if target == "connection":
+            if self.profile is None:
+                return Result(returncode=1, stderr="Error: no such connection profile.")
+            values = [str(self.profile.get(field, "")) for field in fields.split(",")]
+            return Result(stdout="\n".join(values) + "\n")
+        field = fields
+        if field == "GENERAL.CON-UUID":
+            return Result(stdout=self.active.get(name, "") + "\n")
+        if field == "IP4.ADDRESS":
+            return Result(stdout="\n".join(self.addresses.get(name, [])) + "\n")
+        if field == "IP4.GATEWAY":
+            gateway = self.gateways.get(name, "")
+            return Result(stdout=(gateway + "\n") if gateway else "\n")
+        return Result()
+
+    def _ip(self, argv: list[str]) -> Result:
+        if argv[:7] == ["ip", "-4", "-j", "route", "show", "table", "main"]:
+            return Result(stdout=json.dumps(self.main_default))
+        if argv[:7] == ["ip", "-4", "-j", "route", "show", "table", str(ROUTE_TABLE)]:
+            return Result(stdout=json.dumps(self.table_routes))
+        if argv[:4] == ["ip", "-j", "rule", "show"]:
+            return Result(stdout=json.dumps(self.rules))
+        return Result(stdout="[]")
+
+
+def healthy_cli(interface: str = "eth0") -> FakeNetworkManagerCli:
+    cli = FakeNetworkManagerCli()
+    cli.profile = converged_profile()
+    cli.active = {interface: PROFILE_UUID}
+    cli.addresses = {interface: ["172.20.10.2/28"]}
+    cli.gateways = {interface: "172.20.10.1"}
+    cli.table_routes = [
+        {"dst": "default", "dev": interface, "gateway": "172.20.10.1"},
+        {"dst": "172.20.10.0/28", "dev": interface},
+    ]
+    return cli
+
+
+class NetworkManagerProfileTests(unittest.TestCase):
+    def _manager(self, cli: FakeNetworkManagerCli) -> NetworkManagerIphone:
+        return NetworkManagerIphone(
+            make_config(mobile_connection=IPHONE_USB),
+            cli.run,
+            monotonic=cli.monotonic,
+        )
+
+    def test_missing_profile_is_created_with_exact_settings(self) -> None:
+        cli = FakeNetworkManagerCli()
+
+        self._manager(cli).ensure_profile()
+
+        add = [c for c in cli.commands if c[:3] == ["nmcli", "connection", "add"]]
+        modify = [c for c in cli.commands if c[:3] == ["nmcli", "connection", "modify"]]
+        self.assertEqual(len(add), 1)
+        self.assertEqual(modify, [])
+        self.assertIn("match.driver", add[0])
+        self.assertIn("ipv4.route-table", add[0])
+        assert cli.profile is not None
+        for field, expected in EXPECTED_SETTINGS.items():
+            self.assertEqual(cli.profile[field], expected)
+        self.assertEqual(cli.profile["match.driver"], "ipheth")
+        self.assertEqual(cli.profile["ipv4.route-table"], str(ROUTE_TABLE))
+        self.assertEqual(cli.profile["ipv4.method"], "auto")
+        self.assertEqual(cli.profile["ipv6.method"], "disabled")
+        self.assertEqual(cli.profile["connection.interface-name"], "")
+
+    def test_converged_profile_is_not_modified(self) -> None:
+        cli = FakeNetworkManagerCli()
+        cli.profile = converged_profile()
+
+        self._manager(cli).ensure_profile()
+
+        self.assertEqual(
+            [c for c in cli.commands if c[1:3] == ["connection", "add"]],
+            [],
+        )
+        self.assertEqual(
+            [c for c in cli.commands if c[1:3] == ["connection", "modify"]],
+            [],
+        )
+
+    def test_enum_representation_is_not_treated_as_drift(self) -> None:
+        cli = FakeNetworkManagerCli()
+        cli.profile = converged_profile()
+        cli.profile["connection.multi-connect"] = "1 (single)"
+
+        self._manager(cli).ensure_profile()
+
+        self.assertEqual(
+            [c for c in cli.commands if c[1:3] == ["connection", "modify"]],
+            [],
+        )
+
+    def test_drifted_profile_is_repaired_without_recreating(self) -> None:
+        cli = FakeNetworkManagerCli()
+        cli.profile = converged_profile()
+        cli.profile["ipv4.route-table"] = "254"
+
+        self._manager(cli).ensure_profile()
+
+        self.assertEqual(
+            [c for c in cli.commands if c[1:3] == ["connection", "add"]],
+            [],
+        )
+        modify = [c for c in cli.commands if c[1:3] == ["connection", "modify"]]
+        self.assertEqual(len(modify), 1)
+        self.assertEqual(cli.profile["ipv4.route-table"], str(ROUTE_TABLE))
+
+    def test_drifted_active_profile_is_reactivated_once(self) -> None:
+        cli = healthy_cli()
+        cli.profile = converged_profile()
+        cli.profile["ipv4.route-table"] = "254"
+        cli.activate_on_up = ("eth0", PROFILE_UUID)
+        manager = self._manager(cli)
+
+        manager.ensure_profile()
+        result = manager.inspect("eth0")
+
+        self.assertEqual(result.state, "active")
+        self.assertEqual(cli.up_calls, 1)
+
+
+class NetworkManagerInspectTests(unittest.TestCase):
+    def _manager(self, cli: FakeNetworkManagerCli) -> NetworkManagerIphone:
+        return NetworkManagerIphone(
+            make_config(mobile_connection=IPHONE_USB),
+            cli.run,
+            monotonic=cli.monotonic,
+        )
+
+    def test_active_profile_with_valid_lease_resolves_upstream(self) -> None:
+        cli = healthy_cli()
+
+        result = self._manager(cli).inspect("eth0")
+
+        self.assertEqual(result.state, "active")
+        self.assertTrue(result.safe)
+        assert result.upstream is not None
+        self.assertEqual(result.upstream.connection, IPHONE_USB)
+        self.assertEqual(result.upstream.address, "172.20.10.2/28")
+        self.assertEqual(result.upstream.gateway, "172.20.10.1")
+
+    def test_no_mutation_while_converged_and_active(self) -> None:
+        cli = healthy_cli()
+
+        self._manager(cli).inspect("eth0")
+
+        self.assertEqual(cli.up_calls, 0)
+        self.assertEqual(
+            [c for c in cli.commands if c[1:3] in (["connection", "modify"], ["connection", "up"])],
+            [],
+        )
+
+    def test_foreign_profile_is_brought_up_once_then_fails_closed(self) -> None:
+        cli = healthy_cli()
+        cli.active = {"eth0": "foreign-profile-uuid"}
+
+        result = self._manager(cli).inspect("eth0")
+
+        self.assertEqual(result.state, "foreign")
+        self.assertFalse(result.safe)
+        self.assertEqual(cli.up_calls, 1)
+        self.assertIn(
+            [
+                "nmcli", "--wait", "8", "connection", "up",
+                "uuid", PROFILE_UUID, "ifname", "eth0",
+            ],
+            cli.commands,
+        )
+
+    def test_foreign_profile_takeover_that_succeeds_is_active(self) -> None:
+        cli = healthy_cli()
+        cli.active = {"eth0": "foreign-profile-uuid"}
+        cli.activate_on_up = ("eth0", PROFILE_UUID)
+
+        result = self._manager(cli).inspect("eth0")
+
+        self.assertEqual(result.state, "active")
+        self.assertEqual(cli.up_calls, 1)
+
+    def test_activation_attempt_is_rate_limited(self) -> None:
+        cli = healthy_cli()
+        cli.active = {"eth0": "foreign-profile-uuid"}
+        manager = self._manager(cli)
+
+        manager.inspect("eth0")
+        cli.clock += 5
+        manager.inspect("eth0")
+        self.assertEqual(cli.up_calls, 1)
+
+        cli.clock += ACTIVATION_COOLDOWN_SECONDS
+        manager.inspect("eth0")
+        self.assertEqual(cli.up_calls, 2)
+
+    def test_inactive_profile_is_transient_and_safe(self) -> None:
+        cli = healthy_cli()
+        cli.active = {}
+
+        result = self._manager(cli).inspect("eth0")
+
+        self.assertEqual(result.state, "waiting")
+        self.assertTrue(result.safe)
+        self.assertIsNone(result.upstream)
+
+    def test_missing_lease_while_active_is_transient(self) -> None:
+        cli = healthy_cli()
+        cli.addresses = {"eth0": []}
+        cli.gateways = {}
+
+        result = self._manager(cli).inspect("eth0")
+
+        self.assertEqual(result.state, "waiting")
+        self.assertTrue(result.safe)
+
+    def test_missing_table_routes_while_active_is_transient(self) -> None:
+        cli = healthy_cli()
+        cli.table_routes = []
+
+        result = self._manager(cli).inspect("eth0")
+
+        self.assertEqual(result.state, "waiting")
+        self.assertTrue(result.safe)
+
+    def test_wrong_table_gateway_fails_closed(self) -> None:
+        cli = healthy_cli()
+        cli.table_routes[0]["gateway"] = "172.20.10.2"
+
+        result = self._manager(cli).inspect("eth0")
+
+        self.assertEqual(result.state, "invalid")
+        self.assertFalse(result.safe)
+
+    def test_unexpected_table_route_fails_closed(self) -> None:
+        cli = healthy_cli()
+        cli.table_routes.append({"dst": "198.51.100.0/24", "dev": "eth0"})
+
+        result = self._manager(cli).inspect("eth0")
+
+        self.assertEqual(result.state, "invalid")
+        self.assertFalse(result.safe)
+
+    def test_duplicate_table_route_fails_closed(self) -> None:
+        cli = healthy_cli()
+        cli.table_routes.append(dict(cli.table_routes[0]))
+
+        result = self._manager(cli).inspect("eth0")
+
+        self.assertEqual(result.state, "invalid")
+        self.assertFalse(result.safe)
+
+    def test_multiple_addresses_fail_closed(self) -> None:
+        cli = healthy_cli()
+        cli.addresses = {"eth0": ["172.20.10.2/28", "172.20.10.6/28"]}
+
+        result = self._manager(cli).inspect("eth0")
+
+        self.assertEqual(result.state, "invalid")
+        self.assertFalse(result.safe)
+        self.assertEqual(result.error, MULTIPLE_ADDRESS_MESSAGE)
+
+    def test_main_default_route_fails_closed(self) -> None:
+        cli = healthy_cli()
+        cli.main_default = [{"dst": "default", "dev": "eth0", "gateway": "172.20.10.1"}]
+
+        result = self._manager(cli).inspect("eth0")
+
+        self.assertEqual(result.state, "invalid")
+        self.assertFalse(result.safe)
+        self.assertIn("main table", result.error or "")
+
+    def test_rule_selecting_table_202_fails_closed(self) -> None:
+        cli = healthy_cli()
+        cli.rules = [{"priority": 100, "table": str(ROUTE_TABLE)}]
+
+        result = self._manager(cli).inspect("eth0")
+
+        self.assertEqual(result.state, "invalid")
+        self.assertFalse(result.safe)
+        self.assertIn(str(ROUTE_TABLE), result.error or "")
+
+    def test_invalid_lease_overlap_fails_closed(self) -> None:
+        cli = healthy_cli()
+        cli.addresses = {"eth0": ["192.168.1.20/24"]}
+        cli.gateways = {"eth0": "192.168.1.1"}
+        cli.table_routes = [
+            {"dst": "default", "dev": "eth0", "gateway": "192.168.1.1"},
+            {"dst": "192.168.1.0/24", "dev": "eth0"},
+        ]
+
+        result = self._manager(cli).inspect("eth0")
+
+        self.assertEqual(result.state, "invalid")
+        self.assertFalse(result.safe)
+        self.assertIn("overlaps the management network", result.error or "")
+
+
+class FakeNetworkManager:
+    def __init__(
+        self,
+        results: list[NetworkManagerResult] | None = None,
+        *,
+        profile_error: Exception | None = None,
+    ) -> None:
+        self.results = list(results or [])
+        self.profile_error = profile_error
+        self.profile_calls = 0
+        self.inspect_calls: list[str] = []
+        self.default = NetworkManagerResult(None, "waiting", "waiting", True)
+
+    def ensure_profile(self) -> None:
+        self.profile_calls += 1
+        if self.profile_error is not None:
+            raise self.profile_error
+
+    def inspect(self, interface: str) -> NetworkManagerResult:
+        self.inspect_calls.append(interface)
+        if self.results:
+            return self.results.pop(0)
+        return self.default
+
+
+def usb_upstream(interface: str = "eth0") -> ResolvedUpstream:
+    return ResolvedUpstream(
+        connection=IPHONE_USB,
+        interface=interface,
+        address="172.20.10.2/28",
+        gateway="172.20.10.1",
+    )
 
 
 class IPhoneUsbUpstreamTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.directory = tempfile.TemporaryDirectory()
+        self.directory = TemporaryDirectory()
         self.root = Path(self.directory.name)
         self.run_dir = self.root / "run"
-        self.lockdown_dir = self.root / "lockdown"
         self.usb_root = self.root / "dev" / "bus" / "usb"
         self.sys_net_root = self.root / "sys" / "class" / "net"
         self.sys_usb_root = self.root / "sys" / "bus" / "usb" / "devices"
         self.driver_root = self.root / "drivers"
-        self.udhcpc_script = self.root / "udhcpc.script"
-        self.usb_root.mkdir(parents=True)
-        self.sys_net_root.mkdir(parents=True)
-        self.sys_usb_root.mkdir(parents=True)
-        self.driver_root.mkdir(parents=True)
-        self.udhcpc_script.write_text("#!/bin/sh\n", encoding="utf-8")
+        for path in (
+            self.usb_root,
+            self.sys_net_root,
+            self.sys_usb_root,
+            self.driver_root,
+        ):
+            path.mkdir(parents=True)
+        self.clock = [1000.0]
 
     def tearDown(self) -> None:
         self.directory.cleanup()
 
+    def _tick(self) -> float:
+        return self.clock[0]
+
     def _manager(
         self,
         runner: FakeRunner,
+        network_manager: FakeNetworkManager,
         *,
         popen=None,
     ) -> IPhoneUsbUpstream:
@@ -48,13 +450,14 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
             make_config(mobile_connection=IPHONE_USB),
             lambda *args, **kwargs: runner.run(list(args), **kwargs),
             run_dir=self.run_dir,
-            lockdown_dir=self.lockdown_dir,
+            lockdown_dir=self.root / "lockdown",
             usb_root=self.usb_root,
             sys_net_root=self.sys_net_root,
             sys_usb_root=self.sys_usb_root,
-            udhcpc_script=self.udhcpc_script,
             which=lambda command: f"/usr/bin/{command}",
             popen=popen or (lambda *args, **kwargs: FakeProcess()),
+            network_manager=network_manager,
+            monotonic=self._tick,
         )
 
     def _add_ipheth_interface(self, name: str = "eth0") -> None:
@@ -69,72 +472,104 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         device.mkdir(parents=True)
         (device / "idVendor").write_text("05ac\n", encoding="utf-8")
 
-    def _write_app_lease(
-        self,
-        runner: FakeRunner,
-        interface: str,
-        address: str,
-        gateway: str,
-    ) -> None:
-        self.run_dir.mkdir(parents=True, exist_ok=True)
-        (self.run_dir / "iphone-usb-lease.json").write_text(
-            json.dumps(
-                {
-                    "owner": "app",
-                    "interface": interface,
-                    "address": address,
-                    "gateway": gateway,
-                }
-            ),
-            encoding="utf-8",
-        )
-        ip, prefix = address.rsplit("/", 1)
-        runner.interface_addresses[interface] = (ip, int(prefix))
-
-    def test_resolve_usb_upstream_uses_app_owned_lease(self) -> None:
+    def _paired_runner(self) -> FakeRunner:
         runner = FakeRunner()
         runner.idevice_udids = ["iphone-udid"]
         runner.idevice_paired_udids = ["iphone-udid"]
         runner.idevice_validate_result.returncode = 0
-        self._add_ipheth_interface()
+        return runner
+
+    def test_reports_networkmanager_lease_owner(self) -> None:
+        manager = self._manager(FakeRunner(), FakeNetworkManager())
+        self.assertEqual(
+            manager.runtime_status()["upstream_lease_owner"],
+            None,
+        )
+
+    def test_missing_nmcli_is_a_capability_error(self) -> None:
+        runner = self._paired_runner()
+        manager = IPhoneUsbUpstream(
+            make_config(mobile_connection=IPHONE_USB),
+            lambda *args, **kwargs: runner.run(list(args), **kwargs),
+            run_dir=self.run_dir,
+            lockdown_dir=self.root / "lockdown",
+            usb_root=self.usb_root,
+            sys_net_root=self.sys_net_root,
+            sys_usb_root=self.sys_usb_root,
+            which=lambda command: None if command == "nmcli" else f"/usr/bin/{command}",
+            popen=lambda *args, **kwargs: FakeProcess(),
+            network_manager=FakeNetworkManager(),
+        )
+
+        upstream, errors = manager.resolve()
+
+        self.assertIsNone(upstream)
+        self.assertIn("Required command is unavailable: nmcli", errors)
+
+    def test_profile_is_prepared_before_a_phone_is_present(self) -> None:
+        network_manager = FakeNetworkManager()
+        manager = self._manager(FakeRunner(), network_manager)
+
+        upstream, errors = manager.resolve()
+
+        self.assertIsNone(upstream)
+        self.assertEqual(network_manager.profile_calls, 1)
+        self.assertEqual(network_manager.inspect_calls, [])
+        self.assertEqual(manager.pairing_state, "waiting_for_device")
+
+    def test_profile_setup_failure_allows_fallback(self) -> None:
+        runner = self._paired_runner()
+        from rootfs.app.errors import GatewayError
+
+        network_manager = FakeNetworkManager(profile_error=GatewayError("nm down"))
+        manager = self._manager(runner, network_manager)
+
+        upstream, errors = manager.resolve()
+
+        self.assertIsNone(upstream)
+        self.assertEqual(manager.pairing_state, "profile_failed")
+        self.assertTrue(manager.fallback_allowed())
+
+    def test_active_profile_resolves_upstream(self) -> None:
+        runner = self._paired_runner()
         self._add_apple_usb_device()
+        self._add_ipheth_interface("eth0")
+        network_manager = FakeNetworkManager(
+            [NetworkManagerResult(usb_upstream(), "active", None, True)]
+        )
+        manager = self._manager(runner, network_manager)
 
-        def popen(args, **kwargs):
-            if args[0] == "udhcpc":
-                self._write_app_lease(
-                    runner,
-                    "eth0",
-                    "172.20.10.2/28",
-                    "172.20.10.1",
-                )
-            return FakeProcess()
-
-        upstream, errors = self._manager(runner, popen=popen).resolve()
+        upstream, errors = manager.resolve()
 
         self.assertEqual(errors, [])
         assert upstream is not None
         self.assertEqual(upstream.interface, "eth0")
-        self.assertEqual(upstream.address, "172.20.10.2/28")
-        self.assertEqual(upstream.gateway, "172.20.10.1")
-        self.assertEqual(upstream.connection, IPHONE_USB)
+        self.assertEqual(manager.pairing_state, "paired")
+        self.assertEqual(network_manager.inspect_calls, ["eth0"])
+        self.assertEqual(
+            manager.runtime_status()["upstream_lease_owner"],
+            LEASE_OWNER,
+        )
 
-    def test_pairing_guidance_fails_closed(self) -> None:
+    def test_pairing_is_still_required(self) -> None:
         runner = FakeRunner()
         runner.idevice_udids = ["iphone-udid"]
         self._add_apple_usb_device()
+        manager = self._manager(runner, FakeNetworkManager())
 
-        manager = self._manager(runner)
         upstream, errors = manager.resolve()
 
         self.assertIsNone(upstream)
-        self.assertEqual(len(errors), 1)
         self.assertIn("tap Trust", errors[0])
+        self.assertEqual(manager.pairing_state, "waiting_for_trust")
 
     def test_pairing_prompt_is_rate_limited(self) -> None:
         runner = FakeRunner()
         runner.idevice_udids = ["iphone-udid"]
         self._add_apple_usb_device()
-        manager = self._manager(runner)
+        manager = self._manager(runner, FakeNetworkManager())
+
+        from unittest.mock import patch
 
         with patch(
             "rootfs.app.upstream_iphone_runtime.time.monotonic",
@@ -142,361 +577,144 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         ):
             manager.resolve()
             manager.resolve()
-            pair_commands = [
-                command for command in runner.commands if command[-1:] == ["pair"]
-            ]
+            pair_commands = [c for c in runner.commands if c[-1:] == ["pair"]]
             self.assertEqual(len(pair_commands), 1)
-            self.assertFalse(
-                any(command[-1:] == ["validate"] for command in runner.commands)
-            )
 
             manager.resolve()
-            pair_commands = [
-                command for command in runner.commands if command[-1:] == ["pair"]
-            ]
+            pair_commands = [c for c in runner.commands if c[-1:] == ["pair"]]
             self.assertEqual(len(pair_commands), 2)
 
-    def test_external_lease_is_not_flushed_on_cleanup(self) -> None:
+    def test_multiple_devices_block_fallback(self) -> None:
         runner = FakeRunner()
-        runner.interface_addresses["eth0"] = ("172.20.10.2", 28)
-        runner.main_default_routes.append(
-            {"dst": "default", "gateway": "172.20.10.1", "dev": "eth0"}
-        )
-        self._add_ipheth_interface()
+        runner.idevice_udids = ["one", "two"]
         self._add_apple_usb_device()
-        upstream = self._manager(runner)
+        manager = self._manager(runner, FakeNetworkManager())
 
-        upstream.cleanup()
+        upstream, errors = manager.resolve()
+
+        self.assertIsNone(upstream)
+        self.assertEqual(manager.pairing_state, "multiple_devices")
+        self.assertFalse(manager.fallback_allowed())
+
+    def test_multiple_ipheth_interfaces_block_fallback(self) -> None:
+        runner = self._paired_runner()
+        self._add_apple_usb_device()
+        self._add_ipheth_interface("eth0")
+        self._add_ipheth_interface("eth1")
+        manager = self._manager(runner, FakeNetworkManager())
+
+        upstream, errors = manager.resolve()
+
+        self.assertIsNone(upstream)
+        self.assertEqual(manager.pairing_state, "multiple_devices")
+        self.assertFalse(manager.fallback_allowed())
+
+    def test_profile_conflict_blocks_fallback(self) -> None:
+        runner = self._paired_runner()
+        self._add_apple_usb_device()
+        self._add_ipheth_interface("eth0")
+        network_manager = FakeNetworkManager(
+            [NetworkManagerResult(None, "foreign", "foreign profile", False)]
+        )
+        manager = self._manager(runner, network_manager)
+
+        upstream, errors = manager.resolve()
+
+        self.assertIsNone(upstream)
+        self.assertEqual(manager.pairing_state, "profile_conflict")
+        self.assertFalse(manager.fallback_allowed())
+
+    def test_invalid_lease_blocks_fallback(self) -> None:
+        runner = self._paired_runner()
+        self._add_apple_usb_device()
+        self._add_ipheth_interface("eth0")
+        network_manager = FakeNetworkManager(
+            [NetworkManagerResult(None, "invalid", "bad lease", False)]
+        )
+        manager = self._manager(runner, network_manager)
+
+        upstream, errors = manager.resolve()
+
+        self.assertIsNone(upstream)
+        self.assertEqual(manager.pairing_state, "invalid_lease")
+        self.assertFalse(manager.fallback_allowed())
+
+    def test_waiting_profile_allows_fallback(self) -> None:
+        runner = self._paired_runner()
+        self._add_apple_usb_device()
+        self._add_ipheth_interface("eth0")
+        network_manager = FakeNetworkManager(
+            [NetworkManagerResult(None, "waiting", "waiting", True)]
+        )
+        manager = self._manager(runner, network_manager)
+
+        upstream, errors = manager.resolve()
+
+        self.assertIsNone(upstream)
+        self.assertEqual(manager.pairing_state, "waiting_for_profile")
+        self.assertTrue(manager.fallback_allowed())
+
+    def test_missing_lease_within_grace_keeps_last_upstream(self) -> None:
+        runner = self._paired_runner()
+        self._add_apple_usb_device()
+        self._add_ipheth_interface("eth0")
+        network_manager = FakeNetworkManager(
+            [
+                NetworkManagerResult(usb_upstream(), "active", None, True),
+                NetworkManagerResult(None, "waiting", "renewing", True),
+                NetworkManagerResult(None, "waiting", "renewing", True),
+            ]
+        )
+        manager = self._manager(runner, network_manager)
+
+        first, _ = manager.resolve()
+        assert first is not None
+        self.clock[0] += 5
+        grace, errors = manager.resolve()
+
+        self.assertEqual(errors, [])
+        self.assertEqual(grace, usb_upstream())
+        self.assertEqual(manager.pairing_state, "paired")
+
+        self.clock[0] += IPhoneUsbUpstream.LEASE_GRACE_SECONDS
+        expired, errors = manager.resolve()
+
+        self.assertIsNone(expired)
+        self.assertEqual(manager.pairing_state, "waiting_for_profile")
+
+    def test_cleanup_does_not_mutate_networkmanager_state(self) -> None:
+        runner = self._paired_runner()
+        self._add_apple_usb_device()
+        self._add_ipheth_interface("eth0")
+        network_manager = FakeNetworkManager(
+            [NetworkManagerResult(usb_upstream(), "active", None, True)]
+        )
+        manager = self._manager(runner, network_manager)
+        manager.resolve()
+        runner.commands.clear()
+
+        manager.cleanup()
+
         self.assertFalse(
             any(
                 command[:4] == ["ip", "-4", "address", "del"]
-                or command[:5] == ["ip", "route", "del", "default", "dev"]
+                or command[:1] == ["nmcli"]
                 for command in runner.commands
             )
         )
+        self.assertEqual(network_manager.profile_calls, 1)
 
-    def test_interface_disappearance_is_treated_as_no_lease(self) -> None:
-        runner = FakeRunner()
-
-        def run(*args, **kwargs):
-            if args[:4] == ("ip", "-4", "-j", "address"):
-                return Result(
-                    returncode=1,
-                    stderr='Device "eth0" does not exist.\n',
-                )
-            return runner.run(list(args), **kwargs)
-
-        lease = external_lease(run, "eth0")
-
-        self.assertEqual(lease.addresses, ())
-        self.assertFalse(lease.has_default_route)
-
-    def test_interface_inspection_failure_is_not_hidden(self) -> None:
-        runner = FakeRunner()
-
-        def run(*args, **kwargs):
-            if args[:4] == ("ip", "-4", "-j", "address"):
-                return Result(returncode=2, stderr="permission denied\n")
-            return runner.run(list(args), **kwargs)
-
-        with self.assertRaises(subprocess.CalledProcessError):
-            external_lease(run, "eth0")
-
-    def test_rejects_host_managed_conflict_when_mutating(self) -> None:
-        runner = FakeRunner()
-        runner.idevice_udids = ["iphone-udid"]
-        runner.idevice_paired_udids = ["iphone-udid"]
-        runner.idevice_validate_result.returncode = 0
-        runner.interface_addresses["eth0"] = ("172.20.10.2", 28)
-        runner.main_default_routes.append(
-            {"dst": "default", "gateway": "172.20.10.1", "dev": "eth0"}
-        )
-        self._add_ipheth_interface()
+    def test_driver_inactive_message_when_no_interface(self) -> None:
+        runner = self._paired_runner()
         self._add_apple_usb_device()
-
-        manager = self._manager(runner)
-        upstream, errors = manager.resolve()
-
-        self.assertIsNone(upstream)
-        self.assertEqual(
-            errors,
-            [
-                "iPhone USB interface is already host-managed; leave ipheth unmanaged so the app can own DHCP and the main default route"
-            ],
-        )
-        self.assertFalse(manager.fallback_safe)
-
-    def test_ownership_conflict_stops_dhcp_after_lock_release(self) -> None:
-        runner = FakeRunner()
-        runner.interface_addresses["eth0"] = ("172.20.10.2", 28)
-        self._add_ipheth_interface()
-        self._add_apple_usb_device()
-        manager = self._manager(runner)
-        lock_was_released = False
-
-        def stop_dhcp() -> None:
-            nonlocal lock_was_released
-            with manager.runtime.lease_lock_path.open(
-                "a+",
-                encoding="utf-8",
-            ) as lock:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                lock_was_released = True
-                fcntl.flock(lock, fcntl.LOCK_UN)
-
-        manager.runtime.stop_dhcp = stop_dhcp
+        manager = self._manager(runner, FakeNetworkManager())
+        manager.runtime.ipheth_driver_active = lambda: False
 
         upstream, errors = manager.resolve()
 
         self.assertIsNone(upstream)
-        self.assertEqual(errors, [manager.HOST_CONFLICT_MESSAGE])
-        self.assertTrue(lock_was_released)
-
-    def test_host_managed_usb_blocks_fallback_without_detected_phone(self) -> None:
-        runner = FakeRunner()
-        runner.interface_addresses["eth0"] = ("172.20.10.2", 28)
-        self._add_ipheth_interface()
-        self._add_apple_usb_device()
-        manager = self._manager(runner)
-
-        upstream, errors = manager.resolve()
-
-        self.assertIsNone(upstream)
-        self.assertEqual(errors, [manager.HOST_CONFLICT_MESSAGE])
-        self.assertFalse(manager.fallback_allowed())
-
-    def test_mixed_usb_addresses_block_fallback_and_preserve_host_address(
-        self,
-    ) -> None:
-        runner = FakeRunner()
-        runner.idevice_udids = ["iphone-udid"]
-        runner.idevice_paired_udids = ["iphone-udid"]
-        runner.idevice_validate_result.returncode = 0
-        self._add_ipheth_interface()
-        self._add_apple_usb_device()
-        self._write_app_lease(
-            runner,
-            "eth0",
-            "172.20.10.2/28",
-            "172.20.10.1",
-        )
-        runner.interface_addresses["eth0"] = [
-            ("172.20.10.2", 28),
-            ("192.168.1.20", 24),
-        ]
-        manager = self._manager(runner)
-
-        upstream, errors = manager.resolve()
-
-        self.assertIsNone(upstream)
-        self.assertEqual(errors, [manager.HOST_CONFLICT_MESSAGE])
-        self.assertFalse(manager.fallback_allowed())
-
-        manager.cleanup()
-
-        self.assertEqual(
-            runner.interface_addresses["eth0"],
-            ("192.168.1.20", 24),
-        )
-        self.assertFalse((self.run_dir / "iphone-usb-lease.json").exists())
-
-    def test_external_lease_owner_is_never_accepted(self) -> None:
-        runner = FakeRunner()
-        runner.idevice_udids = ["iphone-udid"]
-        runner.idevice_paired_udids = ["iphone-udid"]
-        runner.idevice_validate_result.returncode = 0
-        self._add_ipheth_interface()
-        self._add_apple_usb_device()
-        manager = self._manager(runner)
-        manager._resolved_interface = lambda interface: LeaseResolution(
-            ResolvedUpstream(
-                connection=IPHONE_USB,
-                interface=interface,
-                address="172.20.10.2/28",
-                gateway="172.20.10.1",
-            ),
-            None,
-            "external",
-        )
-
-        upstream, errors = manager.resolve()
-
-        self.assertIsNone(upstream)
-        self.assertEqual(errors, [manager.HOST_CONFLICT_MESSAGE])
-        self.assertFalse(manager.fallback_allowed())
-
-    def test_rejects_invalid_dynamic_lease(self) -> None:
-        runner = FakeRunner()
-        runner.idevice_udids = ["iphone-udid"]
-        runner.idevice_paired_udids = ["iphone-udid"]
-        runner.idevice_validate_result.returncode = 0
-        self._add_apple_usb_device()
-        self._add_ipheth_interface()
-        self._write_app_lease(
-            runner,
-            "eth0",
-            "172.20.10.0/28",
-            "172.20.10.1",
-        )
-
-        upstream, errors = self._manager(runner).resolve()
-
-        self.assertIsNone(upstream)
-        self.assertEqual(errors, ["iPhone USB lease address is not a usable host address"])
-        self.assertFalse((self.run_dir / "iphone-usb-lease.json").exists())
-
-    def test_dhcp_hook_error_is_reported(self) -> None:
-        runner = FakeRunner()
-        runner.idevice_udids = ["iphone-udid"]
-        runner.idevice_paired_udids = ["iphone-udid"]
-        runner.idevice_validate_result.returncode = 0
-        self._add_apple_usb_device()
-        self._add_ipheth_interface()
-
-        def popen(args, **kwargs):
-            if args[0] == "udhcpc":
-                self.run_dir.mkdir(parents=True, exist_ok=True)
-                (self.run_dir / "iphone-usb-dhcp-error").write_text(
-                    "iPhone USB DHCP address configuration failed",
-                    encoding="utf-8",
-                )
-            return FakeProcess()
-
-        manager = self._manager(runner, popen=popen)
-        upstream, errors = manager.resolve()
-
-        self.assertIsNone(upstream)
-        self.assertEqual(
-            errors,
-            ["iPhone USB DHCP address configuration failed"],
-        )
-        self.assertEqual(manager.pairing_state, "dhcp_failed")
-
-    def test_rejects_overlapping_dynamic_lease(self) -> None:
-        runner = FakeRunner()
-        runner.idevice_udids = ["iphone-udid"]
-        runner.idevice_paired_udids = ["iphone-udid"]
-        runner.idevice_validate_result.returncode = 0
-        self._add_apple_usb_device()
-        self._add_ipheth_interface()
-        self._write_app_lease(
-            runner,
-            "eth0",
-            "192.168.1.20/24",
-            "192.168.1.1",
-        )
-
-        upstream, errors = self._manager(runner).resolve()
-
-        self.assertIsNone(upstream)
-        self.assertEqual(errors, ["iPhone USB lease overlaps the management network"])
-        self.assertFalse((self.run_dir / "iphone-usb-lease.json").exists())
-
-    def test_failed_invalid_lease_cleanup_blocks_fallback(self) -> None:
-        runner = FakeRunner()
-        runner.idevice_udids = ["iphone-udid"]
-        runner.idevice_paired_udids = ["iphone-udid"]
-        runner.idevice_validate_result.returncode = 0
-        self._add_apple_usb_device()
-        self._add_ipheth_interface()
-        self._write_app_lease(
-            runner,
-            "eth0",
-            "192.168.1.20/24",
-            "192.168.1.1",
-        )
-        manager = self._manager(runner)
-        original_run = manager.run
-
-        def fail_cleanup(*args, **kwargs):
-            if args[:4] == ("ip", "-4", "address", "del"):
-                return Result(returncode=1)
-            return original_run(*args, **kwargs)
-
-        manager.run = fail_cleanup
-
-        upstream, errors = manager.resolve()
-
-        self.assertIsNone(upstream)
-        self.assertIn("cleanup failed", errors[0])
-        self.assertFalse(manager.fallback_allowed())
-        self.assertTrue((self.run_dir / "iphone-usb-lease.json").exists())
-        self.assertIn("eth0", runner.interface_addresses)
-
-    def test_cleanup_uses_recorded_interface_when_discovery_is_unavailable(
-        self,
-    ) -> None:
-        runner = FakeRunner()
-        self._add_ipheth_interface()
-        self._write_app_lease(
-            runner,
-            "eth0",
-            "172.20.10.2/28",
-            "172.20.10.1",
-        )
-        manager = self._manager(runner)
-        manager.interface = None
-        original_run = manager.run
-        exclusive_lock_held = False
-
-        def run(*args, **kwargs):
-            nonlocal exclusive_lock_held
-            if args[:4] == ("ip", "-4", "address", "del"):
-                with manager.runtime.lease_lock_path.open(
-                    "a+",
-                    encoding="utf-8",
-                ) as lock:
-                    with self.assertRaises(BlockingIOError):
-                        fcntl.flock(
-                            lock,
-                            fcntl.LOCK_SH | fcntl.LOCK_NB,
-                        )
-                    exclusive_lock_held = True
-            return original_run(*args, **kwargs)
-
-        manager.run = run
-
-        manager.cleanup()
-
-        self.assertNotIn("eth0", runner.interface_addresses)
-        self.assertFalse((self.run_dir / "iphone-usb-lease.json").exists())
-        self.assertTrue(exclusive_lock_held)
-
-    def test_invalid_lease_record_is_retained(self) -> None:
-        runner = FakeRunner()
-        self.run_dir.mkdir(parents=True)
-        lease_path = self.run_dir / "iphone-usb-lease.json"
-        lease_path.write_text("{}", encoding="utf-8")
-        manager = self._manager(runner)
-
-        with self.assertRaisesRegex(GatewayError, "lease record is invalid"):
-            manager.cleanup()
-
-        self.assertTrue(lease_path.exists())
-
-    def test_stale_app_lease_is_discarded(self) -> None:
-        runner = FakeRunner()
-        runner.idevice_udids = ["iphone-udid"]
-        runner.idevice_paired_udids = ["iphone-udid"]
-        runner.idevice_validate_result.returncode = 0
-        self._add_apple_usb_device()
-        self._add_ipheth_interface()
-        self._write_app_lease(
-            runner,
-            "eth0",
-            "172.20.10.2/28",
-            "172.20.10.1",
-        )
-        runner.interface_addresses.pop("eth0")
-        manager = self._manager(runner)
-
-        upstream, errors = manager.resolve()
-
-        self.assertIsNone(upstream)
-        self.assertEqual(errors, ["iPhone USB lease is stale"])
-        self.assertEqual(manager.pairing_state, "waiting_for_dhcp")
-        self.assertTrue(manager.fallback_safe)
-        self.assertFalse((self.run_dir / "iphone-usb-lease.json").exists())
+        self.assertEqual(manager.pairing_state, "waiting_for_interface")
+        self.assertIn("ipheth driver is not active", errors[0])
 
     def test_usbmuxd_startup_failure_surfaces_output(self) -> None:
         runner = FakeRunner()
@@ -513,6 +731,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
 
         upstream, errors = self._manager(
             runner,
+            FakeNetworkManager(),
             popen=popen,
         ).resolve()
 
@@ -521,137 +740,6 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
             errors,
             ["usbmuxd failed to start: socket bind failed; permission denied"],
         )
-
-    def test_usbmuxd_running_process_uses_log_file_not_pipes(self) -> None:
-        runner = FakeRunner()
-        self._add_apple_usb_device()
-        self._add_ipheth_interface()
-        captured: dict[str, object] = {}
-
-        def popen(*args, **kwargs):
-            captured["stdout"] = kwargs["stdout"]
-            captured["stderr"] = kwargs["stderr"]
-            kwargs["stdout"].write("x" * 131072)
-            kwargs["stdout"].flush()
-            return FakeProcess()
-
-        manager = self._manager(runner, popen=popen)
-        manager._ipheth_driver_active = lambda: True
-
-        upstream, errors = manager.resolve()
-
-        self.assertIsNone(upstream)
-        self.assertEqual(
-            errors,
-            ["Connect a single trusted iPhone with Personal Hotspot enabled"],
-        )
-        self.assertIs(captured["stdout"], captured["stderr"])
-        self.assertNotEqual(captured["stdout"], subprocess.PIPE)
-        self.assertGreaterEqual(
-            len(manager.runtime.usbmuxd_log.read_text(encoding="utf-8")),
-            131072,
-        )
-
-    def test_usbmuxd_delayed_early_exit_surfaces_output(self) -> None:
-        runner = FakeRunner()
-        self._add_apple_usb_device()
-
-        class DelayedExitProcess(FakeProcess):
-            def wait(self, timeout: int = 5) -> int:
-                self.running = False
-                return self.returncode
-
-        def popen(*args, **kwargs):
-            kwargs["stdout"].write("late startup failure\n")
-            kwargs["stdout"].flush()
-            return DelayedExitProcess(returncode=1)
-
-        upstream, errors = self._manager(runner, popen=popen).resolve()
-
-        self.assertIsNone(upstream)
-        self.assertEqual(errors, ["usbmuxd failed to start: late startup failure"])
-
-    def test_disconnect_and_reconnect_updates_interface_and_address(self) -> None:
-        runner = FakeRunner()
-        runner.idevice_udids = ["iphone-udid"]
-        runner.idevice_paired_udids = ["iphone-udid"]
-        runner.idevice_validate_result.returncode = 0
-        self._add_apple_usb_device()
-        self._add_ipheth_interface("eth0")
-        processes: list[FakeProcess] = []
-
-        def popen(args, **kwargs):
-            if args[0] == "udhcpc":
-                interface = args[3]
-                if interface == "eth0":
-                    self._write_app_lease(
-                        runner,
-                        "eth0",
-                        "172.20.10.2/28",
-                        "172.20.10.1",
-                    )
-                else:
-                    self._write_app_lease(
-                        runner,
-                        "eth1",
-                        "172.20.10.6/28",
-                        "172.20.10.1",
-                    )
-            process = FakeProcess()
-            processes.append(process)
-            return process
-
-        manager = self._manager(runner, popen=popen)
-        first, errors = manager.resolve()
-        self.assertEqual(errors, [])
-        assert first is not None
-        self.assertEqual(first.interface, "eth0")
-
-        shutil.rmtree(self.sys_net_root / "eth0")
-        runner.commands.clear()
-        (self.run_dir / "iphone-usb-lease.json").unlink()
-        self._add_ipheth_interface("eth1")
-        second, errors = manager.resolve()
-
-        self.assertEqual(errors, [])
-        assert second is not None
-        self.assertEqual(second.interface, "eth1")
-        self.assertEqual(second.address, "172.20.10.6/28")
-        self.assertFalse(processes[1].running)
-
-    def test_exited_dhcp_process_is_restarted(self) -> None:
-        runner = FakeRunner()
-        runner.idevice_udids = ["iphone-udid"]
-        runner.idevice_paired_udids = ["iphone-udid"]
-        runner.idevice_validate_result.returncode = 0
-        self._add_apple_usb_device()
-        self._add_ipheth_interface("eth0")
-        processes: list[FakeProcess] = []
-
-        def popen(args, **kwargs):
-            if args[0] == "udhcpc":
-                self._write_app_lease(
-                    runner,
-                    "eth0",
-                    "172.20.10.2/28",
-                    "172.20.10.1",
-                )
-            process = FakeProcess()
-            processes.append(process)
-            return process
-
-        manager = self._manager(runner, popen=popen)
-        upstream, errors = manager.resolve()
-        self.assertEqual(errors, [])
-        self.assertIsNotNone(upstream)
-
-        processes[-1].running = False
-        upstream, errors = manager.resolve()
-
-        self.assertEqual(errors, [])
-        self.assertIsNotNone(upstream)
-        self.assertEqual(len(processes), 3)
-        self.assertTrue(processes[-1].running)
 
 
 if __name__ == "__main__":

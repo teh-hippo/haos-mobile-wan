@@ -8,10 +8,13 @@ profile ha_cellular_gateway flags=(attach_disconnected,mediate_deleted) {
   capability net_raw,
   network,
 
+  /run/dbus/system_bus_socket rw,
+  dbus (send, receive) bus=system path=/org/freedesktop/DBus interface=org.freedesktop.DBus peer=(name=org.freedesktop.DBus),
+  dbus (send, receive) bus=system peer=(name=org.freedesktop.NetworkManager),
+
   / r,
   /app/ r,
   /app/** r,
-  /app/udhcpc.script rix,
   /etc/hosts r,
   /etc/group r,
   /etc/nsswitch.conf r,
@@ -42,6 +45,7 @@ profile ha_cellular_gateway flags=(attach_disconnected,mediate_deleted) {
   /usr/bin/curl rix,
   /usr/bin/idevice_id rix,
   /usr/bin/idevicepair rix,
+  /usr/bin/nmcli rix,
   /usr/sbin/dnsmasq rix,
   /usr/sbin/usbmuxd rix,
   /usr/sbin/xtables-nft-multi rix,
@@ -51,6 +55,5 @@ profile ha_cellular_gateway flags=(attach_disconnected,mediate_deleted) {
   /sbin/ip rix,
   /sbin/iptables rix,
   /sbin/ip6tables rix,
-  /sbin/udhcpc rix,
   /bin/sh ix,
 }

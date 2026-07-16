@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 import time
@@ -10,7 +9,6 @@ from pathlib import Path
 
 from .command import RunCommand, stop_process
 from .errors import GatewayError
-from .upstream_lease import lease_lock
 
 
 @dataclass(frozen=True)
@@ -33,7 +31,6 @@ class IPhoneUsbRuntime:
         usb_root: Path,
         sys_net_root: Path,
         sys_usb_root: Path,
-        udhcpc_script: Path,
         popen: Callable[..., subprocess.Popen[str]] | None = None,
         which: Callable[[str], str | None] | None = None,
     ) -> None:
@@ -43,26 +40,18 @@ class IPhoneUsbRuntime:
         self.usb_root = usb_root
         self.sys_net_root = sys_net_root
         self.sys_usb_root = sys_usb_root
-        self.udhcpc_script = udhcpc_script
         self.popen = popen or subprocess.Popen
         self.which = which or shutil.which
         self.usbmuxd_pid = run_dir / "usbmuxd.pid"
         self.usbmuxd_log = run_dir / "usbmuxd.log"
-        self.dhcp_error_path = run_dir / "iphone-usb-dhcp-error"
-        self.lease_lock_path = run_dir / "iphone-usb.lock"
-        self.lease_path = run_dir / "iphone-usb-lease.json"
         self.usbmuxd_process: subprocess.Popen[str] | None = None
-        self.udhcpc_process: subprocess.Popen[str] | None = None
-        self.udhcpc_interface: str | None = None
         self.pairing_retry: tuple[str, float, PairingResult] | None = None
 
     def capability_errors(self) -> list[str]:
         errors: list[str] = []
-        for command in ("usbmuxd", "idevice_id", "idevicepair", "udhcpc"):
+        for command in ("usbmuxd", "idevice_id", "idevicepair", "nmcli"):
             if self.which(command) is None:
                 errors.append(f"Required command is unavailable: {command}")
-        if not self.udhcpc_script.exists():
-            errors.append("Required udhcpc helper script is unavailable")
         if not self.usb_root.exists():
             errors.append(
                 "USB device access is unavailable; enable the app usb permission"
@@ -104,46 +93,6 @@ class IPhoneUsbRuntime:
     def stop_usbmuxd(self) -> None:
         stop_process(self.usbmuxd_process)
         self.usbmuxd_process = None
-
-    def ensure_dhcp(self, interface: str) -> None:
-        if (
-            self.udhcpc_process
-            and self.udhcpc_process.poll() is None
-            and self.udhcpc_interface == interface
-        ):
-            return
-        self.stop_dhcp()
-        self.run_dir.mkdir(parents=True, exist_ok=True)
-        with lease_lock(self.lease_lock_path, exclusive=True):
-            self.dhcp_error_path.unlink(missing_ok=True)
-        environment = {**os.environ, "CELLGW_RUN_DIR": str(self.run_dir)}
-        self.udhcpc_process = self.popen(
-            [
-                "udhcpc",
-                "--foreground",
-                "--interface",
-                interface,
-                "--script",
-                str(self.udhcpc_script),
-            ],
-            text=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env=environment,
-        )
-        self.udhcpc_interface = interface
-
-    def stop_dhcp(self) -> None:
-        stop_process(self.udhcpc_process)
-        self.udhcpc_process = None
-        self.udhcpc_interface = None
-
-    def dhcp_error(self) -> str | None:
-        try:
-            error = self.dhcp_error_path.read_text(encoding="utf-8").strip()
-        except FileNotFoundError:
-            return None
-        return error or None
 
     def connected_udids(self) -> list[str]:
         result = self.run("idevice_id", "--list", check=False)
@@ -234,9 +183,9 @@ class IPhoneUsbRuntime:
             "/sys/bus/usb/drivers/ipheth"
         ).exists()
 
-    def ipheth_interface(self) -> str | None:
+    def ipheth_interfaces(self) -> list[str]:
         if not self.sys_net_root.exists():
-            return None
+            return []
         matches: list[str] = []
         for interface in self.sys_net_root.iterdir():
             try:
@@ -245,4 +194,4 @@ class IPhoneUsbRuntime:
                 continue
             if driver == "ipheth":
                 matches.append(interface.name)
-        return matches[0] if len(matches) == 1 else None
+        return sorted(matches)

@@ -11,19 +11,20 @@ GatewayActiveConnection: TypeAlias = Literal["wifi_hotspot", "iphone_usb"]
 GatewayPairingState: TypeAlias = Literal[
     "not_applicable",
     "not_ready",
-    "invalid_lease",
-    "waiting_for_dhcp",
-    "paired",
-    "daemon_failed",
     "waiting_for_device",
     "multiple_devices",
     "waiting_for_interface",
-    "ownership_conflict",
     "waiting_for_trust",
     "waiting_for_unlock",
     "pairing_failed",
+    "daemon_failed",
+    "profile_failed",
+    "waiting_for_profile",
+    "profile_conflict",
+    "invalid_lease",
+    "paired",
 ]
-GatewayLeaseOwner: TypeAlias = Literal["app", "external"]
+GatewayLeaseOwner: TypeAlias = Literal["networkmanager"]
 
 
 class GatewayIssue(TypedDict):

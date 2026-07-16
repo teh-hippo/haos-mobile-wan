@@ -17,10 +17,12 @@ RUN apk add --no-cache \
     iproute2 \
     iptables \
     libimobiledevice-progs \
+    networkmanager-cli \
     python3 \
     usbmuxd \
     && command -v idevice_id >/dev/null \
-    && command -v idevicepair >/dev/null
+    && command -v idevicepair >/dev/null \
+    && command -v nmcli >/dev/null
 
 COPY rootfs /
 
@@ -29,8 +31,7 @@ WORKDIR /
 RUN mkdir -p /data /var/lib \
     && ln -snf /data/lockdown /var/lib/lockdown \
     && chmod 0755 \
-    /app/main.py \
-    /app/udhcpc.script
+    /app/main.py
 
 ENTRYPOINT ["/usr/bin/python3", "/app/main.py"]
 CMD []

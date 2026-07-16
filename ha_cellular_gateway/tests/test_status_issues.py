@@ -70,23 +70,37 @@ class StatusIssuesTests(unittest.TestCase):
         result = build_status_issues(
             [],
             None,
-            {"upstream_pairing_state": "ownership_conflict"},
+            {"upstream_pairing_state": "profile_conflict"},
         )
         self.assertEqual(len(result), 1)
         issue = result[0]
-        self.assertEqual(issue["id"], "upstream_ownership_conflict")
+        self.assertEqual(issue["id"], "upstream_profile_conflict")
         self.assertEqual(issue["translation_key"], "upstream_configuration")
         self.assertTrue(issue["repairable"])
         self.assertFalse(issue["transient"])
 
-    def test_dhcp_failure_produces_repairable_issue(self) -> None:
+    def test_profile_setup_failure_produces_repairable_issue(self) -> None:
         result = build_status_issues(
             [],
             None,
-            {"upstream_pairing_state": "dhcp_failed"},
+            {"upstream_pairing_state": "profile_failed"},
         )
 
-        self.assertEqual(result[0]["id"], "upstream_dhcp_failed")
+        self.assertEqual(result[0]["id"], "upstream_profile_failed")
+        self.assertEqual(
+            result[0]["translation_key"],
+            "upstream_configuration",
+        )
+        self.assertTrue(result[0]["repairable"])
+
+    def test_multiple_devices_is_repairable(self) -> None:
+        result = build_status_issues(
+            [],
+            None,
+            {"upstream_pairing_state": "multiple_devices"},
+        )
+
+        self.assertEqual(result[0]["id"], "upstream_multiple_devices")
         self.assertEqual(
             result[0]["translation_key"],
             "upstream_configuration",
@@ -215,17 +229,18 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertTrue(issue["repairable"])
         self.assertFalse(issue["transient"])
 
-    def test_udhcpc_script_unavailable_is_repairable(self) -> None:
+    def test_waiting_for_profile_is_transient(self) -> None:
         result = build_status_issues(
-            ["Required udhcpc helper script is unavailable"],
+            ["waiting for NetworkManager"],
             None,
-            {},
+            {"upstream_pairing_state": "waiting_for_profile"},
         )
         self.assertEqual(len(result), 1)
         issue = result[0]
-        self.assertEqual(issue["id"], "upstream_udhcpc_script_unavailable")
-        self.assertEqual(issue["translation_key"], "upstream_configuration")
-        self.assertTrue(issue["repairable"])
+        self.assertEqual(issue["id"], "upstream_waiting_for_profile")
+        self.assertIsNone(issue["translation_key"])
+        self.assertFalse(issue["repairable"])
+        self.assertTrue(issue["transient"])
 
     def test_usb_access_unavailable_is_repairable(self) -> None:
         result = build_status_issues(

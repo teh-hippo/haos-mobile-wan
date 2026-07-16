@@ -31,7 +31,7 @@ class AddonSecurityTests(unittest.TestCase):
         self.assertEqual(self.config["timeout"], 30)
         self.assertEqual(self.config["privileged"], ["NET_ADMIN", "NET_RAW"])
         self.assertNotIn("full_access", self.config)
-        self.assertNotIn("host_dbus", self.config)
+        self.assertTrue(self.config["host_dbus"])
         self.assertNotIn("udev", self.config)
         self.assertEqual(
             set(self.config["options"]),
@@ -64,6 +64,8 @@ class AddonSecurityTests(unittest.TestCase):
         for fragment in (
             "capability net_admin,",
             "capability net_raw,",
+            "/run/dbus/system_bus_socket rw,",
+            "dbus (send, receive) bus=system peer=(name=org.freedesktop.NetworkManager),",
             "/run/ha-cellgw/** rwk,",
             "/run/usbmuxd rw,",
             "/run/usbmuxd/** rwk,",
@@ -71,7 +73,6 @@ class AddonSecurityTests(unittest.TestCase):
             "/var/lib/lockdown/** rwk,",
             "/proc/sys/net/ipv4/** r,",
             "/dev/bus/usb/** rw,",
-            "/app/udhcpc.script rix,",
             "/sys/class/net/** r,",
             "/sys/devices/** r,",
             "/sys/bus/usb/devices/ r,",
@@ -82,16 +83,21 @@ class AddonSecurityTests(unittest.TestCase):
             "/usr/bin/curl rix,",
             "/usr/bin/idevice_id rix,",
             "/usr/bin/idevicepair rix,",
+            "/usr/bin/nmcli rix,",
             "/usr/sbin/dnsmasq rix,",
             "/usr/sbin/usbmuxd rix,",
             "/bin/busybox rix,",
             "/sbin/ip rix,",
             "/sbin/iptables rix,",
             "/sbin/ip6tables rix,",
-            "/sbin/udhcpc rix,",
             "/bin/sh ix,",
         ):
             self.assertIn(fragment, self.profile)
+        for fragment in (
+            "/sbin/udhcpc",
+            "udhcpc.script",
+        ):
+            self.assertNotIn(fragment, self.profile)
 
     def test_apparmor_profile_parses(self) -> None:
         parser = shutil.which("apparmor_parser")

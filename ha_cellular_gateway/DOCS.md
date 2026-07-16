@@ -122,18 +122,27 @@ The app:
 
 - starts `usbmuxd` inside the container;
 - keeps pairing records in `/data/lockdown`;
-- discovers the dynamic `ipheth` interface;
-- owns DHCP on that interface;
-- keeps the USB default route out of the main table.
+- lets host NetworkManager discover and bind the dynamic `ipheth` interface;
+- consumes the NetworkManager DHCP lease on that interface;
+- keeps the phone default route in NetworkManager table 202, out of the main
+  table.
+
+Host NetworkManager owns the iPhone connection through a persistent profile
+named `haos-mobile-wan-iphone`. The app creates that profile through `nmcli`
+before a phone is inserted, matches it to the `ipheth` driver rather than an
+interface name or MAC address, and reconciles it only when it is missing or has
+drifted. NetworkManager owns the address, renewals and DHCP-derived routes; the
+app does not edit its leased address or table 202 routes.
 
 Connect the unlocked iPhone with a data-capable cable, enable **Personal
 Hotspot** and **Allow Others to Join**, then accept **Trust** if prompted.
 [Apple requires this toggle](https://support.apple.com/en-au/111785) for USB
 tethering as well as Wi-Fi tethering.
 
-Do not configure `ipheth` in HAOS. If the host already owns an address or main
-default route on that interface, the app reports an ownership conflict and
-does not race NetworkManager.
+Do not create your own `ipheth` profile in HAOS. If a different profile owns the
+interface, a phone default reaches the main table, a policy rule selects table
+202 or the lease is invalid, the app reports the fault and blocks fallback
+rather than racing NetworkManager.
 
 iPhone USB remains experimental because it depends on the HAOS kernel,
 `ipheth`, the cable and the phone trust workflow.
@@ -142,8 +151,8 @@ iPhone USB remains experimental because it depends on the HAOS kernel,
 
 This strategy prepares both mobile paths.
 
-- USB is selected while the iPhone is paired, `ipheth` is available and its
-  app-owned DHCP lease is valid.
+- USB is selected while the iPhone is paired, `ipheth` is available and the
+  NetworkManager lease is valid.
 - Wi-Fi is selected when USB is not ready.
 - USB is selected again as soon as it recovers.
 - The management Ethernet is never considered as a fallback.
@@ -236,9 +245,10 @@ policy ownership becomes unsafe, the app:
 - retains the host protection rule while the app remains running;
 - keeps the enabled request and retries every five seconds.
 
-On graceful stop, cleanup also removes the host protection rule and shuts down
-the app-owned iPhone DHCP client. `/data/state.json` records exact ownership so
-the next start can clean interrupted state before reconciliation.
+On graceful stop, cleanup also removes the host protection rule and stops the
+app `usbmuxd` helper. It leaves the persistent NetworkManager profile, its
+address and its table 202 routes in place. `/data/state.json` records exact
+ownership so the next start can clean interrupted state before reconciliation.
 
 The router can retain its five-minute DHCP lease after gateway service stops,
 but the lease has no usable gateway during that time.
@@ -276,16 +286,18 @@ requires a Home Assistant restart after installation or update.
 
 ## Security
 
-The app uses `host_network`, `NET_ADMIN`, `NET_RAW`, `hassio_api`,
+The app uses `host_network`, `host_dbus`, `NET_ADMIN`, `NET_RAW`, `hassio_api`,
 `hassio_role: manager` and `usb: true`.
 
 - Host networking and `NET_ADMIN` are required for real HAOS interfaces,
   policy routing and tagged firewall rules.
 - `NET_RAW` is required by the DHCP services.
 - Supervisor manager access is required to apply app-managed Wi-Fi profiles.
+- Host D-Bus is required so `nmcli` can drive the host NetworkManager iPhone USB
+  profile. The AppArmor profile scopes D-Bus to the NetworkManager service.
 - USB access is required by the iPhone path and is static for the app package.
 
-The app does not use `full_access`, host D-Bus or `udev`.
+The app does not use `full_access` or `udev`.
 
 The enforced AppArmor profile limits the process to its networking tools,
 app-owned data, required `/proc` and sysfs reads, and the iPhone USB paths.

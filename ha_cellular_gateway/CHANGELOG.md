@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.3
+
+- Hand iPhone USB discovery, DHCP, address, renewals and DHCP-derived routes to
+  host NetworkManager through a persistent `haos-mobile-wan-iphone` profile that
+  matches the `ipheth` driver.
+- Keep the NetworkManager DHCP routes in dedicated table 202 and keep the
+  app-owned policy table 201 unchanged.
+- Fail closed when a foreign profile owns the interface, a phone default reaches
+  the main table, a rule selects table 202, the lease is invalid or a second
+  device appears.
+- Add the `host_dbus` permission, the Alpine `networkmanager-cli` package and a
+  scoped NetworkManager D-Bus AppArmor rule, and remove the app-owned BusyBox
+  DHCP client.
+- This is a breaking permission and architecture update. The app leaves other
+  NetworkManager profiles untouched and fails closed if one remains active.
+
 ## 0.4.2
 
 - Serialise iPhone DHCP address changes with lease ownership checks so the app

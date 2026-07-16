@@ -1,26 +1,26 @@
 from __future__ import annotations
 
 import subprocess
+import time
 from collections.abc import Callable
 from pathlib import Path
 
 from .command import RunCommand
 from .config import RUN_DIR, GatewayConfig
 from .errors import GatewayError
-from .upstream_iphone_resolver import (
-    LeaseResolution,
-    host_conflict_message,
-    host_managed_conflict,
-    resolved_interface,
+from .networkmanager import (
+    LEASE_OWNER,
+    NetworkManagerIphone,
+    NetworkManagerResult,
 )
-from .upstream_iphone_cleanup import discard_owned_lease
 from .upstream_iphone_runtime import IPhoneUsbRuntime
-from .upstream_lease import lease_lock
 from .upstream_models import ResolvedUpstream
+
+UpstreamResolution = tuple[ResolvedUpstream | None, list[str]]
 
 
 class IPhoneUsbUpstream:
-    HOST_CONFLICT_MESSAGE = host_conflict_message()
+    LEASE_GRACE_SECONDS = 20
 
     def __init__(
         self,
@@ -32,9 +32,10 @@ class IPhoneUsbUpstream:
         usb_root: Path = Path("/dev/bus/usb"),
         sys_net_root: Path = Path("/sys/class/net"),
         sys_usb_root: Path = Path("/sys/bus/usb/devices"),
-        udhcpc_script: Path = Path("/app/udhcpc.script"),
         popen: Callable[..., subprocess.Popen[str]] | None = None,
         which: Callable[[str], str | None] | None = None,
+        network_manager: NetworkManagerIphone | None = None,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self.config = config
         self.run = run
@@ -45,16 +46,22 @@ class IPhoneUsbUpstream:
             usb_root=usb_root,
             sys_net_root=sys_net_root,
             sys_usb_root=sys_usb_root,
-            udhcpc_script=udhcpc_script,
             popen=popen,
             which=which,
         )
+        self.nm = network_manager or NetworkManagerIphone(
+            config,
+            run,
+            monotonic=monotonic,
+        )
+        self._monotonic = monotonic
         self.pairing_state = "not_applicable"
         self.pairing_message: str | None = None
         self.device_udid: str | None = None
         self.interface: str | None = None
         self.lease_owner: str | None = None
         self.fallback_safe = True
+        self._last_lease: tuple[ResolvedUpstream, float] | None = None
 
     def runtime_status(self) -> dict[str, object]:
         return {
@@ -66,7 +73,7 @@ class IPhoneUsbUpstream:
             "upstream_lease_owner": self.lease_owner,
         }
 
-    def resolve(self) -> tuple[ResolvedUpstream | None, list[str]]:
+    def resolve(self) -> UpstreamResolution:
         self.pairing_state = "not_ready"
         self.pairing_message = None
         self.device_udid = None
@@ -76,149 +83,122 @@ class IPhoneUsbUpstream:
 
         errors = self.runtime.capability_errors()
         if errors:
-            self._discard_owned_lease()
+            self._forget_lease()
             return None, errors
 
+        try:
+            self.nm.ensure_profile()
+        except (GatewayError, OSError, subprocess.SubprocessError) as err:
+            self._forget_lease()
+            return self._fail(
+                "profile_failed",
+                f"NetworkManager iPhone USB profile setup failed: {err}",
+            )
+
         apple_present = self.runtime.apple_usb_present()
-        interface = self.runtime.ipheth_interface()
-        self.interface = interface
-        with lease_lock(self.runtime.lease_lock_path):
-            ownership_conflict = self._has_ownership_conflict(interface)
-        if ownership_conflict:
-            self._mark_ownership_conflict()
-            return None, [self.HOST_CONFLICT_MESSAGE]
 
         try:
             self.runtime.ensure_usbmuxd()
         except GatewayError as err:
-            self.pairing_state = "daemon_failed"
-            self.pairing_message = str(err)
-            return None, [self.pairing_message]
+            self._forget_lease()
+            return self._fail("daemon_failed", str(err))
 
         udids = self.runtime.connected_udids()
         if not udids:
-            self._discard_owned_lease()
-            if apple_present and not self._ipheth_driver_active():
-                message = "Apple USB device is present but the host ipheth driver is not active"
+            self._forget_lease()
+            if apple_present and not self.runtime.ipheth_driver_active():
+                message = (
+                    "Apple USB device is present but the host ipheth driver "
+                    "is not active"
+                )
             else:
                 message = "Connect a single trusted iPhone with Personal Hotspot enabled"
-            self.pairing_state = "waiting_for_device"
-            self.pairing_message = message
-            return None, [message]
+            return self._fail("waiting_for_device", message)
         if len(udids) > 1:
-            self._discard_owned_lease()
-            self.pairing_state = "multiple_devices"
-            self.pairing_message = "Connect only one iPhone USB upstream at a time"
-            return None, [self.pairing_message]
+            self._forget_lease()
+            return self._fail(
+                "multiple_devices",
+                "Connect only one iPhone USB upstream at a time",
+                safe=False,
+            )
 
         udid = udids[0]
         self.device_udid = udid
         if not self.runtime.validate_pairing(udid):
             pairing = self.runtime.pair_device(udid)
-            self.pairing_state = pairing.state
-            self.pairing_message = pairing.message
             if not pairing.paired:
-                self._discard_owned_lease()
+                self._forget_lease()
                 assert pairing.message is not None
-                return None, [pairing.message]
+                return self._fail(pairing.state, pairing.message)
 
-        interface = self.runtime.ipheth_interface()
-        self.interface = interface
-        if interface is None:
-            self._discard_owned_lease()
+        interfaces = self.runtime.ipheth_interfaces()
+        if len(interfaces) > 1:
+            self._forget_lease()
+            return self._fail(
+                "multiple_devices",
+                "Multiple iPhone USB network interfaces are present",
+                safe=False,
+            )
+        if not interfaces:
+            self._forget_lease()
             message = "iPhone is paired but no ipheth network interface is available"
-            if not self._ipheth_driver_active():
+            if not self.runtime.ipheth_driver_active():
                 message = "iPhone is paired but the host ipheth driver is not active"
-            self.pairing_state = "waiting_for_interface"
-            self.pairing_message = message
-            return None, [message]
+            return self._fail("waiting_for_interface", message)
 
-        self.runtime.ensure_dhcp(interface)
-        with lease_lock(self.runtime.lease_lock_path):
-            lease = self._resolved_interface(interface)
-            dhcp_error = self.runtime.dhcp_error()
-        if lease.error:
-            message = lease.error
-            if lease.owner == "app":
-                try:
-                    self._discard_owned_lease()
-                except (GatewayError, OSError, subprocess.SubprocessError) as err:
-                    self.fallback_safe = False
-                    message = f"{message}; cleanup failed: {err}"
-            else:
-                self.fallback_safe = False
-            self.pairing_state = (
-                "waiting_for_dhcp"
-                if lease.error == "iPhone USB lease is stale"
-                and self.fallback_safe
-                else "invalid_lease"
-            )
-            self.pairing_message = message
-            return None, [message]
-        if lease.owner == "external":
-            self._mark_ownership_conflict()
-            return None, [self.HOST_CONFLICT_MESSAGE]
-        if dhcp_error:
-            self.pairing_state = "dhcp_failed"
-            self.pairing_message = dhcp_error
-            return None, [dhcp_error]
-        if lease.upstream is None:
-            self.pairing_state = "waiting_for_dhcp"
-            self.pairing_message = (
-                "Waiting for the iPhone USB tether interface to acquire DHCP"
-            )
-            return None, [self.pairing_message]
-        self.pairing_state = "paired"
-        self.pairing_message = None
-        return lease.upstream, []
+        self.interface = interfaces[0]
+        return self._consume(self.nm.inspect(self.interface))
 
     def fallback_allowed(self) -> bool:
-        interface = self.runtime.ipheth_interface()
-        if interface is None:
-            return self.fallback_safe
-        with lease_lock(self.runtime.lease_lock_path):
-            ownership_conflict = self._has_ownership_conflict(interface)
-        if ownership_conflict:
-            self._mark_ownership_conflict()
-            return False
         return self.fallback_safe
 
     def cleanup(self) -> None:
-        self._discard_owned_lease()
+        self._forget_lease()
         self.runtime.stop_usbmuxd()
 
-    def _discard_owned_lease(self) -> None:
-        discard_owned_lease(
-            self.runtime,
-            self.run,
-        )
-        self.lease_owner = None
+    def _consume(self, result: NetworkManagerResult) -> UpstreamResolution:
+        if result.state == "active":
+            assert result.upstream is not None
+            self._last_lease = (result.upstream, self._monotonic())
+            self.lease_owner = LEASE_OWNER
+            self.pairing_state = "paired"
+            self.pairing_message = None
+            return result.upstream, []
+        if result.state == "waiting":
+            grace = self._grace_lease()
+            if grace is not None:
+                self.lease_owner = LEASE_OWNER
+                self.pairing_state = "paired"
+                self.pairing_message = None
+                return grace, []
+            assert result.error is not None
+            return self._fail("waiting_for_profile", result.error)
+        self._forget_lease()
+        state = "profile_conflict" if result.state == "foreign" else "invalid_lease"
+        assert result.error is not None
+        return self._fail(state, result.error, safe=False)
 
-    def _has_ownership_conflict(self, interface: str | None) -> bool:
-        return bool(interface) and host_managed_conflict(
-            self.run,
-            self.runtime.lease_path,
-            str(interface),
-        )
-
-    def _mark_ownership_conflict(self) -> None:
-        self.runtime.stop_dhcp()
-        self.fallback_safe = False
-        self.pairing_state = "ownership_conflict"
-        self.pairing_message = self.HOST_CONFLICT_MESSAGE
-
-    def _resolved_interface(
+    def _fail(
         self,
-        interface: str,
-    ) -> LeaseResolution:
-        lease = resolved_interface(
-            self.config,
-            self.run,
-            self.runtime.lease_path,
-            interface,
-        )
-        self.lease_owner = lease.owner
-        return lease
+        state: str,
+        message: str,
+        *,
+        safe: bool = True,
+    ) -> UpstreamResolution:
+        self.pairing_state = state
+        self.pairing_message = message
+        if not safe:
+            self.fallback_safe = False
+        return None, [message]
 
-    def _ipheth_driver_active(self) -> bool:
-        return self.runtime.ipheth_driver_active()
+    def _grace_lease(self) -> ResolvedUpstream | None:
+        if self._last_lease is None:
+            return None
+        upstream, seen = self._last_lease
+        if self._monotonic() - seen < self.LEASE_GRACE_SECONDS:
+            return upstream
+        self._last_lease = None
+        return None
+
+    def _forget_lease(self) -> None:
+        self._last_lease = None

@@ -52,6 +52,8 @@ class DnsmasqService:
                 f"dhcp-leasefile={self.lease_path}",
                 f"pid-file={self.run_dir / 'dnsmasq.pid'}",
                 "log-facility=-",
+                "user=root",
+                "group=root",
                 "no-hosts",
                 "no-resolv",
                 "",

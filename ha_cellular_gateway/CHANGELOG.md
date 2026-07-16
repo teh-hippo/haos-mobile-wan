@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.8
+
+- Keep dnsmasq as root inside the AppArmor-confined container because the app
+  intentionally does not grant host `SETGID`.
+
 ## 0.4.7
 
 - Surface an immediate router DHCP process exit instead of repeatedly

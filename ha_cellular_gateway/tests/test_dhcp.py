@@ -37,6 +37,7 @@ class DnsmasqServiceTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("log-facility=-\n", config)
+        self.assertIn("user=root\ngroup=root\n", config)
 
     def test_early_exit_is_reported(self) -> None:
         process = FakeProcess(running=False, returncode=2)

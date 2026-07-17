@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.0
+
+- Recover the management baseline at runtime, so a transient host networking
+  problem during startup no longer leaves the gateway disabled until a restart.
+- Add a gateway state sensor that reports disabled, offline, connecting or
+  connected at a glance, alongside the configured and active connection.
+- Distinguish a disabled Wi-Fi adapter and an enabled but unassociated hotspot
+  from a generic inactive upstream, and note that 802.11 status codes stay in
+  the host supplicant logs.
+- Prune obsolete add-on options left behind by earlier versions after an
+  upgrade, so an upgraded install matches a fresh one.
+- Route logging through the standard framework: per-request API logging moves
+  to debug, and iPhone USB and Wi-Fi connect and disconnect events log at info.
+- Start the app under its AppArmor profile in CI so a broken runtime is caught
+  before release.
+
 ## 0.4.9
 
 - Run dnsmasq with its supervised `--no-daemon` mode so it does not attempt a

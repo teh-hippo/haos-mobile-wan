@@ -1,5 +1,5 @@
 name: HAOS Mobile WAN
-version: "0.4.9"
+version: "0.5.0"
 slug: ha_cellular_gateway
 description: Provides fallback WAN through Wi-Fi or iPhone USB tethering
 url: https://github.com/teh-hippo/haos-mobile-wan

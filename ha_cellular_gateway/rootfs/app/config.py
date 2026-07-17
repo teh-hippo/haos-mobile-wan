@@ -23,6 +23,19 @@ RUN_DIR = Path(os.environ.get("CELLGW_RUN_DIR", "/run/ha-cellgw"))
 LEASE_PATH = Path(os.environ.get("CELLGW_LEASES", "/data/dnsmasq.leases"))
 STATE_PATH = Path(os.environ.get("CELLGW_STATE", "/data/state.json"))
 
+_OPTION_DEFAULTS: dict[str, object] = {
+    "enabled": False,
+    "mobile_connection": DEFAULT_MOBILE_CONNECTION_OPTION,
+    "hotspot_ssid": "",
+    "hotspot_password": "",
+    "downstream_mac": "",
+    "router_address": "192.168.80.1/24",
+    "upstream_interface": "wlan0",
+    "upstream_address": "172.20.10.4/28",
+    "upstream_gateway": "172.20.10.1",
+}
+KNOWN_OPTION_KEYS: frozenset[str] = frozenset(_OPTION_DEFAULTS)
+
 
 @dataclass(frozen=True)
 class GatewayConfig:
@@ -76,24 +89,23 @@ class GatewayConfig:
 
     @classmethod
     def _from_data(cls, data: dict[str, object]) -> "GatewayConfig":
-        mobile_connection = str(
-            data.get("mobile_connection", DEFAULT_MOBILE_CONNECTION_OPTION)
-        )
+        def option(key: str) -> object:
+            return data.get(key, _OPTION_DEFAULTS[key])
+
+        mobile_connection = str(option("mobile_connection"))
         return cls(
-            enabled=bool(data.get("enabled", False)),
+            enabled=bool(option("enabled")),
             mobile_connection=MOBILE_CONNECTION_OPTIONS.get(
                 mobile_connection,
                 mobile_connection,
             ),
-            upstream_interface=str(data.get("upstream_interface", "wlan0")),
-            upstream_address=str(data.get("upstream_address", "172.20.10.4/28")),
-            upstream_gateway=str(data.get("upstream_gateway", "172.20.10.1")),
-            hotspot_ssid=str(data.get("hotspot_ssid", "")),
-            hotspot_password=str(data.get("hotspot_password", "")),
-            downstream_mac=str(data.get("downstream_mac", "")).lower(),
-            downstream_address=str(
-                data.get("router_address", "192.168.80.1/24")
-            ),
+            upstream_interface=str(option("upstream_interface")),
+            upstream_address=str(option("upstream_address")),
+            upstream_gateway=str(option("upstream_gateway")),
+            hotspot_ssid=str(option("hotspot_ssid")),
+            hotspot_password=str(option("hotspot_password")),
+            downstream_mac=str(option("downstream_mac")).lower(),
+            downstream_address=str(option("router_address")),
         )
 
     def validate(self) -> None:

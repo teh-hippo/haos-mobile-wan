@@ -13,10 +13,14 @@ from app.config import GatewayConfig
 from app.discovery import publish_discovery
 from app.gateway import GatewayEngine, load_or_create_token
 from app.hotspot import provision_hotspot
+from app.options_migration import prune_legacy_options
 
 
 def main() -> None:
     runner = CommandRunner()
+    migration_error = prune_legacy_options()
+    if migration_error:
+        print(migration_error, flush=True)
     config, config_error = GatewayConfig.load_path()
     hotspot_error = (
         None

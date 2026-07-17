@@ -18,11 +18,13 @@ RUN apk add --no-cache \
     iptables \
     libimobiledevice-progs \
     networkmanager-cli \
+    py3-paho-mqtt \
     python3 \
     usbmuxd \
     && command -v idevice_id >/dev/null \
     && command -v idevicepair >/dev/null \
-    && command -v nmcli >/dev/null
+    && command -v nmcli >/dev/null \
+    && python3 -c "import paho.mqtt.client"
 
 COPY rootfs /
 

@@ -20,6 +20,8 @@ hassio_api: true
 hassio_role: manager
 discovery:
   - ha_cellular_gateway
+services:
+  - mqtt:need
 usb: true
 privileged:
   - NET_ADMIN

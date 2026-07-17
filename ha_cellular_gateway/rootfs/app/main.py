@@ -15,6 +15,7 @@ from app.config import GatewayConfig
 from app.discovery import publish_discovery
 from app.gateway import GatewayEngine, load_or_create_token
 from app.hotspot import provision_hotspot
+from app.mqtt_publisher import MqttPublisher
 from app.options_migration import prune_legacy_options
 
 _LOGGER = logging.getLogger(__name__)
@@ -54,6 +55,8 @@ def main() -> None:
     )
     worker.start()
     publish_discovery(config, token)
+    publisher = MqttPublisher(engine)
+    publisher.start()
 
     def stop(*_: object) -> None:
         threading.Thread(
@@ -67,6 +70,7 @@ def main() -> None:
     try:
         server.serve_forever(poll_interval=0.5)
     finally:
+        publisher.stop()
         engine.stop()
         server.server_close()
         worker.join(timeout=10)

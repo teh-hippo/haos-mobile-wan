@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.0
+
+- Publish the gateway device and entities to Home Assistant through built-in
+  MQTT discovery, so the add-on no longer needs a custom integration and
+  updates no longer require a Home Assistant reload. Requires the MQTT
+  integration and a broker such as the Mosquitto add-on.
+- Retire the bundled custom integration; the sensors, binary sensors, the
+  enable switch and the reconcile button are now provided over MQTT with
+  equivalent metadata. This is a breaking change: the old integration entities
+  are replaced by MQTT-discovered entities with new entity ids, so remove the
+  custom integration after updating.
+- Keep the `/health` and `/v2/status` endpoints for manual diagnostics.
+
 ## 0.5.0
 
 - Recover the management baseline at runtime, so a transient host networking

@@ -196,4 +196,20 @@ jobs:
             --build-arg BUILD_VERSION="$VERSION" \
             --build-arg BUILD_ARCH=aarch64 \
             --file ha_cellular_gateway/Dockerfile \
+            --tag haos-mobile-wan:ci \
+            --load \
             ha_cellular_gateway
+
+      - name: Smoke test app startup under AppArmor
+        run: |
+          sudo apparmor_parser -r ha_cellular_gateway/apparmor.txt
+          # Exercise the real interpreter and app import under the runtime
+          # profile; full main() binds the Supervisor-only address 172.30.32.1.
+          output=$(docker run --rm \
+            --security-opt apparmor=ha_cellular_gateway \
+            --cap-add NET_ADMIN \
+            --cap-add NET_RAW \
+            --entrypoint /usr/bin/python3 \
+            haos-mobile-wan:ci -c "import app.main; print('startup-ok')")
+          echo "$output"
+          echo "$output" | grep -q startup-ok

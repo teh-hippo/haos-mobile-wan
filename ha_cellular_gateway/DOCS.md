@@ -193,13 +193,14 @@ The Wi-Fi name and password must both be set or both be empty.
 | Wi-Fi gateway | `172.20.10.1` | Override the phone address |
 
 Options are read when the app starts. Restart the app after changing them.
-The app option controls startup state. The optional integration switch controls
-the current app process and does not rewrite saved app options.
+The app option controls startup state. The Home Assistant **Enabled** switch,
+published over MQTT, controls the current app process and does not rewrite saved
+app options.
 
 ## Upgrade to 0.4.0
 
-Version 0.4.0 is a breaking app and integration update. The old option names,
-mode API and select entities are not retained.
+Version 0.4.0 is a breaking app update. The old option names, mode API and
+select entities are not retained.
 
 1. Disable the 0.3 gateway and let cleanup finish.
 2. Update the HAOS app.
@@ -207,14 +208,8 @@ mode API and select entities are not retained.
 4. Re-enter **Router WAN address** only if the default
    `192.168.80.1/24` is unsuitable.
 5. Confirm the Wi-Fi hotspot fields, then restart the app.
-6. Update the HACS integration to 0.4.0.
-7. Restart Home Assistant.
-8. Remove any unavailable legacy Mode select or Mode sensors from the entity
-   registry.
-9. Repeat the disabled commissioning checks before enabling the gateway.
-
-The app and integration use API v2. The integration is expected to be
-unavailable while only one side of the breaking update has been installed.
+6. Remove any unavailable legacy mode entities from the entity registry.
+7. Repeat the disabled commissioning checks before enabling the gateway.
 
 ## Commission the gateway
 
@@ -282,19 +277,34 @@ ha network update enp1s0u1 \
   --ipv6-method auto
 ```
 
-## Optional Home Assistant integration
+## Home Assistant entities (MQTT)
 
-The optional HACS integration adds:
+The add-on publishes its own device and entities over MQTT discovery. It needs
+the Home Assistant MQTT integration and an MQTT broker, such as the Mosquitto
+broker add-on. Enable both before starting the add-on.
 
-- an **Enabled** switch;
-- mobile and active connection sensors;
-- iPhone USB pairing status;
-- safety, DHCP, rule and interface sensors;
-- Repairs and redacted diagnostics;
-- an immediate reconciliation button.
+The **HAOS Mobile WAN** device and its entities then appear automatically. The
+add-on refreshes their state while it runs, so no reload is needed after an
+add-on update. The entities include an **Enabled** switch, gateway state,
+mobile and active connection, USB pairing, safety, interface and diagnostic
+sensors, and a **Reapply gateway state** button.
 
-The integration polls the app every 30 seconds. It is separate from the app and
-requires a Home Assistant restart after installation or update.
+Add the entities to a dashboard with any built-in card, for example an
+`entities` card:
+
+```yaml
+type: entities
+title: HAOS Mobile WAN
+entities:
+  - entity: switch.haos_mobile_wan_enabled
+  - entity: sensor.haos_mobile_wan_gateway_state
+  - entity: sensor.haos_mobile_wan_active_connection
+  - entity: binary_sensor.haos_mobile_wan_upstream_healthy
+  - entity: binary_sensor.haos_mobile_wan_safety_checks
+```
+
+The add-on still serves `GET /v2/status` and `/health` on the Supervisor-side
+API for manual diagnostics.
 
 ## Security
 

@@ -68,33 +68,31 @@ address and adapter overrides remain available under unused optional settings.
 4. Uninstall **HAOS Mobile WAN** from **Settings > Apps**.
 5. Restore the USB Ethernet HAOS profile if the adapter will be reused.
 
-Removing the app does not remove the optional HACS integration.
+## Home Assistant entities (MQTT)
 
-## Optional Home Assistant integration
+The add-on publishes a **HAOS Mobile WAN** device and its entities through
+Home Assistant MQTT discovery. It needs the Home Assistant MQTT integration and
+an MQTT broker, such as the Mosquitto broker add-on.
 
-The optional integration adds dashboard entities, Repairs, diagnostics and
-runtime control. The app remains fully usable without it.
+Enable the MQTT integration and broker, then start the add-on. The device and
+its entities appear automatically and refresh while the add-on runs, so no
+reload is needed after an add-on update. Some diagnostic entities are disabled
+by default; enable them from the device page when needed.
 
-Installing the app does not install the integration, and installing the
-integration does not install the app.
+### Dashboard example
 
-### Install the optional Home Assistant integration
+Add the entities to any built-in card, for example an `entities` card:
 
-1. Install [HACS](https://www.hacs.xyz/) if required.
-2. In HACS, add this repository as a custom **Integration** repository.
-3. Install **HAOS Mobile WAN**.
-4. Restart Home Assistant.
-
-When the app and integration run on the same HAOS host, Supervisor discovery
-creates or updates the integration entry automatically.
-
-### Remove the optional Home Assistant integration
-
-1. Remove **HAOS Mobile WAN** from **Settings > Devices & services**.
-2. Uninstall it from HACS.
-3. Restart Home Assistant.
-
-The HAOS app continues operating independently.
+```yaml
+type: entities
+title: HAOS Mobile WAN
+entities:
+  - entity: switch.haos_mobile_wan_enabled
+  - entity: sensor.haos_mobile_wan_gateway_state
+  - entity: sensor.haos_mobile_wan_active_connection
+  - entity: binary_sensor.haos_mobile_wan_upstream_healthy
+  - entity: binary_sensor.haos_mobile_wan_safety_checks
+```
 
 ### Entity reference
 
@@ -105,6 +103,7 @@ The HAOS app continues operating independently.
 | Gateway rules applied | `binary_sensor` | Whether forwarding, NAT and policy routing are active |
 | DHCP server running | `binary_sensor` | Whether the router WAN DHCP service is running |
 | Safety checks | `binary_sensor` | Whether current host and network checks pass |
+| Gateway state | `sensor` | Derived gateway state: disabled, offline, connecting or connected |
 | Mobile connection | `sensor` | Configured Wi-Fi, USB or USB-preferred strategy |
 | Active connection | `sensor` | Wi-Fi hotspot or USB (iPhone) currently carrying gateway traffic |
 | USB pairing | `sensor` | Current iPhone trust, interface and DHCP state |
@@ -123,26 +122,6 @@ The switch represents user intent. If safety checks fail, it stays enabled
 while the gateway removes forwarding and retries automatically.
 It controls the current app process; the saved app option controls startup
 state after an app restart.
-
-### Function reference
-
-| Function | Details |
-|---|---|
-| Supervisor discovery | Finds the same-host app and refreshes its URL or token |
-| Manual setup | Connects to a reachable app API using an explicit URL and token |
-| Status polling | Refreshes app status every 30 seconds |
-| Immediate refresh | Updates entities after a switch or button action |
-| Repairs | Surfaces stable configuration and ownership failures |
-| Diagnostics | Exports redacted integration and runtime data |
-
-### Update behaviour
-
-- App updates come from the Home Assistant app store.
-- Integration updates come from HACS.
-- App setting changes require an app restart.
-- Integration code updates require a Home Assistant restart.
-- Version 0.4.0 requires a coordinated app and integration update; follow the
-  [upgrade steps](ha_cellular_gateway/DOCS.md#upgrade-to-040).
 
 ### Use cases
 
@@ -215,23 +194,14 @@ automation:
   unlocked phone and accepted trust;
 - automatic failover reacts to source readiness, not Internet health;
 - only IPv4 gateway service is supported;
-- the optional integration is custom and distributed through HACS;
+- the entities require the Home Assistant MQTT integration and a broker;
 - physical networking still needs to be commissioned for each HAOS host.
-
-### Repairs
-
-Stable failures create Home Assistant Repairs entries for invalid saved state,
-host safety, router adapter selection, policy conflicts, USB preparation and
-Wi-Fi profile configuration.
-
-Temporary states such as waiting for the phone, trust or DHCP remain in the
-entities and diagnostics instead of creating persistent Repairs.
 
 ### Diagnostics
 
-Diagnostics include the latest app status and structured issue information.
-They redact credentials, API details, public addresses, host addressing,
-interface names and iPhone identifiers.
+The add-on serves `GET /v2/status` and `/health` on the Supervisor-side API for
+manual diagnostics. Responses redact credentials, public addresses, host
+addressing, interface names and iPhone identifiers.
 
 ### Troubleshooting
 
@@ -243,7 +213,7 @@ interface names and iPhone identifiers.
 | The router receives no WAN lease | Confirm the router-facing USB adapter has HAOS IPv4 and IPv6 disabled |
 | More than one USB Ethernet adapter is attached | Set the optional router adapter MAC address |
 | Home Assistant becomes unreachable | Disable the app and verify the management Ethernet remains the only main default route |
-| HACS cannot find the integration | Add the repository as category **Integration**, not as an app repository |
+| The entities do not appear | Confirm the MQTT integration and broker are running, then restart the add-on |
 
 ## Safety and security
 
@@ -260,8 +230,8 @@ Supervisor-side host address.
 
 ## Development
 
-The existing validation workflow runs app tests, integration coverage, Python
-compilation, import checks, mypy, metadata validation, AppArmor parsing and an
+The validation workflow runs the add-on unit tests, Python compilation, an
+`import app.main` smoke check, metadata validation, AppArmor parsing and an
 `aarch64` image build. See
 [`.github/workflows/validate.yml`](.github/workflows/validate.yml) for the
 authoritative commands.
@@ -273,9 +243,7 @@ PYTHONPATH=ha_cellular_gateway \
   python -m unittest discover -s ha_cellular_gateway/tests -v
 
 PYTHONPATH=ha_cellular_gateway \
-  python -m py_compile \
-    ha_cellular_gateway/rootfs/app/*.py \
-    custom_components/ha_cellular_gateway/*.py
+  python -m py_compile ha_cellular_gateway/rootfs/app/*.py
 
 PYTHONPATH=ha_cellular_gateway/rootfs python -c "import app.main"
 ```

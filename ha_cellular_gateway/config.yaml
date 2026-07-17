@@ -18,8 +18,6 @@ host_network: true
 host_dbus: true
 hassio_api: true
 hassio_role: manager
-discovery:
-  - ha_cellular_gateway
 services:
   - mqtt:need
 usb: true

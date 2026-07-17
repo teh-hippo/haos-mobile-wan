@@ -12,7 +12,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.api_server import GatewayServer
 from app.command import CommandRunner
 from app.config import GatewayConfig
-from app.discovery import publish_discovery
 from app.gateway import GatewayEngine, load_or_create_token
 from app.hotspot import provision_hotspot
 from app.mqtt_publisher import MqttPublisher
@@ -54,7 +53,6 @@ def main() -> None:
         daemon=True,
     )
     worker.start()
-    publish_discovery(config, token)
     publisher = MqttPublisher(engine)
     publisher.start()
 

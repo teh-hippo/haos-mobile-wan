@@ -12,6 +12,7 @@ from rootfs.app.const import (
 )
 from rootfs.app.errors import GatewayError, SafetyError
 from rootfs.app.gateway import GatewayEngine
+from rootfs.app.hotspot import WIFI_ADAPTER_DISABLED, WIFI_NOT_ASSOCIATED
 from rootfs.app.upstream_iphone import IPhoneUsbUpstream
 from rootfs.app.upstream_models import ResolvedUpstream
 
@@ -1003,6 +1004,72 @@ class GatewayEngineTests(unittest.TestCase):
                 for command in runner.commands
             )
         )
+
+    def _wifi_hotspot_engine(self) -> GatewayEngine:
+        values = sysctl_values()
+        engine = GatewayEngine(
+            make_config(
+                enabled=True,
+                mobile_connection=WIFI_HOTSPOT,
+                hotspot_ssid="Phone",
+                hotspot_password="supersecret",
+            ),
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
+        engine.safety.errors = lambda *args, **kwargs: [
+            "Upstream interface/address is not active"
+        ]
+        return engine
+
+    def test_wifi_reconcile_reports_disabled_adapter(self) -> None:
+        engine = self._wifi_hotspot_engine()
+        engine._interface_status = lambda: {"enabled": False, "connected": False}
+
+        engine.reconcile()
+
+        self.assertIn(WIFI_ADAPTER_DISABLED, engine.last_safety_errors)
+        self.assertNotIn(
+            "Upstream interface/address is not active",
+            engine.last_safety_errors,
+        )
+        issue_ids = {issue["id"] for issue in engine.status()["issues"]}
+        self.assertIn("hotspot_adapter_disabled", issue_ids)
+        self.assertNotIn("upstream_interface_inactive", issue_ids)
+
+    def test_wifi_reconcile_reports_association_failure(self) -> None:
+        engine = self._wifi_hotspot_engine()
+        engine._interface_status = lambda: {"enabled": True, "connected": False}
+
+        engine.reconcile()
+
+        self.assertIn(WIFI_NOT_ASSOCIATED, engine.last_safety_errors)
+        self.assertNotIn(
+            "Upstream interface/address is not active",
+            engine.last_safety_errors,
+        )
+        issue_ids = {issue["id"] for issue in engine.status()["issues"]}
+        self.assertIn("hotspot_not_associated", issue_ids)
+        self.assertNotIn("upstream_interface_inactive", issue_ids)
+
+    def test_wifi_reconcile_falls_back_when_supervisor_unavailable(self) -> None:
+        engine = self._wifi_hotspot_engine()
+        engine._interface_status = lambda: None
+
+        engine.reconcile()
+
+        self.assertIn(
+            "Upstream interface/address is not active",
+            engine.last_safety_errors,
+        )
+        self.assertNotIn(WIFI_ADAPTER_DISABLED, engine.last_safety_errors)
+        self.assertNotIn(WIFI_NOT_ASSOCIATED, engine.last_safety_errors)
+        issue_ids = {issue["id"] for issue in engine.status()["issues"]}
+        self.assertIn("upstream_interface_inactive", issue_ids)
+        self.assertNotIn("hotspot_adapter_disabled", issue_ids)
+        self.assertNotIn("hotspot_not_associated", issue_ids)
 
 
 if __name__ == "__main__":

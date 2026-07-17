@@ -11,6 +11,14 @@ from .config import GatewayConfig
 
 UrlOpen = Callable[..., object]
 
+WIFI_ADAPTER_DISABLED = "Hotspot Wi-Fi adapter is disabled"
+WIFI_NOT_ASSOCIATED = "Hotspot Wi-Fi is enabled but not associated"
+
+_WIFI_INACTIVE_ERRORS = {
+    "Upstream interface/address is not active",
+    "Upstream interface is unavailable",
+}
+
 
 def provision_hotspot(
     config: GatewayConfig,
@@ -27,7 +35,7 @@ def provision_hotspot(
     if not supervisor_token:
         return "Hotspot Wi-Fi provisioning failed: Supervisor token is unavailable"
     request = urllib.request.Request(
-        _interface_url(config.upstream_interface),
+        _interface_url(config.upstream_interface, "update"),
         data=json.dumps(_payload(config), separators=(",", ":")).encode(),
         method="POST",
         headers={
@@ -47,9 +55,64 @@ def provision_hotspot(
     return None
 
 
-def _interface_url(interface: str) -> str:
+def interface_status(
+    config: GatewayConfig,
+    *,
+    token: str | None = None,
+    urlopen: UrlOpen | None = None,
+) -> dict[str, object] | None:
+    supervisor_token = token if token is not None else os.environ.get("SUPERVISOR_TOKEN")
+    if not supervisor_token:
+        return None
+    request = urllib.request.Request(
+        _interface_url(config.upstream_interface, "info"),
+        method="GET",
+        headers={"Authorization": f"Bearer {supervisor_token}"},
+    )
+    opener = urlopen or urllib.request.urlopen
+    try:
+        payload = json.loads(opener(request, timeout=10).read().decode("utf-8"))
+    except urllib.error.HTTPError as err:
+        err.close()
+        return None
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    data = payload.get("data")
+    return data if isinstance(data, dict) else None
+
+
+def classify_wifi_upstream(
+    config: GatewayConfig,
+    errors: list[str],
+    reader: Callable[[], dict[str, object] | None],
+) -> list[str]:
+    if not (config.uses_wifi and config.hotspot_credentials_configured):
+        return errors
+    if not any(error in _WIFI_INACTIVE_ERRORS for error in errors):
+        return errors
+    diagnostic = _wifi_diagnostic(reader())
+    if diagnostic is None:
+        return errors
+    classified = [error for error in errors if error not in _WIFI_INACTIVE_ERRORS]
+    classified.append(diagnostic)
+    return classified
+
+
+def _wifi_diagnostic(data: dict[str, object] | None) -> str | None:
+    if data is None:
+        return None
+    if data.get("enabled") is False:
+        return WIFI_ADAPTER_DISABLED
+    if data.get("connected") is False:
+        return WIFI_NOT_ASSOCIATED
+    return None
+
+
+def _interface_url(interface: str, action: str) -> str:
     quoted = urllib.parse.quote(interface, safe="")
-    return f"http://supervisor/network/interface/{quoted}/update"
+    return f"http://supervisor/network/interface/{quoted}/{action}"
 
 
 def _payload(config: GatewayConfig) -> dict[str, object]:

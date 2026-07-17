@@ -17,6 +17,8 @@ _VALID_TRANSLATION_KEYS = {
     "policy_configuration",
     "upstream_configuration",
     "hotspot_configuration",
+    "hotspot_adapter_disabled",
+    "hotspot_not_associated",
 }
 
 

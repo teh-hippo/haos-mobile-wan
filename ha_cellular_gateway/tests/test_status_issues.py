@@ -306,6 +306,43 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertTrue(issue["repairable"])
         self.assertFalse(issue["transient"])
 
+    def test_hotspot_adapter_disabled_is_repairable(self) -> None:
+        result = build_status_issues(
+            ["Hotspot Wi-Fi adapter is disabled"], None, {}
+        )
+        self.assertEqual(len(result), 1)
+        issue = result[0]
+        self.assertEqual(issue["id"], "hotspot_adapter_disabled")
+        self.assertEqual(issue["translation_key"], "hotspot_adapter_disabled")
+        self.assertTrue(issue["repairable"])
+        self.assertFalse(issue["transient"])
+
+    def test_hotspot_not_associated_is_repairable(self) -> None:
+        result = build_status_issues(
+            ["Hotspot Wi-Fi is enabled but not associated"], None, {}
+        )
+        self.assertEqual(len(result), 1)
+        issue = result[0]
+        self.assertEqual(issue["id"], "hotspot_not_associated")
+        self.assertEqual(issue["translation_key"], "hotspot_not_associated")
+        self.assertTrue(issue["repairable"])
+        self.assertFalse(issue["transient"])
+
+    def test_hotspot_wifi_faults_are_distinct_issues(self) -> None:
+        result = build_status_issues(
+            [
+                "Hotspot Wi-Fi adapter is disabled",
+                "Hotspot Wi-Fi is enabled but not associated",
+            ],
+            None,
+            {},
+        )
+        ids = {issue["id"] for issue in result}
+        self.assertEqual(
+            ids,
+            {"hotspot_adapter_disabled", "hotspot_not_associated"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -83,6 +83,14 @@
     "hotspot_configuration": {
       "title": "Gateway hotspot configuration failed",
       "description": "HAOS Mobile WAN could not apply {entry_title}'s Wi-Fi hotspot profile through Supervisor. Review the app options and Supervisor network access, then restart the app."
+    },
+    "hotspot_adapter_disabled": {
+      "title": "Gateway hotspot Wi-Fi adapter is disabled",
+      "description": "HAOS Mobile WAN cannot bring up {entry_title}'s Wi-Fi hotspot upstream because the HAOS Wi-Fi adapter is disabled. Enable the Wi-Fi interface in the Home Assistant network settings, then restart the app."
+    },
+    "hotspot_not_associated": {
+      "title": "Gateway hotspot Wi-Fi is not associated",
+      "description": "HAOS Mobile WAN enabled {entry_title}'s Wi-Fi adapter but it has not associated with the phone hotspot. Check the hotspot name, password and signal. Raw 802.11 association status codes are only recorded in the host Wi-Fi supplicant logs, which the app cannot read."
     }
   },
   "entity": {

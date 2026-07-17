@@ -32,6 +32,8 @@ _EXACT_ERRORS: dict[str, tuple[str, str | None, str]] = {
     "Cannot inspect the host firewall backend": ("firewall_backend_unavailable", "host_configuration", "The gateway could not inspect the host firewall backend"),
     "Upstream interface is unavailable": ("upstream_interface_unavailable", None, "The upstream interface is unavailable"),
     "Upstream interface/address is not active": ("upstream_interface_inactive", None, "The upstream interface is not active"),
+    "Hotspot Wi-Fi adapter is disabled": ("hotspot_adapter_disabled", "hotspot_adapter_disabled", "The hotspot Wi-Fi adapter is disabled"),
+    "Hotspot Wi-Fi is enabled but not associated": ("hotspot_not_associated", "hotspot_not_associated", "The hotspot Wi-Fi adapter is enabled but has not associated with the phone"),
     "Management interface is not the main default route": ("management_default_route_missing", "host_configuration", "The management interface is not the main default route"),
     "Mobile upstream has a main-table default route": ("upstream_default_route_present", "host_configuration", "The mobile upstream still has a main default route"),
     "Cannot inspect main-table default routes": ("default_routes_unavailable", "host_configuration", "The gateway could not inspect the main default routes"),

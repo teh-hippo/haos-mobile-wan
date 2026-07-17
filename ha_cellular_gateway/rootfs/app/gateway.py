@@ -23,6 +23,7 @@ from .gateway_runtime import (
     status,
     stop,
 )
+from .hotspot import interface_status
 from .downstream import DownstreamInterface
 from .management import ManagementBaseline, resolve_management
 from .mobile_connection import MobileConnectionResolver
@@ -178,6 +179,9 @@ class GatewayEngine:
                 self.public_ip = None
                 self.last_health_probe = None
             self.last_upstream = upstream
+
+    def _interface_status(self) -> dict[str, object] | None:
+        return interface_status(self.config)
 
     def _health_probe(self, upstream: ResolvedUpstream | None) -> tuple[bool, str | None]:
         if upstream is None:

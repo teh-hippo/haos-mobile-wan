@@ -116,6 +116,12 @@ ha network update wlan0 \
 
 Do not add an IPv4 gateway to this HAOS profile.
 
+If the Wi-Fi upstream does not come up, the app reads the Supervisor interface
+state to tell two faults apart: the Wi-Fi adapter is disabled, or the adapter is
+enabled but has not associated with the phone. Raw 802.11 association status
+codes are recorded only in the host Wi-Fi supplicant logs, which the add-on
+cannot read, so check those host logs for the underlying rejection code.
+
 ### USB (iPhone)
 
 The app:

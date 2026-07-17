@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from .errors import GatewayError, SafetyError
 from .gateway_cleanup import cleanup
 from .gateway_transition import cleanup_changed_ownership
+from .hotspot import classify_wifi_upstream
 
 if TYPE_CHECKING:
     from .gateway import GatewayEngine
@@ -57,6 +58,9 @@ def apply(
             upstream_errors=upstream_errors,
             state_error=engine.state_load_error,
             downstream_address_owned=address_owned,
+        )
+        errors = classify_wifi_upstream(
+            engine.config, errors, engine._interface_status
         )
         with engine.lock:
             engine.last_downstream = downstream
@@ -164,6 +168,9 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                 )
             except OPERATION_ERRORS as err:
                 errors = [f"Safety inspection failed: {err}"]
+            errors = classify_wifi_upstream(
+                engine.config, errors, engine._interface_status
+            )
             with engine.lock:
                 engine.last_downstream = downstream
                 engine.last_safety_errors = errors

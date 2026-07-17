@@ -38,7 +38,7 @@ class GatewayEngineTests(unittest.TestCase):
             read_text=lambda path: values[path],
             state_path=self.state_path,
         )
-        self.engine.safety.find_downstream = lambda: "enx001122334455"
+        self.engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
 
     def tearDown(self) -> None:
         self.directory.cleanup()
@@ -51,7 +51,7 @@ class GatewayEngineTests(unittest.TestCase):
             read_text=lambda path: values[path],
             state_path=self.state_path,
         )
-        restarted.safety.find_downstream = lambda: "enx001122334455"
+        restarted.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
         restarted.safety.errors = lambda *args, **kwargs: []
         return restarted
 
@@ -63,7 +63,7 @@ class GatewayEngineTests(unittest.TestCase):
             read_text=lambda path: values[path],
             state_path=self.state_path,
         )
-        engine.safety.find_downstream = lambda: "enx001122334455"
+        engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
         engine.safety.errors = lambda *args, **kwargs: []
         engine.firewall.installed = (
             lambda downstream=None, upstream_interface=None: engine.applied
@@ -141,12 +141,12 @@ class GatewayEngineTests(unittest.TestCase):
             runner=active.runner,
             read_text=lambda path: values[path],
             state_path=self.state_path,
-            config_error="Cannot detect management network: no default route",
+            config_error="Invalid app configuration: unusable options",
         )
-        degraded.safety.find_downstream = lambda: (_ for _ in ()).throw(
+        degraded.safety.find_downstream = lambda *_a, **_k: (_ for _ in ()).throw(
             AssertionError("downstream discovery must stay blocked")
         )
-        degraded.upstream.resolve = lambda: (_ for _ in ()).throw(
+        degraded.upstream.resolve = lambda *_a, **_k: (_ for _ in ()).throw(
             AssertionError("upstream preparation must stay blocked")
         )
 
@@ -163,7 +163,7 @@ class GatewayEngineTests(unittest.TestCase):
                 "enx001122334455"
             )
         )
-        self.assertIn("Cannot detect management network", degraded.last_error)
+        self.assertIn("Invalid app configuration", degraded.last_error)
 
     def test_config_error_without_owned_state_does_not_mutate_host(self) -> None:
         values = sysctl_values()
@@ -172,12 +172,12 @@ class GatewayEngineTests(unittest.TestCase):
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,
-            config_error="Cannot detect management network: no default route",
+            config_error="Invalid app configuration: unusable options",
         )
-        engine.safety.find_downstream = lambda: (_ for _ in ()).throw(
+        engine.safety.find_downstream = lambda *_a, **_k: (_ for _ in ()).throw(
             AssertionError("downstream discovery must stay blocked")
         )
-        engine.upstream.resolve = lambda: (_ for _ in ()).throw(
+        engine.upstream.resolve = lambda *_a, **_k: (_ for _ in ()).throw(
             AssertionError("upstream preparation must stay blocked")
         )
 
@@ -186,7 +186,7 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertFalse(engine.enabled)
         self.assertFalse(engine.applied)
         self.assertIsNone(engine.last_downstream)
-        self.assertIn("Cannot detect management network", engine.last_error)
+        self.assertIn("Invalid app configuration", engine.last_error)
 
     def test_config_error_rejects_direct_enable_without_mutation(self) -> None:
         values = sysctl_values()
@@ -195,18 +195,18 @@ class GatewayEngineTests(unittest.TestCase):
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,
-            config_error="Cannot detect management network: no default route",
+            config_error="Invalid app configuration: unusable options",
         )
-        engine.safety.find_downstream = lambda: (_ for _ in ()).throw(
+        engine.safety.find_downstream = lambda *_a, **_k: (_ for _ in ()).throw(
             AssertionError("downstream discovery must stay blocked")
         )
-        engine.upstream.resolve = lambda: (_ for _ in ()).throw(
+        engine.upstream.resolve = lambda *_a, **_k: (_ for _ in ()).throw(
             AssertionError("upstream preparation must stay blocked")
         )
 
         with self.assertRaisesRegex(
             GatewayError,
-            "Cannot detect management network",
+            "Invalid app configuration",
         ):
             engine.apply()
 
@@ -220,9 +220,9 @@ class GatewayEngineTests(unittest.TestCase):
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,
-            config_error="Cannot detect management network: no default route",
+            config_error="Invalid app configuration: unusable options",
         )
-        engine.safety.find_downstream = lambda: (_ for _ in ()).throw(
+        engine.safety.find_downstream = lambda *_a, **_k: (_ for _ in ()).throw(
             AssertionError("downstream discovery must stay blocked")
         )
 
@@ -335,6 +335,52 @@ class GatewayEngineTests(unittest.TestCase):
         engine.reconcile()
         self.assertTrue(engine.applied)
 
+    def test_management_recovers_across_reconciles_without_restart(self) -> None:
+        values = sysctl_values()
+        runner = FakeRunner()
+        runner.main_default_routes = []
+        engine = GatewayEngine(
+            make_config(enabled=True),
+            runner=runner,
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
+        engine.safety.errors = lambda *args, management=None, **kwargs: (
+            [] if management is not None else ["Management interface is unavailable"]
+        )
+        engine.firewall.installed = (
+            lambda downstream=None, upstream_interface=None: engine.applied
+        )
+        engine.dhcp.start = lambda downstream: setattr(
+            engine.dhcp,
+            "process",
+            FakeProcess(),
+        )
+
+        engine.reconcile()
+        self.assertIsNone(engine.management)
+        self.assertFalse(engine.applied)
+        self.assertTrue(engine.enabled)
+        self.assertIn(
+            "Management interface is unavailable",
+            engine.last_safety_errors,
+        )
+        self.assertNotIn(
+            "enx001122334455",
+            runner.interface_addresses,
+        )
+
+        runner.main_default_routes = [
+            {"dst": "default", "gateway": "192.168.1.1", "dev": "end0"}
+        ]
+
+        engine.reconcile()
+        self.assertIsNotNone(engine.management)
+        assert engine.management is not None
+        self.assertEqual(engine.management.interface, "end0")
+        self.assertTrue(engine.applied)
+
     def test_activation_failure_is_cleaned_and_retried(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply()
@@ -442,7 +488,7 @@ class GatewayEngineTests(unittest.TestCase):
             read_text=lambda path: values[path],
             state_path=self.state_path,
         )
-        engine.safety.find_downstream = lambda: "enx001122334455"
+        engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
         engine.safety.errors = lambda *args, **kwargs: []
         resolved = ResolvedUpstream(
             connection=IPHONE_USB,
@@ -450,7 +496,7 @@ class GatewayEngineTests(unittest.TestCase):
             address="172.20.10.6/28",
             gateway="172.20.10.1",
         )
-        engine.upstream.resolve = lambda: (resolved, [])
+        engine.upstream.resolve = lambda *_a, **_k: (resolved, [])
         install_realistic_firewall_state(
             engine.runner,
             engine.firewall,
@@ -518,7 +564,7 @@ class GatewayEngineTests(unittest.TestCase):
             read_text=lambda path: values[path],
             state_path=self.state_path,
         )
-        engine.safety.find_downstream = lambda: "enx001122334455"
+        engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
 
         def safety_errors(*args, upstream=None, **kwargs):
             if (
@@ -546,7 +592,7 @@ class GatewayEngineTests(unittest.TestCase):
             (None, ["waiting for device"]),
             (usb, []),
         ]
-        engine.upstream.resolve = lambda: results.pop(0)
+        engine.upstream.resolve = lambda *_a, **_k: results.pop(0)
 
         engine.reconcile()
         self.assertEqual(engine.active_connection, IPHONE_USB)
@@ -566,7 +612,7 @@ class GatewayEngineTests(unittest.TestCase):
         engine = self._prepare_active_engine()
         engine.apply()
         engine.firewall.netfilter.chain_exists = lambda family, chain: True
-        engine.safety.find_downstream = lambda: (_ for _ in ()).throw(
+        engine.safety.find_downstream = lambda *_a, **_k: (_ for _ in ()).throw(
             OSError("adapter probe failed")
         )
         before = len(engine.runner.commands)
@@ -621,7 +667,7 @@ class GatewayEngineTests(unittest.TestCase):
             read_text=lambda path: values[path],
             state_path=self.state_path,
         )
-        engine.safety.find_downstream = lambda: "enx001122334455"
+        engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
 
         engine.cleanup()
 
@@ -636,7 +682,7 @@ class GatewayEngineTests(unittest.TestCase):
             read_text=lambda path: values[path],
             state_path=self.state_path,
         )
-        engine.safety.find_downstream = lambda: "enx001122334455"
+        engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
         engine.safety.errors = lambda *args, **kwargs: []
         install_realistic_firewall_state(
             engine.runner,
@@ -745,7 +791,7 @@ class GatewayEngineTests(unittest.TestCase):
             read_text=lambda path: values[path],
             state_path=self.state_path,
         )
-        engine.safety.find_downstream = lambda: "enx001122334455"
+        engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
         engine.safety.errors = lambda *args, **kwargs: []
         install_realistic_firewall_state(
             engine.runner,
@@ -833,11 +879,11 @@ class GatewayEngineTests(unittest.TestCase):
             read_text=lambda path: values[path],
             state_path=self.state_path,
         )
-        engine.safety.find_downstream = lambda: "enx001122334455"
+        engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
         started = threading.Event()
         release = threading.Event()
 
-        def slow_resolve():
+        def slow_resolve(*_a, **_k):
             started.set()
             release.wait(timeout=2)
             return None, ["waiting for usb"]

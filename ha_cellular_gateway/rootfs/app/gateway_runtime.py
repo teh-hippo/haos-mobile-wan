@@ -70,7 +70,9 @@ def status(engine: GatewayEngine) -> dict[str, object]:
             "enabled": engine.enabled,
             "configured_enabled": engine.config.enabled,
             "active": engine.applied,
-            "management_interface": engine.config.management_interface,
+            "management_interface": (
+                engine.management.interface if engine.management else None
+            ),
             "mobile_connection": engine.config.mobile_connection,
             "active_connection": engine.active_connection,
             "fallback_active": engine.applied and engine.fallback_selected,
@@ -166,10 +168,11 @@ def stop(engine: GatewayEngine) -> None:
 
 def _status_config(engine: GatewayEngine) -> dict[str, object]:
     config = engine.config
+    management = engine.management
     return {
         "enabled": config.enabled,
-        "management_interface": config.management_interface,
-        "management_address": config.management_address,
+        "management_interface": management.interface if management else None,
+        "management_address": management.address if management else None,
         "mobile_connection": config.mobile_connection,
         "upstream_interface": config.upstream_interface,
         "upstream_address": config.upstream_address,

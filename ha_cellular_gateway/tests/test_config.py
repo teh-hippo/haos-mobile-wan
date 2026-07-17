@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from rootfs.app.config import FALLBACK_MANAGEMENT, GatewayConfig
+from rootfs.app.config import GatewayConfig
 from rootfs.app.const import (
     IPHONE_USB,
     IPHONE_USB_WIFI_FALLBACK,
@@ -11,11 +11,11 @@ from rootfs.app.const import (
 )
 from rootfs.app.errors import GatewayError
 
-from helpers import FakeRunner, make_config
+from helpers import make_config
 
 
 class GatewayConfigTests(unittest.TestCase):
-    def test_reads_reduced_options_and_detects_management(self) -> None:
+    def test_reads_reduced_options(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "options.json"
             path.write_text(
@@ -28,17 +28,7 @@ class GatewayConfigTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            runner = FakeRunner()
-            config = GatewayConfig.from_path(
-                path,
-                run=lambda *args, **kwargs: runner.run(
-                    list(args),
-                    check=kwargs.get("check", True),
-                    timeout=kwargs.get("timeout", 20),
-                ),
-            )
-            self.assertEqual(config.management_interface, "end0")
-            self.assertEqual(config.management_address, "192.168.1.2/24")
+            config = GatewayConfig.from_path(path)
             self.assertEqual(config.transit_subnet, "192.168.80.0/24")
             self.assertEqual(config.dhcp_start, "192.168.80.2")
             self.assertEqual(config.dhcp_end, "192.168.80.2")
@@ -50,29 +40,17 @@ class GatewayConfigTests(unittest.TestCase):
             path = Path(directory) / "options.json"
             path.write_text("[]", encoding="utf-8")
             with self.assertRaisesRegex(GatewayError, "must be an object"):
-                GatewayConfig.from_path(path, run=lambda *args: FakeRunner().run(list(args)))
+                GatewayConfig.from_path(path)
 
-    def test_load_path_degrades_when_management_is_unavailable(self) -> None:
+    def test_load_path_reports_no_error_for_valid_options(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "options.json"
             path.write_text('{"enabled":true}', encoding="utf-8")
-            runner = FakeRunner()
-            runner.main_default_routes = []
 
-            config, error = GatewayConfig.load_path(
-                path,
-                run=lambda *args, **kwargs: runner.run(
-                    list(args),
-                    check=kwargs.get("check", True),
-                    timeout=kwargs.get("timeout", 20),
-                ),
-            )
+            config, error = GatewayConfig.load_path(path)
 
-            self.assertEqual(
-                config.management_interface,
-                FALLBACK_MANAGEMENT.interface,
-            )
-            self.assertIn("Cannot detect management network", error)
+            self.assertIsNone(error)
+            self.assertTrue(config.enabled)
 
     def test_load_path_uses_safe_defaults_for_invalid_options(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -82,14 +60,7 @@ class GatewayConfigTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            config, error = GatewayConfig.load_path(
-                path,
-                run=lambda *args, **kwargs: FakeRunner().run(
-                    list(args),
-                    check=kwargs.get("check", True),
-                    timeout=kwargs.get("timeout", 20),
-                ),
-            )
+            config, error = GatewayConfig.load_path(path)
 
             self.assertFalse(config.enabled)
             self.assertEqual(config.downstream_address, "192.168.80.1/24")
@@ -110,12 +81,11 @@ class GatewayConfigTests(unittest.TestCase):
             with self.subTest(option=option):
                 config = GatewayConfig._from_data(
                     {"mobile_connection": option},
-                    FALLBACK_MANAGEMENT,
                 )
                 self.assertEqual(config.mobile_connection, connection)
 
     def test_rejects_overlapping_networks(self) -> None:
-        config = make_config(downstream_address="192.168.1.10/25")
+        config = make_config(downstream_address="172.20.10.9/28")
         with self.assertRaisesRegex(GatewayError, "must not overlap"):
             config.validate()
 

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from .config import GatewayConfig
 from .const import IPHONE_USB, IPHONE_USB_WIFI_FALLBACK, WIFI_HOTSPOT
 from .upstream_iphone import IPhoneUsbUpstream
 from .upstream_models import ResolvedUpstream, configured_upstream
+
+if TYPE_CHECKING:
+    from .management import ManagementBaseline
 
 
 @dataclass(frozen=True)
@@ -29,14 +33,17 @@ class MobileConnectionResolver:
         self.iphone = iphone
         self.wifi_error = wifi_error
 
-    def resolve(self) -> ConnectionResolution:
+    def resolve(
+        self,
+        management: ManagementBaseline | None = None,
+    ) -> ConnectionResolution:
         if self.config.mobile_connection == WIFI_HOTSPOT:
             return ConnectionResolution(
                 configured_upstream(self.config),
                 errors=(self.wifi_error,) if self.wifi_error else (),
             )
 
-        upstream, usb_errors = self.iphone.resolve()
+        upstream, usb_errors = self.iphone.resolve(management)
         if not self.iphone.fallback_allowed():
             upstream = None
             usb_errors = [

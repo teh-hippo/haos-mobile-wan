@@ -4,6 +4,7 @@ import subprocess
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .command import RunCommand
 from .config import RUN_DIR, GatewayConfig
@@ -15,6 +16,9 @@ from .networkmanager import (
 )
 from .upstream_iphone_runtime import IPhoneUsbRuntime
 from .upstream_models import ResolvedUpstream
+
+if TYPE_CHECKING:
+    from .management import ManagementBaseline
 
 UpstreamResolution = tuple[ResolvedUpstream | None, list[str]]
 
@@ -73,7 +77,10 @@ class IPhoneUsbUpstream:
             "upstream_lease_owner": self.lease_owner,
         }
 
-    def resolve(self) -> UpstreamResolution:
+    def resolve(
+        self,
+        management: ManagementBaseline | None = None,
+    ) -> UpstreamResolution:
         self.pairing_state = "not_ready"
         self.pairing_message = None
         self.device_udid = None
@@ -147,7 +154,7 @@ class IPhoneUsbUpstream:
             return self._fail("waiting_for_interface", message)
 
         self.interface = interfaces[0]
-        return self._consume(self.nm.inspect(self.interface))
+        return self._consume(self.nm.inspect(self.interface, management))
 
     def fallback_allowed(self) -> bool:
         return self.fallback_safe

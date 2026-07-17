@@ -37,8 +37,8 @@ class GatewayIssue(TypedDict):
 
 class GatewayRuntimeConfig(TypedDict):
     enabled: bool
-    management_interface: str
-    management_address: str
+    management_interface: str | None
+    management_address: str | None
     mobile_connection: GatewayMobileConnection
     upstream_interface: str
     upstream_address: str
@@ -52,7 +52,7 @@ class GatewayStatus(TypedDict):
     enabled: bool
     configured_enabled: bool
     active: bool
-    management_interface: str
+    management_interface: str | None
     mobile_connection: GatewayMobileConnection
     active_connection: GatewayActiveConnection | None
     fallback_active: bool

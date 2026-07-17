@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 
 from helpers import FakeProcess, FakeRunner, Result, make_config
 from rootfs.app.const import IPHONE_USB
+from rootfs.app.management import ManagementBaseline
 from rootfs.app.networkmanager import (
     ACTIVATION_COOLDOWN_SECONDS,
     EXPECTED_SETTINGS,
@@ -392,7 +393,10 @@ class NetworkManagerInspectTests(unittest.TestCase):
             {"dst": "192.168.1.0/24", "dev": "eth0"},
         ]
 
-        result = self._manager(cli).inspect("eth0")
+        result = self._manager(cli).inspect(
+            "eth0",
+            ManagementBaseline("end0", "192.168.1.2/24"),
+        )
 
         self.assertEqual(result.state, "invalid")
         self.assertFalse(result.safe)
@@ -417,7 +421,11 @@ class FakeNetworkManager:
         if self.profile_error is not None:
             raise self.profile_error
 
-    def inspect(self, interface: str) -> NetworkManagerResult:
+    def inspect(
+        self,
+        interface: str,
+        management: object = None,
+    ) -> NetworkManagerResult:
         self.inspect_calls.append(interface)
         if self.results:
             return self.results.pop(0)

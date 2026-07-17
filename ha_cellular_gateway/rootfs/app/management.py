@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass
 
 from .command import RunCommand, run_json
@@ -86,3 +87,10 @@ def detect_management(run: RunCommand) -> ManagementBaseline:
             "Management interface must have one unambiguous IPv4 address"
         )
     return ManagementBaseline(interface, next(iter(addresses)))
+
+
+def resolve_management(run: RunCommand) -> ManagementBaseline | None:
+    try:
+        return detect_management(run)
+    except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
+        return None

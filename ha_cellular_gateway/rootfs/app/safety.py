@@ -4,6 +4,7 @@ import ipaddress
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .command import RunCommand, run_json
 from .config import GatewayConfig
@@ -12,6 +13,9 @@ from .firewall import Firewall
 from .downstream import DownstreamInterface
 from .policy import PolicyRouting
 from .upstream_models import ResolvedUpstream
+
+if TYPE_CHECKING:
+    from .management import ManagementBaseline
 
 
 class SafetyInspector:
@@ -34,8 +38,8 @@ class SafetyInspector:
     def interface_addresses(self, interface: str, family: int = 4) -> set[str]:
         return self.downstream.addresses(interface, family=family)
 
-    def find_downstream(self) -> str | None:
-        return self.downstream.find()
+    def find_downstream(self, management_interface: str | None = None) -> str | None:
+        return self.downstream.find(management_interface)
 
     def _main_default_interfaces(self) -> set[str]:
         routes = run_json(
@@ -70,12 +74,14 @@ class SafetyInspector:
         self,
         downstream: str | None = None,
         *,
+        management: ManagementBaseline | None = None,
         upstream: ResolvedUpstream | None = None,
         upstream_errors: list[str] | None = None,
         state_error: str | None = None,
         downstream_address_owned: bool = False,
     ) -> list[str]:
-        downstream = downstream or self.find_downstream()
+        management_interface = management.interface if management else None
+        downstream = downstream or self.find_downstream(management_interface)
         errors: list[str] = []
         current_upstream = upstream
         upstream_interface = (
@@ -90,14 +96,18 @@ class SafetyInspector:
         if upstream_errors:
             errors.extend(upstream_errors)
 
-        try:
-            management_addresses = self.interface_addresses(
-                self.config.management_interface
-            )
-            if self.config.management_address not in management_addresses:
-                errors.append("Management interface/address baseline does not match")
-        except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
+        if management is None:
             errors.append("Management interface is unavailable")
+        else:
+            try:
+                if management.address not in self.interface_addresses(
+                    management.interface
+                ):
+                    errors.append(
+                        "Management interface/address baseline does not match"
+                    )
+            except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
+                errors.append("Management interface is unavailable")
 
         try:
             if self._ip_forward() != 1:
@@ -105,11 +115,9 @@ class SafetyInspector:
         except (OSError, ValueError):
             errors.append("Cannot verify host IPv4 forwarding")
 
-        interfaces = [
-            "all",
-            "default",
-            self.config.management_interface,
-        ]
+        interfaces = ["all", "default"]
+        if management_interface:
+            interfaces.append(management_interface)
         if upstream_interface:
             interfaces.append(upstream_interface)
         for interface in interfaces:
@@ -139,31 +147,28 @@ class SafetyInspector:
 
         try:
             default_interfaces = self._main_default_interfaces()
-            if self.config.management_interface not in default_interfaces:
-                errors.append("Management interface is not the main default route")
-            unexpected_defaults = default_interfaces - {
-                self.config.management_interface
-            }
-            if unexpected_defaults:
-                errors.append(
-                    "Unexpected main-table default route: "
-                    + ",".join(sorted(unexpected_defaults))
-                )
-            if (
-                upstream_interface
-                and upstream_interface in default_interfaces
-            ):
+            if management_interface:
+                if management_interface not in default_interfaces:
+                    errors.append("Management interface is not the main default route")
+                unexpected_defaults = default_interfaces - {management_interface}
+                if unexpected_defaults:
+                    errors.append(
+                        "Unexpected main-table default route: "
+                        + ",".join(sorted(unexpected_defaults))
+                    )
+            if upstream_interface and upstream_interface in default_interfaces:
                 errors.append("Mobile upstream has a main-table default route")
         except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
             errors.append("Cannot inspect main-table default routes")
 
         if downstream is None:
-            errors.append(self.downstream.selection_error())
+            errors.append(self.downstream.selection_error(management_interface))
         else:
             errors.extend(
                 self._downstream_errors(
                     downstream,
                     upstream_interface,
+                    management_interface=management_interface,
                     address_owned=downstream_address_owned,
                 )
             )
@@ -199,13 +204,11 @@ class SafetyInspector:
         downstream: str,
         upstream_interface: str | None,
         *,
+        management_interface: str | None,
         address_owned: bool,
     ) -> list[str]:
         errors: list[str] = []
-        if downstream in {
-            self.config.management_interface,
-            upstream_interface,
-        }:
+        if downstream in {management_interface, upstream_interface}:
             errors.append(
                 "Downstream NIC must differ from management and upstream interfaces"
             )

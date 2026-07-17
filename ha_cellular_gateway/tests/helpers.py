@@ -308,8 +308,6 @@ class FakeRunner:
 def make_config(**overrides: object) -> GatewayConfig:
     values = {
         "enabled": False,
-        "management_interface": "end0",
-        "management_address": "192.168.1.2/24",
         "mobile_connection": WIFI_HOTSPOT,
         "upstream_interface": "wlan0",
         "upstream_address": "172.20.10.4/28",

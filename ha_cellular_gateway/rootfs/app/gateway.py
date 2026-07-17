@@ -24,6 +24,7 @@ from .gateway_runtime import (
     stop,
 )
 from .downstream import DownstreamInterface
+from .management import ManagementBaseline, resolve_management
 from .mobile_connection import MobileConnectionResolver
 from .policy import PolicyRouting
 from .safety import SafetyInspector
@@ -46,6 +47,7 @@ class GatewayEngine:
         hotspot_error: str | None = None,
     ) -> None:
         self.config = config
+        self.management: ManagementBaseline | None = None
         self.runner = runner or CommandRunner()
         self.read_text = read_text or (lambda path: path.read_text(encoding="utf-8"))
         self.lock = threading.RLock()
@@ -146,13 +148,22 @@ class GatewayEngine:
             if self.last_upstream
             else self.config.upstream_interface
         )
+        management_interface = (
+            self.management.interface if self.management else None
+        )
         return bool(downstream) and downstream not in {
-            self.config.management_interface,
+            management_interface,
             upstream_interface,
         }
 
+    def _resolve_management(self) -> ManagementBaseline | None:
+        baseline = resolve_management(self._run)
+        with self.lock:
+            self.management = baseline
+        return baseline
+
     def _resolve_upstream(self) -> tuple[ResolvedUpstream | None, list[str]]:
-        resolution = self.connection.resolve()
+        resolution = self.connection.resolve(self.management)
         with self.lock:
             self.connection_warnings = list(resolution.warnings)
             self.fallback_selected = resolution.fallback_active

@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import ipaddress
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from .config import GatewayConfig
 from .const import IPHONE_USB, WIFI_HOTSPOT
+
+if TYPE_CHECKING:
+    from .management import ManagementBaseline
 
 
 @dataclass(frozen=True)
@@ -37,12 +41,17 @@ def validate_dynamic_lease(
     interface: str,
     address: str,
     gateway: str,
+    management: ManagementBaseline | None = None,
 ) -> tuple[ResolvedUpstream | None, str | None]:
     try:
         upstream = ipaddress.ip_interface(address)
         peer = ipaddress.ip_address(gateway)
-        management = ipaddress.ip_interface(config.management_address)
         downstream = ipaddress.ip_interface(config.downstream_address)
+        management_network = (
+            ipaddress.ip_interface(management.address).network
+            if management is not None
+            else None
+        )
     except ValueError as err:
         return None, f"iPhone USB lease is invalid: {err}"
     if upstream.version != 4 or peer.version != 4:
@@ -60,7 +69,9 @@ def validate_dynamic_lease(
         upstream.network.broadcast_address,
     }:
         return None, "iPhone USB lease gateway is not a usable peer address"
-    if upstream.network.overlaps(management.network):
+    if management_network is not None and upstream.network.overlaps(
+        management_network
+    ):
         return None, "iPhone USB lease overlaps the management network"
     if upstream.network.overlaps(downstream.network):
         return None, "iPhone USB lease overlaps the downstream network"

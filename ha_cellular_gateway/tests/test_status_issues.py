@@ -43,7 +43,7 @@ class StatusIssuesTests(unittest.TestCase):
 
     def test_configuration_load_error_is_repairable(self) -> None:
         result = build_status_issues(
-            ["Cannot detect management network: no default route"],
+            ["Cannot read app configuration: options.json is missing"],
             None,
             {},
         )

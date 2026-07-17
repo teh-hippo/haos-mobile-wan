@@ -39,7 +39,10 @@ def apply(
             if not recovering:
                 engine.enabled = True
 
-        downstream = engine.safety.find_downstream()
+        management = engine._resolve_management()
+        downstream = engine.safety.find_downstream(
+            management.interface if management else None
+        )
         if upstream_errors is None:
             upstream, upstream_errors = engine._resolve_upstream()
         cleanup_changed_ownership(engine, downstream, upstream)
@@ -49,6 +52,7 @@ def apply(
         )
         errors = engine.safety.errors(
             downstream,
+            management=management,
             upstream=upstream,
             upstream_errors=upstream_errors,
             state_error=engine.state_load_error,
@@ -115,6 +119,8 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                 enabled = engine.enabled
                 state_load_error = engine.state_load_error
 
+            management = engine._resolve_management()
+
             if startup_cleanup_pending:
                 cleanup(
                     engine,
@@ -135,7 +141,9 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                     engine.last_error = engine.config_error
                 engine._record_upstream(None)
                 return
-            downstream = engine.safety.find_downstream()
+            downstream = engine.safety.find_downstream(
+                management.interface if management else None
+            )
             upstream, upstream_errors = engine._resolve_upstream()
             cleanup_changed_ownership(
                 engine,
@@ -145,6 +153,7 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
             try:
                 errors = engine.safety.errors(
                     downstream,
+                    management=management,
                     upstream=upstream,
                     upstream_errors=upstream_errors,
                     state_error=state_load_error,

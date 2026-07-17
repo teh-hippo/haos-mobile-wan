@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from .command import RunCommand
 from .config import GatewayConfig
@@ -23,6 +24,9 @@ from .networkmanager_profile import (
     normalise_setting,
 )
 from .upstream_models import ResolvedUpstream, validate_dynamic_lease
+
+if TYPE_CHECKING:
+    from .management import ManagementBaseline
 
 ACTIVATION_COOLDOWN_SECONDS = 30
 LEASE_OWNER = "networkmanager"
@@ -93,7 +97,9 @@ class NetworkManagerIphone:
             if normalise_setting(settings.get(field, "")) != expected
         ]
 
-    def inspect(self, interface: str) -> NetworkManagerResult:
+    def inspect(
+        self, interface: str, management: ManagementBaseline | None = None
+    ) -> NetworkManagerResult:
         state = self._ensure_active(interface)
         if state == "foreign":
             return NetworkManagerResult(None, "foreign", FOREIGN_MESSAGE, False)
@@ -121,6 +127,7 @@ class NetworkManagerIphone:
             interface,
             addresses[0],
             gateway,
+            management,
         )
         if error:
             return NetworkManagerResult(None, "invalid", error, False)

@@ -3,12 +3,10 @@ from __future__ import annotations
 import ipaddress
 import json
 import os
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
 
-from .command import CommandRunner, RunCommand
 from .const import (
     DEFAULT_MOBILE_CONNECTION_OPTION,
     IPHONE_USB_WIFI_FALLBACK,
@@ -17,7 +15,6 @@ from .const import (
 )
 from .errors import GatewayError
 from .config_validation import validate_config
-from .management import ManagementBaseline, detect_management
 
 
 OPTIONS_PATH = Path(os.environ.get("CELLGW_OPTIONS", "/data/options.json"))
@@ -26,17 +23,10 @@ RUN_DIR = Path(os.environ.get("CELLGW_RUN_DIR", "/run/ha-cellgw"))
 LEASE_PATH = Path(os.environ.get("CELLGW_LEASES", "/data/dnsmasq.leases"))
 STATE_PATH = Path(os.environ.get("CELLGW_STATE", "/data/state.json"))
 
-FALLBACK_MANAGEMENT = ManagementBaseline(
-    interface="management-unavailable",
-    address="192.0.2.1/24",
-)
-
 
 @dataclass(frozen=True)
 class GatewayConfig:
     enabled: bool
-    management_interface: str
-    management_address: str
     mobile_connection: str
     upstream_interface: str
     upstream_address: str
@@ -53,15 +43,8 @@ class GatewayConfig:
     api_port: ClassVar[int] = 8099
 
     @classmethod
-    def from_path(
-        cls,
-        path: Path = OPTIONS_PATH,
-        *,
-        run: RunCommand | None = None,
-    ) -> "GatewayConfig":
-        data = cls._read_options(path)
-        management = detect_management(cls._resolve_run(run))
-        config = cls._from_data(data, management)
+    def from_path(cls, path: Path = OPTIONS_PATH) -> "GatewayConfig":
+        config = cls._from_data(cls._read_options(path))
         config.validate()
         return config
 
@@ -69,8 +52,6 @@ class GatewayConfig:
     def load_path(
         cls,
         path: Path = OPTIONS_PATH,
-        *,
-        run: RunCommand | None = None,
     ) -> tuple["GatewayConfig", str | None]:
         errors: list[str] = []
         try:
@@ -78,22 +59,12 @@ class GatewayConfig:
         except (GatewayError, OSError, ValueError) as err:
             data = {}
             errors.append(f"Cannot read app configuration: {err}")
-        try:
-            management = detect_management(cls._resolve_run(run))
-        except (
-            GatewayError,
-            OSError,
-            subprocess.SubprocessError,
-            ValueError,
-        ) as err:
-            management = FALLBACK_MANAGEMENT
-            errors.append(f"Cannot detect management network: {err}")
-        config = cls._from_data(data, management)
+        config = cls._from_data(data)
         try:
             config.validate()
         except GatewayError as err:
             errors.append(f"Invalid app configuration: {err}")
-            config = cls._from_data({}, management)
+            config = cls._from_data({})
         return config, "; ".join(errors) or None
 
     @staticmethod
@@ -103,30 +74,13 @@ class GatewayConfig:
             raise GatewayError("App configuration must be an object")
         return data
 
-    @staticmethod
-    def _resolve_run(run: RunCommand | None) -> RunCommand:
-        if run is not None:
-            return run
-        runner = CommandRunner()
-        return lambda *args, **kwargs: runner.run(
-            list(args),
-            check=kwargs.get("check", True),
-            timeout=kwargs.get("timeout", 20),
-        )
-
     @classmethod
-    def _from_data(
-        cls,
-        data: dict[str, object],
-        management: ManagementBaseline,
-    ) -> "GatewayConfig":
+    def _from_data(cls, data: dict[str, object]) -> "GatewayConfig":
         mobile_connection = str(
             data.get("mobile_connection", DEFAULT_MOBILE_CONNECTION_OPTION)
         )
         return cls(
             enabled=bool(data.get("enabled", False)),
-            management_interface=management.interface,
-            management_address=management.address,
             mobile_connection=MOBILE_CONNECTION_OPTIONS.get(
                 mobile_connection,
                 mobile_connection,

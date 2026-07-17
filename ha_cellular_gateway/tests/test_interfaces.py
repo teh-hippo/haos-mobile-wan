@@ -96,8 +96,8 @@ class HostInterfaceTests(unittest.TestCase):
 
         downstream = self._downstream()
 
-        self.assertEqual(downstream.candidates(), ["enp1s0u1"])
-        self.assertEqual(downstream.find(), "enp1s0u1")
+        self.assertEqual(downstream.candidates("end0"), ["enp1s0u1"])
+        self.assertEqual(downstream.find("end0"), "enp1s0u1")
         self.assertEqual(
             downstream.mac("enp1s0u1"),
             "6c:1f:f7:cc:49:ab",
@@ -109,16 +109,16 @@ class HostInterfaceTests(unittest.TestCase):
 
         downstream = self._downstream(mac="00:11:22:33:44:55")
 
-        self.assertEqual(downstream.find(), "enp1s0u2")
+        self.assertEqual(downstream.find("end0"), "enp1s0u2")
 
     def test_multiple_adapters_require_override(self) -> None:
         self._add_interface("enp1s0u1", "6c:1f:f7:cc:49:ab")
         self._add_interface("enp1s0u2", "00:11:22:33:44:55")
         downstream = self._downstream()
 
-        self.assertIsNone(downstream.find())
+        self.assertIsNone(downstream.find("end0"))
         self.assertEqual(
-            downstream.selection_error(),
+            downstream.selection_error("end0"),
             "Multiple USB Ethernet adapters detected; set downstream_mac",
         )
 

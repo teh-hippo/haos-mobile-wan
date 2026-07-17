@@ -42,7 +42,9 @@ def cleanup(
         downstream = None
         if not owned_only:
             try:
-                downstream = engine.safety.find_downstream()
+                downstream = engine.safety.find_downstream(
+                    engine.management.interface if engine.management else None
+                )
             except OPERATION_ERRORS:
                 pass
         protected_downstream = downstream

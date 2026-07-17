@@ -146,7 +146,6 @@ def _issue_from_error(error: str) -> dict[str, Any] | None:
     if error.startswith(
         (
             "Cannot read app configuration:",
-            "Cannot detect management network:",
             "Invalid app configuration:",
         )
     ):

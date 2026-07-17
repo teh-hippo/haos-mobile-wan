@@ -20,7 +20,10 @@ class StubIPhone:
         self.fallback_safe = True
         self.pairing_message: str | None = None
 
-    def resolve(self) -> tuple[ResolvedUpstream | None, list[str]]:
+    def resolve(
+        self,
+        management: object = None,
+    ) -> tuple[ResolvedUpstream | None, list[str]]:
         result = self.results[min(self.calls, len(self.results) - 1)]
         self.calls += 1
         return result

@@ -17,13 +17,7 @@ from app.hotspot import provision_hotspot
 
 def main() -> None:
     runner = CommandRunner()
-    config, config_error = GatewayConfig.load_path(
-        run=lambda *args, **kwargs: runner.run(
-            list(args),
-            check=kwargs.get("check", True),
-            timeout=kwargs.get("timeout", 20),
-        )
-    )
+    config, config_error = GatewayConfig.load_path()
     hotspot_error = (
         None
         if config_error

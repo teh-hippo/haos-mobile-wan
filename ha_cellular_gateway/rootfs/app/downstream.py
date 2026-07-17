@@ -38,36 +38,32 @@ class DownstreamInterface:
         except (KeyError, OSError):
             return None
 
-    def candidates(self) -> list[str]:
+    def candidates(self, management_interface: str | None) -> list[str]:
         try:
             interfaces = tuple(self.sys_net_root.iterdir())
         except OSError:
             return []
+        excluded = {management_interface, self.config.upstream_interface}
         return sorted(
             interface.name
             for interface in interfaces
             if self._is_usb_ethernet(interface)
-            and interface.name
-            not in {
-                self.config.management_interface,
-                self.config.upstream_interface,
-            }
+            and interface.name not in excluded
         )
 
-    def find(self) -> str | None:
+    def find(self, management_interface: str | None) -> str | None:
+        candidates = self.candidates(management_interface)
         if self.config.downstream_mac:
-            for interface in self.candidates():
+            for interface in candidates:
                 if self.mac(interface) == self.config.downstream_mac:
                     return interface
             return None
-        candidates = self.candidates()
         return candidates[0] if len(candidates) == 1 else None
 
-    def selection_error(self) -> str:
+    def selection_error(self, management_interface: str | None) -> str:
         if self.config.downstream_mac:
             return "Configured downstream NIC is not present"
-        candidates = self.candidates()
-        if not candidates:
+        if not self.candidates(management_interface):
             return "USB Ethernet downstream is not present"
         return "Multiple USB Ethernet adapters detected; set downstream_mac"
 

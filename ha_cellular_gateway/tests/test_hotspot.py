@@ -42,6 +42,22 @@ class HotspotProvisioningTests(unittest.TestCase):
         self.assertIsNone(error)
         self.assertEqual(calls, [])
 
+    def test_iphone_usb_deactivation_disables_stale_wifi_profile(self) -> None:
+        calls: list[urllib.request.Request] = []
+        error = configure_hotspot(
+            make_config(mobile_connection=IPHONE_USB),
+            enabled=False,
+            token="token",
+            urlopen=lambda request, **kwargs: calls.append(request),
+        )
+
+        self.assertIsNone(error)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(
+            json.loads(calls[0].data.decode("utf-8")),
+            {"enabled": False},
+        )
+
     def test_combined_connection_provisions_wifi(self) -> None:
         calls: list[urllib.request.Request] = []
         error = configure_hotspot(
@@ -122,6 +138,15 @@ class HotspotProvisioningTests(unittest.TestCase):
         self.assertEqual(len(captured), 1)
         payload = json.loads(captured[0].data.decode("utf-8"))
         self.assertFalse(payload["enabled"])
+
+    def test_deactivation_missing_token_uses_correct_action(self) -> None:
+        error = configure_hotspot(
+            make_config(),
+            enabled=False,
+            token="",
+        )
+
+        self.assertIn("deactivation failed", error or "")
 
     def test_supervisor_error_is_safe_and_focused(self) -> None:
         body = json.dumps(

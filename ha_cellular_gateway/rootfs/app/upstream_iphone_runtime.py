@@ -195,3 +195,12 @@ class IPhoneUsbRuntime:
             if driver == "ipheth":
                 matches.append(interface.name)
         return sorted(matches)
+
+    def interface_carrier(self, interface: str) -> bool | None:
+        try:
+            value = (self.sys_net_root / interface / "carrier").read_text(
+                encoding="utf-8"
+            )
+        except OSError:
+            return None
+        return value.strip() == "1"

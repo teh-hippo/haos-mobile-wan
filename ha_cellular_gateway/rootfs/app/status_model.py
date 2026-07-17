@@ -8,6 +8,7 @@ WAITING_ISSUE_IDS = {
     "upstream_interface_unavailable",
     "upstream_not_ready",
     "upstream_waiting_for_device",
+    "upstream_waiting_for_hotspot",
 }
 
 

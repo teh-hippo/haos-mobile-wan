@@ -34,7 +34,7 @@ class UpstreamLifecycle:
 
     def activate(self, management_interface: str | None) -> None:
         self._iphone_dormant = False
-        self._set_hotspot(True, management_interface)
+        self._set_hotspot(self.config.uses_wifi, management_interface)
 
     def deactivate(self, management_interface: str | None) -> None:
         iphone_error: str | None = None
@@ -63,14 +63,14 @@ class UpstreamLifecycle:
         enabled: bool,
         management_interface: str | None,
     ) -> None:
-        if not (
-            self.config.uses_wifi
-            and self.config.hotspot_credentials_configured
-        ):
+        if enabled and not self.config.hotspot_credentials_configured:
             self.error = None
             self._hotspot_enabled = enabled
             return
         if management_interface is None:
+            if not enabled:
+                self.error = None
+                return
             self.error = (
                 "Management interface is unavailable; hotspot state was not changed"
             )

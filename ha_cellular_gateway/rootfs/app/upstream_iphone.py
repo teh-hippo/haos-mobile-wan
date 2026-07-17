@@ -10,10 +10,12 @@ from .command import RunCommand
 from .config import RUN_DIR, GatewayConfig
 from .errors import GatewayError
 from .networkmanager import (
+    ACTIVATION_COOLDOWN_SECONDS,
     LEASE_OWNER,
     NetworkManagerIphone,
     NetworkManagerResult,
 )
+from .networkmanager_profile import DHCP_TIMEOUT_SECONDS
 from .upstream_iphone_runtime import IPhoneUsbRuntime
 from .upstream_models import ResolvedUpstream
 
@@ -24,7 +26,10 @@ UpstreamResolution = tuple[ResolvedUpstream | None, list[str]]
 
 
 class IPhoneUsbUpstream:
-    LEASE_GRACE_SECONDS = 20
+    LEASE_GRACE_SECONDS = max(
+        ACTIVATION_COOLDOWN_SECONDS,
+        DHCP_TIMEOUT_SECONDS,
+    ) + 5
 
     def __init__(
         self,
@@ -156,6 +161,12 @@ class IPhoneUsbUpstream:
             return self._fail("waiting_for_interface", message)
 
         self.interface = interfaces[0]
+        if self.runtime.interface_carrier(self.interface) is False:
+            self._forget_lease()
+            return self._fail(
+                "waiting_for_hotspot",
+                "Enable Personal Hotspot and Allow Others to Join on the iPhone",
+            )
         return self._consume(self.nm.inspect(self.interface, management))
 
     def fallback_allowed(self) -> bool:

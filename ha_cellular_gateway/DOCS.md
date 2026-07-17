@@ -299,6 +299,9 @@ Normal source absence reads "Waiting for iPhone", "Waiting for hotspot" or
 during normal waiting and changes to "Attention needed" only for actionable
 issues, which are included in its attributes.
 
+For USB mode, **iPhone USB pairing** reads "Waiting for Personal Hotspot" when
+the phone is trusted and attached but has not presented USB tethering carrier.
+
 Add the entities to a dashboard with any built-in card, for example an
 `entities` card:
 

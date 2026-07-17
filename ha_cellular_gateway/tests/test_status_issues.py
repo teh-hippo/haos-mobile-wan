@@ -68,6 +68,16 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertFalse(issue["repairable"])
         self.assertTrue(issue["transient"])
 
+    def test_waiting_for_personal_hotspot_is_transient(self) -> None:
+        result = build_status_issues(
+            [],
+            None,
+            {"upstream_pairing_state": "waiting_for_hotspot"},
+        )
+
+        self.assertEqual(result[0]["id"], "upstream_waiting_for_hotspot")
+        self.assertTrue(result[0]["transient"])
+
     def test_missing_hotspot_is_a_transient_waiting_issue(self) -> None:
         result = build_status_issues(
             ["Hotspot Wi-Fi is enabled but not associated"],

@@ -28,13 +28,17 @@ def configure_hotspot(
     urlopen: UrlOpen | None = None,
 ) -> str | None:
     if (
-        not config.uses_wifi
-        or not config.hotspot_credentials_configured
+        enabled
+        and (
+            not config.uses_wifi
+            or not config.hotspot_credentials_configured
+        )
     ):
         return None
     supervisor_token = token if token is not None else os.environ.get("SUPERVISOR_TOKEN")
+    action = "provisioning" if enabled else "deactivation"
     if not supervisor_token:
-        return "Hotspot Wi-Fi provisioning failed: Supervisor token is unavailable"
+        return f"Hotspot Wi-Fi {action} failed: Supervisor token is unavailable"
     request = urllib.request.Request(
         _interface_url(config.upstream_interface, "update"),
         data=json.dumps(
@@ -48,7 +52,6 @@ def configure_hotspot(
         },
     )
     opener = urlopen or urllib.request.urlopen
-    action = "provisioning" if enabled else "deactivation"
     try:
         opener(request, timeout=10)
     except urllib.error.HTTPError as err:
@@ -121,6 +124,8 @@ def _interface_url(interface: str, action: str) -> str:
 
 
 def _payload(config: GatewayConfig, *, enabled: bool) -> dict[str, object]:
+    if not enabled:
+        return {"enabled": False}
     return {
         "enabled": enabled,
         "ipv4": {

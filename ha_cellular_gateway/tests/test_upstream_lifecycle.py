@@ -18,10 +18,15 @@ class FakeIPhone:
 
 
 class UpstreamLifecycleTests(unittest.TestCase):
-    def _lifecycle(self, configure, clock=lambda: 100.0):
+    def _lifecycle(
+        self,
+        configure,
+        clock=lambda: 100.0,
+        config=None,
+    ):
         iphone = FakeIPhone()
         lifecycle = UpstreamLifecycle(
-            make_config(
+            config or make_config(
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",
             ),
@@ -30,6 +35,17 @@ class UpstreamLifecycleTests(unittest.TestCase):
             clock=clock,
         )
         return lifecycle, iphone
+
+    def test_usb_only_activation_disables_wifi_upstream(self) -> None:
+        calls: list[bool] = []
+        lifecycle, _ = self._lifecycle(
+            lambda config, *, enabled: calls.append(enabled) or None,
+            config=make_config(mobile_connection="iphone_usb"),
+        )
+
+        lifecycle.activate("eth0")
+
+        self.assertEqual(calls, [False])
 
     def test_deactivate_stops_usb_and_disables_hotspot_once(self) -> None:
         calls: list[bool] = []
@@ -67,13 +83,24 @@ class UpstreamLifecycleTests(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertIn("management interface", lifecycle.error or "")
 
-    def test_unknown_management_interface_is_never_reconfigured(self) -> None:
+    def test_deactivation_with_unknown_management_is_a_soft_noop(self) -> None:
         calls: list[bool] = []
         lifecycle, _ = self._lifecycle(
             lambda config, *, enabled: calls.append(enabled) or None
         )
 
         lifecycle.deactivate(None)
+
+        self.assertEqual(calls, [])
+        self.assertIsNone(lifecycle.error)
+
+    def test_activation_with_unknown_management_is_blocked(self) -> None:
+        calls: list[bool] = []
+        lifecycle, _ = self._lifecycle(
+            lambda config, *, enabled: calls.append(enabled) or None
+        )
+
+        lifecycle.activate(None)
 
         self.assertEqual(calls, [])
         self.assertIn("Management interface is unavailable", lifecycle.error or "")

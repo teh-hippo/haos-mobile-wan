@@ -5,6 +5,7 @@ import re
 PROFILE_NAME = "haos-mobile-wan-iphone"
 PROFILE_UUID = "795b0402-f4b8-571b-91b0-2ab6816add52"
 ROUTE_TABLE = 202
+DHCP_TIMEOUT_SECONDS = 45
 
 MODIFY_SETTINGS: tuple[tuple[str, str], ...] = (
     ("connection.interface-name", ""),
@@ -17,7 +18,7 @@ MODIFY_SETTINGS: tuple[tuple[str, str], ...] = (
     ("ipv4.ignore-auto-dns", "yes"),
     ("ipv4.never-default", "no"),
     ("ipv4.may-fail", "no"),
-    ("ipv4.dhcp-timeout", "45"),
+    ("ipv4.dhcp-timeout", str(DHCP_TIMEOUT_SECONDS)),
     ("ipv6.method", "disabled"),
     ("802-3-ethernet.cloned-mac-address", "preserve"),
 )

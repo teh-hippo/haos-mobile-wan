@@ -5,6 +5,7 @@ from typing import Any
 
 _UPSTREAM_TRANSIENT_STATES = {
     "waiting_for_device": ("upstream_waiting_for_device", "Waiting for an iPhone USB upstream"),
+    "waiting_for_hotspot": ("upstream_waiting_for_hotspot", "Waiting for iPhone Personal Hotspot"),
     "waiting_for_profile": ("upstream_waiting_for_profile", "Waiting for the NetworkManager iPhone USB profile"),
     "waiting_for_interface": ("upstream_waiting_for_interface", "Waiting for the iPhone USB network interface"),
     "not_ready": ("upstream_not_ready", "Upstream connectivity is not ready"),

@@ -6,6 +6,7 @@ UPSTREAM_PAIRING_STATE_LABELS: dict[str, str] = {
     "not_applicable": "Not active",
     "not_ready": "Not ready",
     "waiting_for_device": "Waiting for device",
+    "waiting_for_hotspot": "Waiting for Personal Hotspot",
     "multiple_devices": "Multiple devices",
     "waiting_for_interface": "Waiting for interface",
     "waiting_for_trust": "Waiting for trust",

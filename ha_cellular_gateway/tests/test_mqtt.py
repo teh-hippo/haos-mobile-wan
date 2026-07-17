@@ -222,8 +222,9 @@ class DiscoveryPayloadTests(unittest.TestCase):
             ["Wi-Fi hotspot", "USB (iPhone)", "USB (iPhone), Wi-Fi fallback"],
         )
         pairing = self.cmps["upstream_pairing_state"]
-        self.assertEqual(len(pairing["options"]), 14)
+        self.assertEqual(len(pairing["options"]), 15)
         self.assertIn("Waiting for device", pairing["options"])
+        self.assertIn("Waiting for Personal Hotspot", pairing["options"])
         self.assertNotIn("waiting_for_device", pairing["options"])
 
     def test_binary_sensor_device_classes(self) -> None:
@@ -326,6 +327,10 @@ class FriendlyLabelTests(unittest.TestCase):
         self.assertEqual(
             _render(pairing, {"upstream_pairing_state": "daemon_failed"}),
             "Pairing helper failed",
+        )
+        self.assertEqual(
+            _render(pairing, {"upstream_pairing_state": "waiting_for_hotspot"}),
+            "Waiting for Personal Hotspot",
         )
         self.assertEqual(
             _render(pairing, {"upstream_pairing_state": None}), "Not active"

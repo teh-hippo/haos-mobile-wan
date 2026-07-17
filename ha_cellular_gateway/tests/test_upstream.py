@@ -19,6 +19,7 @@ from rootfs.app.networkmanager import (
     NetworkManagerIphone,
     NetworkManagerResult,
 )
+from rootfs.app.networkmanager_profile import DHCP_TIMEOUT_SECONDS
 from rootfs.app.upstream_iphone import IPhoneUsbUpstream
 from rootfs.app.upstream_models import ResolvedUpstream
 
@@ -486,12 +487,22 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
             monotonic=self._tick,
         )
 
-    def _add_ipheth_interface(self, name: str = "eth0") -> None:
+    def _add_ipheth_interface(
+        self,
+        name: str = "eth0",
+        *,
+        carrier: bool | None = True,
+    ) -> None:
         target = self.driver_root / "ipheth"
         target.mkdir(exist_ok=True)
         interface = self.sys_net_root / name / "device"
         interface.mkdir(parents=True)
         (interface / "driver").symlink_to(target)
+        if carrier is not None:
+            (self.sys_net_root / name / "carrier").write_text(
+                "1\n" if carrier else "0\n",
+                encoding="utf-8",
+            )
 
     def _add_apple_usb_device(self, name: str = "1-1") -> None:
         device = self.sys_usb_root / name
@@ -596,6 +607,35 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         self.assertIsNone(upstream)
         self.assertIn("tap Trust", errors[0])
         self.assertEqual(manager.pairing_state, "waiting_for_trust")
+
+    def test_missing_carrier_waits_for_personal_hotspot_without_nm_retry(self) -> None:
+        runner = self._paired_runner()
+        self._add_apple_usb_device()
+        self._add_ipheth_interface("eth0", carrier=False)
+        network_manager = FakeNetworkManager()
+        manager = self._manager(runner, network_manager)
+
+        upstream, errors = manager.resolve()
+
+        self.assertIsNone(upstream)
+        self.assertEqual(manager.pairing_state, "waiting_for_hotspot")
+        self.assertIn("Allow Others to Join", errors[0])
+        self.assertEqual(network_manager.inspect_calls, [])
+
+    def test_unreadable_carrier_proceeds_to_networkmanager(self) -> None:
+        runner = self._paired_runner()
+        self._add_apple_usb_device()
+        self._add_ipheth_interface("eth0", carrier=None)
+        network_manager = FakeNetworkManager(
+            [NetworkManagerResult(usb_upstream(), "active", None, True)]
+        )
+        manager = self._manager(runner, network_manager)
+
+        upstream, errors = manager.resolve()
+
+        self.assertEqual(errors, [])
+        self.assertEqual(upstream, usb_upstream())
+        self.assertEqual(network_manager.inspect_calls, ["eth0"])
 
     def test_pairing_prompt_is_rate_limited(self) -> None:
         runner = FakeRunner()
@@ -715,6 +755,16 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
 
         self.assertIsNone(expired)
         self.assertEqual(manager.pairing_state, "waiting_for_profile")
+
+    def test_lease_grace_covers_networkmanager_activation_cooldown(self) -> None:
+        self.assertGreater(
+            IPhoneUsbUpstream.LEASE_GRACE_SECONDS,
+            ACTIVATION_COOLDOWN_SECONDS,
+        )
+        self.assertGreater(
+            IPhoneUsbUpstream.LEASE_GRACE_SECONDS,
+            DHCP_TIMEOUT_SECONDS,
+        )
 
     def test_cleanup_does_not_mutate_networkmanager_state(self) -> None:
         runner = self._paired_runner()

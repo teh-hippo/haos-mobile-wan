@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.2
+
+- Detect the iPhone USB carrier before asking NetworkManager to activate the
+  profile. A connected phone without tethering now reads "Waiting for Personal
+  Hotspot" instead of repeatedly retrying a profile with no carrier.
+- Keep the last valid lease long enough for NetworkManager's activation retry
+  window, avoiding a guaranteed grace gap during a transient renewal.
+- Disable the dedicated Wi-Fi upstream whenever USB-only mode is active or the
+  gateway is disabled, including stale Supervisor Wi-Fi profiles left by an
+  earlier configuration.
+
 ## 0.8.1
 
 - Keep USB device absence as healthy waiting when the runtime records more than

@@ -42,17 +42,17 @@ class DistributionMetadataTests(unittest.TestCase):
     def test_readme_documents_actual_entities_and_controls(self) -> None:
         text = README.read_text(encoding="utf-8")
         for table_row in (
-            "| Upstream healthy | `binary_sensor` |",
+            "| Internet available | `binary_sensor` |",
             "| Downstream interface present | `binary_sensor` |",
             "| Gateway rules applied | `binary_sensor` |",
             "| DHCP server running | `binary_sensor` |",
             "| Safety checks | `binary_sensor` |",
             "| Gateway state | `sensor` |",
-            "| Mobile connection | `sensor` |",
-            "| Active connection | `sensor` |",
-            "| USB pairing | `sensor` |",
+            "| Connected via | `sensor` |",
+            "| iPhone USB pairing | `sensor` |",
             "| Public IP | `sensor` |",
             "| Enabled | `switch` |",
+            "| Connection method | `select` |",
             "| Reapply gateway state | `button` |",
         ):
             self.assertIn(table_row, text)

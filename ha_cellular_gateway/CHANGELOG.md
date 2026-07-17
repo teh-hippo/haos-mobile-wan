@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.0
+
+- Show friendlier entity statuses and labels over MQTT: enum sensors now
+  publish human-readable values such as "Waiting for device" and "Connected"
+  instead of raw internal names, the upstream health sensor is named "Internet
+  available" and the active connection sensor is named "Connected via".
+- Stop showing "unknown" for idle diagnostics: the public IP sensor reports
+  "Offline" when there is no upstream, the downstream interface sensor reports
+  "None" when no adapter is bound, and a missing active connection reads
+  "Not connected".
+- Add a "Connection method" control that selects Wi-Fi hotspot, USB (iPhone) or
+  USB-preferred Wi-Fi fallback. Choosing a method writes the add-on option
+  through Supervisor and restarts the add-on to apply it. This replaces the
+  earlier read-only mobile connection sensor.
+
 ## 0.6.1
 
 - Fix the MQTT broker credential lookup: the Supervisor request sent a

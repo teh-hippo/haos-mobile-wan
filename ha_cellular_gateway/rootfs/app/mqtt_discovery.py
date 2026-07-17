@@ -2,6 +2,22 @@ from __future__ import annotations
 
 from typing import Any
 
+from .mqtt_labels import (
+    ACTIVE_CONNECTION_LABELS,
+    GATEWAY_STATE_LABELS,
+    MOBILE_CONNECTION_DEFAULT_LABEL,
+    MOBILE_CONNECTION_INTERNAL_LABELS,
+    MOBILE_CONNECTION_LABEL_OPTIONS,
+    NO_ACTIVE_CONNECTION_LABEL,
+    NO_INTERFACE_LABEL,
+    OFFLINE_LABEL,
+    UNKNOWN_PAIRING_LABEL,
+    UPSTREAM_PAIRING_STATE_LABELS,
+    enum_options,
+    enum_value_template,
+    fallback_value_template,
+)
+
 OBJECT_ID = "haos_mobile_wan"
 DEVICE_NAME = "HAOS Mobile WAN"
 MANUFACTURER = "teh-hippo"
@@ -14,6 +30,7 @@ AVAILABILITY_TOPIC = f"{OBJECT_ID}/availability"
 STATE_TOPIC = f"{OBJECT_ID}/state"
 ENABLED_COMMAND_TOPIC = f"{OBJECT_ID}/enabled/set"
 RECONCILE_COMMAND_TOPIC = f"{OBJECT_ID}/reconcile/press"
+MOBILE_CONNECTION_COMMAND_TOPIC = f"{OBJECT_ID}/mobile_connection/set"
 STATUS_TOPIC = "homeassistant/status"
 
 PAYLOAD_ONLINE = "online"
@@ -41,41 +58,20 @@ STATE_FIELDS = (
 
 _ENUM_SENSORS = (
     (
-        "mobile_connection",
-        "Mobile connection",
-        "mobile_connection",
-        ("wifi_hotspot", "iphone_usb", "iphone_usb_wifi_fallback"),
-        "mdi:connection",
-        False,
-    ),
-    (
         "active_connection",
-        "Active connection",
+        "Connected via",
         "active_connection",
-        ("wifi_hotspot", "iphone_usb"),
+        ACTIVE_CONNECTION_LABELS,
+        NO_ACTIVE_CONNECTION_LABEL,
         "mdi:access-point",
         True,
     ),
     (
         "upstream_pairing_state",
-        "USB pairing",
+        "iPhone USB pairing",
         "upstream_pairing_state",
-        (
-            "not_applicable",
-            "not_ready",
-            "waiting_for_device",
-            "multiple_devices",
-            "waiting_for_interface",
-            "waiting_for_trust",
-            "waiting_for_unlock",
-            "pairing_failed",
-            "daemon_failed",
-            "profile_failed",
-            "waiting_for_profile",
-            "profile_conflict",
-            "invalid_lease",
-            "paired",
-        ),
+        UPSTREAM_PAIRING_STATE_LABELS,
+        UNKNOWN_PAIRING_LABEL,
         "mdi:usb-port",
         False,
     ),
@@ -83,20 +79,22 @@ _ENUM_SENSORS = (
         "gateway_state",
         "Gateway state",
         "state",
-        ("disabled", "offline", "connecting", "connected"),
+        GATEWAY_STATE_LABELS,
+        OFFLINE_LABEL,
         "mdi:lan-connect",
         True,
     ),
 )
 
 _TEXT_SENSORS = (
-    ("downstream_interface", "Downstream interface", "mdi:ethernet", False),
-    ("public_ip", "Public IP", "mdi:ip-network-outline", False),
-    ("last_error", "Last error", "mdi:alert-circle-outline", False),
+    ("downstream_interface", "Downstream interface", "mdi:ethernet", False,
+     NO_INTERFACE_LABEL),
+    ("public_ip", "Public IP", "mdi:ip-network-outline", False, OFFLINE_LABEL),
+    ("last_error", "Last error", "mdi:alert-circle-outline", False, None),
 )
 
 _BINARY_SENSORS = (
-    ("upstream_healthy", "Upstream healthy", "connectivity", None, True),
+    ("upstream_healthy", "Internet available", "connectivity", None, True),
     ("downstream_present", "Downstream interface present", None, "mdi:ethernet", False),
     ("rules_installed", "Gateway rules applied", "running", "mdi:firewall", False),
     ("dnsmasq_running", "DHCP server running", "running", "mdi:server-network", False),
@@ -127,23 +125,25 @@ def _base(key: str, platform: str, name: str, enabled: bool) -> dict[str, Any]:
 
 
 def _enum_sensor(spec: tuple[Any, ...]) -> dict[str, Any]:
-    key, name, field, options, icon, enabled = spec
+    key, name, field, labels, default, icon, enabled = spec
     component = _base(key, "sensor", name, enabled)
     component["entity_category"] = "diagnostic"
     component["device_class"] = "enum"
-    component["options"] = list(options)
+    component["options"] = enum_options(labels, default)
     component["state_topic"] = STATE_TOPIC
-    component["value_template"] = _value(field)
+    component["value_template"] = enum_value_template(field, labels, default)
     component["icon"] = icon
     return component
 
 
 def _text_sensor(spec: tuple[Any, ...]) -> dict[str, Any]:
-    key, name, icon, enabled = spec
+    key, name, icon, enabled, fallback = spec
     component = _base(key, "sensor", name, enabled)
     component["entity_category"] = "diagnostic"
     component["state_topic"] = STATE_TOPIC
-    component["value_template"] = _value(key)
+    component["value_template"] = (
+        fallback_value_template(key, fallback) if fallback else _value(key)
+    )
     component["icon"] = icon
     return component
 
@@ -184,6 +184,21 @@ def _enabled_switch() -> dict[str, Any]:
     return component
 
 
+def _mobile_connection_select() -> dict[str, Any]:
+    component = _base("mobile_connection", "select", "Connection method", True)
+    component["entity_category"] = "config"
+    component["state_topic"] = STATE_TOPIC
+    component["command_topic"] = MOBILE_CONNECTION_COMMAND_TOPIC
+    component["options"] = list(MOBILE_CONNECTION_LABEL_OPTIONS)
+    component["value_template"] = enum_value_template(
+        "mobile_connection",
+        MOBILE_CONNECTION_INTERNAL_LABELS,
+        MOBILE_CONNECTION_DEFAULT_LABEL,
+    )
+    component["icon"] = "mdi:connection"
+    return component
+
+
 def _reconcile_button() -> dict[str, Any]:
     component = _base("reconcile", "button", "Reapply gateway state", False)
     component["entity_category"] = "diagnostic"
@@ -200,6 +215,7 @@ def build_components() -> dict[str, dict[str, Any]]:
         components[spec[0]] = _text_sensor(spec)
     for spec in _BINARY_SENSORS:
         components[spec[0]] = _binary_sensor(spec)
+    components["mobile_connection"] = _mobile_connection_select()
     components["safety_checks"] = _safety_checks()
     components["enabled"] = _enabled_switch()
     components["reconcile"] = _reconcile_button()

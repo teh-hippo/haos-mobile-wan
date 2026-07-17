@@ -5,12 +5,14 @@ import logging
 import threading
 from typing import TYPE_CHECKING, Any
 
+from .addon_options import set_mobile_connection
 from .errors import GatewayError
 from .mqtt_client import ClientFactory, MqttConnection
 from .mqtt_discovery import (
     AVAILABILITY_TOPIC,
     DISCOVERY_TOPIC,
     ENABLED_COMMAND_TOPIC,
+    MOBILE_CONNECTION_COMMAND_TOPIC,
     PAYLOAD_BIRTH,
     PAYLOAD_OFFLINE,
     PAYLOAD_OFF,
@@ -23,6 +25,7 @@ from .mqtt_discovery import (
     build_discovery_payload,
     build_state_payload,
 )
+from .mqtt_labels import MOBILE_CONNECTION_LABEL_OPTIONS
 from .mqtt_service import MqttCredentials, read_mqtt_service
 
 if TYPE_CHECKING:
@@ -120,7 +123,12 @@ class MqttPublisher:
             _LOGGER.warning("MQTT broker refused the connection (code %s)", rc)
             return
         self.announce()
-        for topic in (ENABLED_COMMAND_TOPIC, RECONCILE_COMMAND_TOPIC, STATUS_TOPIC):
+        for topic in (
+            ENABLED_COMMAND_TOPIC,
+            RECONCILE_COMMAND_TOPIC,
+            MOBILE_CONNECTION_COMMAND_TOPIC,
+            STATUS_TOPIC,
+        ):
             client.subscribe(topic)
 
     def _on_message(self, client: Any, userdata: Any, message: Any) -> None:
@@ -129,6 +137,8 @@ class MqttPublisher:
             self._handle_enabled(payload)
         elif message.topic == RECONCILE_COMMAND_TOPIC:
             self._handle_reconcile(payload)
+        elif message.topic == MOBILE_CONNECTION_COMMAND_TOPIC:
+            self._handle_mobile_connection(payload)
         elif message.topic == STATUS_TOPIC and payload == PAYLOAD_BIRTH:
             self.announce()
 
@@ -147,6 +157,13 @@ class MqttPublisher:
             _LOGGER.warning("Ignoring unknown reconcile command %r", payload)
             return
         self._run(self._engine.reconcile)
+        self.publish_state()
+
+    def _handle_mobile_connection(self, payload: str) -> None:
+        if payload in MOBILE_CONNECTION_LABEL_OPTIONS:
+            set_mobile_connection(payload, token=self._token)
+        else:
+            _LOGGER.warning("Ignoring unknown connection method %r", payload)
         self.publish_state()
 
     def _run(self, action: Any) -> None:

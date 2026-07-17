@@ -88,9 +88,10 @@ type: entities
 title: HAOS Mobile WAN
 entities:
   - entity: switch.haos_mobile_wan_enabled
+  - entity: select.haos_mobile_wan_connection_method
   - entity: sensor.haos_mobile_wan_gateway_state
-  - entity: sensor.haos_mobile_wan_active_connection
-  - entity: binary_sensor.haos_mobile_wan_upstream_healthy
+  - entity: sensor.haos_mobile_wan_connected_via
+  - entity: binary_sensor.haos_mobile_wan_internet_available
   - entity: binary_sensor.haos_mobile_wan_safety_checks
 ```
 
@@ -98,17 +99,16 @@ entities:
 
 | Entity | Platform | Purpose |
 |---|---|---|
-| Upstream healthy | `binary_sensor` | Whether the selected mobile connection passed its latest Internet health check |
+| Internet available | `binary_sensor` | Whether the selected mobile connection passed its latest Internet health check |
 | Downstream interface present | `binary_sensor` | Whether the router-facing USB Ethernet adapter is present |
 | Gateway rules applied | `binary_sensor` | Whether forwarding, NAT and policy routing are active |
 | DHCP server running | `binary_sensor` | Whether the router WAN DHCP service is running |
 | Safety checks | `binary_sensor` | Whether current host and network checks pass |
 | Gateway state | `sensor` | Derived gateway state: disabled, offline, connecting or connected |
-| Mobile connection | `sensor` | Configured Wi-Fi, USB or USB-preferred strategy |
-| Active connection | `sensor` | Wi-Fi hotspot or USB (iPhone) currently carrying gateway traffic |
-| USB pairing | `sensor` | Current iPhone trust, interface and DHCP state |
-| Downstream interface | `sensor` | Selected router-facing interface |
-| Public IP | `sensor` | Public IPv4 address seen through the mobile connection |
+| Connected via | `sensor` | Wi-Fi hotspot or USB (iPhone) currently carrying gateway traffic, or not connected |
+| iPhone USB pairing | `sensor` | Current iPhone trust, interface and DHCP state |
+| Downstream interface | `sensor` | Selected router-facing interface, or none |
+| Public IP | `sensor` | Public IPv4 address seen through the mobile connection, or offline |
 | Last error | `sensor` | Latest focused gateway error |
 
 ### Control reference
@@ -116,6 +116,7 @@ entities:
 | Control | Platform | Behaviour |
 |---|---|---|
 | Enabled | `switch` | Enables or disables gateway service to the router |
+| Connection method | `select` | Selects the configured mobile path, then restarts the add-on to apply it |
 | Reapply gateway state | `button` | Runs reconciliation immediately |
 
 The switch represents user intent. If safety checks fail, it stays enabled

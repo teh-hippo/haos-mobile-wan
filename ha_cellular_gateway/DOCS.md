@@ -285,9 +285,18 @@ broker add-on. Enable both before starting the add-on.
 
 The **HAOS Mobile WAN** device and its entities then appear automatically. The
 add-on refreshes their state while it runs, so no reload is needed after an
-add-on update. The entities include an **Enabled** switch, gateway state,
-mobile and active connection, USB pairing, safety, interface and diagnostic
-sensors, and a **Reapply gateway state** button.
+add-on update. The entities include an **Enabled** switch, a **Connection
+method** selector, **Gateway state**, **Connected via**, **iPhone USB
+pairing**, **Internet available**, safety, interface and diagnostic sensors,
+and a **Reapply gateway state** button. Statuses read in plain language, and
+idle diagnostics avoid an "unknown" value: **Public IP** shows "Offline" until
+an upstream is up, the downstream interface shows "None" when no adapter is
+bound, and **Connected via** shows "Not connected" when no path is active.
+
+The **Connection method** selector chooses Wi-Fi hotspot, USB (iPhone) or
+USB-preferred Wi-Fi fallback. Unlike the **Enabled** switch, which controls
+only the running process, changing it rewrites the saved add-on option through
+Supervisor and restarts the add-on to apply the new method.
 
 Add the entities to a dashboard with any built-in card, for example an
 `entities` card:
@@ -297,9 +306,10 @@ type: entities
 title: HAOS Mobile WAN
 entities:
   - entity: switch.haos_mobile_wan_enabled
+  - entity: select.haos_mobile_wan_connection_method
   - entity: sensor.haos_mobile_wan_gateway_state
-  - entity: sensor.haos_mobile_wan_active_connection
-  - entity: binary_sensor.haos_mobile_wan_upstream_healthy
+  - entity: sensor.haos_mobile_wan_connected_via
+  - entity: binary_sensor.haos_mobile_wan_internet_available
   - entity: binary_sensor.haos_mobile_wan_safety_checks
 ```
 

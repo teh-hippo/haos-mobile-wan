@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+import io
 import json
+import tempfile
 import unittest
+import urllib.error
+import urllib.request
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
 from rootfs.app import mqtt_discovery
+from rootfs.app.addon_options import set_mobile_connection
 from rootfs.app.errors import GatewayError
 from rootfs.app.mqtt_discovery import (
     AVAILABILITY_TOPIC,
     DISCOVERY_TOPIC,
     ENABLED_COMMAND_TOPIC,
+    MOBILE_CONNECTION_COMMAND_TOPIC,
     RECONCILE_COMMAND_TOPIC,
     STATE_TOPIC,
     STATUS_TOPIC,
@@ -19,6 +26,20 @@ from rootfs.app.mqtt_discovery import (
 )
 from rootfs.app.mqtt_publisher import MqttPublisher
 from rootfs.app.mqtt_service import MqttCredentials, read_mqtt_service
+
+try:
+    from jinja2 import Environment
+
+    _JINJA: Environment | None = Environment()
+except ImportError:
+    _JINJA = None
+
+_HAS_JINJA = _JINJA is not None
+
+
+def _render(template: str, value_json: dict) -> str:
+    assert _JINJA is not None
+    return _JINJA.from_string(template).render(value_json=value_json)
 
 STATUS = {
     "state": "connected",
@@ -174,6 +195,7 @@ class DiscoveryPayloadTests(unittest.TestCase):
         self.assertEqual(platforms["upstream_healthy"], "binary_sensor")
         self.assertEqual(platforms["enabled"], "switch")
         self.assertEqual(platforms["reconcile"], "button")
+        self.assertEqual(platforms["mobile_connection"], "select")
         for key, comp in self.cmps.items():
             self.assertEqual(comp["unique_id"], f"haos_mobile_wan_{key}")
 
@@ -182,14 +204,17 @@ class DiscoveryPayloadTests(unittest.TestCase):
         self.assertEqual(gateway_state["device_class"], "enum")
         self.assertEqual(
             gateway_state["options"],
-            ["disabled", "offline", "connecting", "connected"],
+            ["Disabled", "Offline", "Connecting", "Connected"],
         )
-        self.assertEqual(gateway_state["value_template"], "{{ value_json.state }}")
         self.assertEqual(
-            self.cmps["mobile_connection"]["options"],
-            ["wifi_hotspot", "iphone_usb", "iphone_usb_wifi_fallback"],
+            self.cmps["active_connection"]["options"],
+            ["Wi-Fi hotspot", "USB (iPhone)", "Not connected"],
         )
-        self.assertEqual(len(self.cmps["upstream_pairing_state"]["options"]), 14)
+        pairing = self.cmps["upstream_pairing_state"]
+        self.assertEqual(len(pairing["options"]), 14)
+        self.assertIn("Waiting for device", pairing["options"])
+        self.assertIn("Pairing helper failed", pairing["options"])
+        self.assertNotIn("waiting_for_device", pairing["options"])
 
     def test_binary_sensor_device_classes(self) -> None:
         self.assertEqual(
@@ -202,7 +227,8 @@ class DiscoveryPayloadTests(unittest.TestCase):
     def test_entity_categories_and_enabled_default(self) -> None:
         self.assertEqual(self.cmps["enabled"]["entity_category"], "config")
         self.assertEqual(self.cmps["gateway_state"]["entity_category"], "diagnostic")
-        self.assertEqual(self.cmps["mobile_connection"]["enabled_by_default"], False)
+        self.assertEqual(self.cmps["mobile_connection"]["entity_category"], "config")
+        self.assertNotIn("enabled_by_default", self.cmps["mobile_connection"])
         self.assertNotIn("enabled_by_default", self.cmps["gateway_state"])
         self.assertEqual(self.cmps["reconcile"]["enabled_by_default"], False)
 
@@ -212,6 +238,10 @@ class DiscoveryPayloadTests(unittest.TestCase):
         )
         self.assertEqual(
             self.cmps["reconcile"]["command_topic"], RECONCILE_COMMAND_TOPIC
+        )
+        self.assertEqual(
+            self.cmps["mobile_connection"]["command_topic"],
+            MOBILE_CONNECTION_COMMAND_TOPIC,
         )
         self.assertNotIn("state_topic", self.cmps["reconcile"])
 
@@ -238,6 +268,241 @@ class StatePayloadTests(unittest.TestCase):
         self.assertNotIn("ignored_extra_field", payload)
 
 
+class FriendlyLabelTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.cmps = build_discovery_payload()["cmps"]
+
+    def test_relabelled_names(self) -> None:
+        self.assertEqual(self.cmps["upstream_healthy"]["name"], "Internet available")
+        self.assertEqual(
+            self.cmps["upstream_healthy"]["device_class"], "connectivity"
+        )
+        self.assertEqual(self.cmps["active_connection"]["name"], "Connected via")
+        self.assertEqual(self.cmps["gateway_state"]["name"], "Gateway state")
+
+    def test_pairing_template_embeds_friendly_mapping(self) -> None:
+        template = self.cmps["upstream_pairing_state"]["value_template"]
+        self.assertIn("'waiting_for_device': 'Waiting for device'", template)
+        self.assertIn("'daemon_failed': 'Pairing helper failed'", template)
+        self.assertIn(
+            ".get(value_json.upstream_pairing_state, 'Not applicable')", template
+        )
+
+    def test_public_ip_offline_fallback(self) -> None:
+        self.assertEqual(
+            self.cmps["public_ip"]["value_template"],
+            "{{ value_json.public_ip if value_json.public_ip else 'Offline' }}",
+        )
+
+    def test_downstream_interface_none_fallback(self) -> None:
+        self.assertEqual(
+            self.cmps["downstream_interface"]["value_template"],
+            "{{ value_json.downstream_interface"
+            " if value_json.downstream_interface else 'None' }}",
+        )
+
+    def test_last_error_keeps_plain_template(self) -> None:
+        self.assertEqual(
+            self.cmps["last_error"]["value_template"],
+            "{{ value_json.last_error }}",
+        )
+
+    @unittest.skipUnless(_HAS_JINJA, "jinja2 not installed")
+    def test_enum_templates_render_friendly_values(self) -> None:
+        pairing = self.cmps["upstream_pairing_state"]["value_template"]
+        self.assertEqual(
+            _render(pairing, {"upstream_pairing_state": "waiting_for_device"}),
+            "Waiting for device",
+        )
+        self.assertEqual(
+            _render(pairing, {"upstream_pairing_state": "daemon_failed"}),
+            "Pairing helper failed",
+        )
+        self.assertEqual(
+            _render(pairing, {"upstream_pairing_state": None}), "Not applicable"
+        )
+        gateway = self.cmps["gateway_state"]["value_template"]
+        self.assertEqual(_render(gateway, {"state": "connected"}), "Connected")
+        self.assertEqual(_render(gateway, {"state": None}), "Offline")
+
+    @unittest.skipUnless(_HAS_JINJA, "jinja2 not installed")
+    def test_active_connection_null_renders_not_connected(self) -> None:
+        template = self.cmps["active_connection"]["value_template"]
+        self.assertEqual(
+            _render(template, {"active_connection": "wifi_hotspot"}), "Wi-Fi hotspot"
+        )
+        self.assertEqual(
+            _render(template, {"active_connection": "iphone_usb"}), "USB (iPhone)"
+        )
+        self.assertEqual(
+            _render(template, {"active_connection": None}), "Not connected"
+        )
+
+    @unittest.skipUnless(_HAS_JINJA, "jinja2 not installed")
+    def test_text_fallbacks_render_for_null(self) -> None:
+        public_ip = self.cmps["public_ip"]["value_template"]
+        self.assertEqual(_render(public_ip, {"public_ip": None}), "Offline")
+        self.assertEqual(_render(public_ip, {"public_ip": ""}), "Offline")
+        self.assertEqual(
+            _render(public_ip, {"public_ip": "203.0.113.10"}), "203.0.113.10"
+        )
+        interface = self.cmps["downstream_interface"]["value_template"]
+        self.assertEqual(_render(interface, {"downstream_interface": None}), "None")
+        self.assertEqual(_render(interface, {"downstream_interface": "eth1"}), "eth1")
+
+
+class MobileConnectionSelectTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.select = build_discovery_payload()["cmps"]["mobile_connection"]
+
+    def test_is_a_select_control(self) -> None:
+        self.assertEqual(self.select["platform"], "select")
+        self.assertEqual(
+            self.select["unique_id"], "haos_mobile_wan_mobile_connection"
+        )
+        self.assertEqual(self.select["name"], "Connection method")
+        self.assertEqual(self.select["entity_category"], "config")
+        self.assertEqual(self.select["icon"], "mdi:connection")
+        self.assertEqual(
+            self.select["command_topic"], MOBILE_CONNECTION_COMMAND_TOPIC
+        )
+
+    def test_options_are_the_three_labels(self) -> None:
+        self.assertEqual(
+            self.select["options"],
+            ["Wi-Fi hotspot", "USB (iPhone)", "USB (iPhone), Wi-Fi fallback"],
+        )
+
+    def test_value_template_embeds_internal_to_label_mapping(self) -> None:
+        template = self.select["value_template"]
+        self.assertIn(
+            "'iphone_usb_wifi_fallback': 'USB (iPhone), Wi-Fi fallback'", template
+        )
+        self.assertIn(".get(value_json.mobile_connection,", template)
+
+    @unittest.skipUnless(_HAS_JINJA, "jinja2 not installed")
+    def test_value_template_maps_internal_to_label(self) -> None:
+        template = self.select["value_template"]
+        self.assertEqual(
+            _render(template, {"mobile_connection": "iphone_usb_wifi_fallback"}),
+            "USB (iPhone), Wi-Fi fallback",
+        )
+        self.assertEqual(
+            _render(template, {"mobile_connection": "iphone_usb"}), "USB (iPhone)"
+        )
+        state = build_state_payload(dict(STATUS))
+        self.assertEqual(_render(template, state), "USB (iPhone), Wi-Fi fallback")
+
+
+class SetMobileConnectionTests(unittest.TestCase):
+    @staticmethod
+    def _write_options(directory: str, options: dict) -> Path:
+        path = Path(directory) / "options.json"
+        path.write_text(json.dumps(options), encoding="utf-8")
+        return path
+
+    def test_writes_option_and_restarts_with_bearer(self) -> None:
+        requests: list[urllib.request.Request] = []
+
+        def urlopen(request, **kwargs):
+            requests.append(request)
+            return object()
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = self._write_options(
+                directory,
+                {"enabled": True, "mobile_connection": "Wi-Fi hotspot"},
+            )
+            set_mobile_connection(
+                "USB (iPhone)",
+                token="secret-token",
+                urlopen=urlopen,
+                options_path=path,
+            )
+
+        self.assertEqual(len(requests), 2)
+        options_request, restart_request = requests
+        self.assertEqual(
+            options_request.full_url, "http://supervisor/addons/self/options"
+        )
+        self.assertEqual(options_request.get_method(), "POST")
+        self.assertEqual(
+            options_request.get_header("Authorization"), "Bearer secret-token"
+        )
+        body = json.loads(options_request.data.decode("utf-8"))
+        self.assertEqual(body["options"]["mobile_connection"], "USB (iPhone)")
+        self.assertTrue(body["options"]["enabled"])
+        self.assertEqual(
+            restart_request.full_url, "http://supervisor/addons/self/restart"
+        )
+        self.assertEqual(restart_request.get_method(), "POST")
+        self.assertEqual(
+            restart_request.get_header("Authorization"), "Bearer secret-token"
+        )
+        self.assertIsNone(restart_request.data)
+
+    def test_same_selection_is_ignored(self) -> None:
+        calls: list[urllib.request.Request] = []
+        with tempfile.TemporaryDirectory() as directory:
+            path = self._write_options(
+                directory, {"mobile_connection": "USB (iPhone)"}
+            )
+            set_mobile_connection(
+                "USB (iPhone)",
+                token="secret-token",
+                urlopen=lambda request, **kwargs: calls.append(request),
+                options_path=path,
+            )
+        self.assertEqual(calls, [])
+
+    def test_missing_token_does_not_post(self) -> None:
+        calls: list[urllib.request.Request] = []
+        with tempfile.TemporaryDirectory() as directory:
+            path = self._write_options(
+                directory, {"mobile_connection": "Wi-Fi hotspot"}
+            )
+            set_mobile_connection(
+                "USB (iPhone)",
+                token="",
+                urlopen=lambda request, **kwargs: calls.append(request),
+                options_path=path,
+            )
+        self.assertEqual(calls, [])
+
+    def test_unreadable_options_do_not_post(self) -> None:
+        calls: list[urllib.request.Request] = []
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "missing.json"
+            set_mobile_connection(
+                "USB (iPhone)",
+                token="secret-token",
+                urlopen=lambda request, **kwargs: calls.append(request),
+                options_path=path,
+            )
+        self.assertEqual(calls, [])
+
+    def test_restart_skipped_when_options_rejected(self) -> None:
+        attempts: list[str] = []
+
+        def urlopen(request, **kwargs):
+            attempts.append(request.full_url)
+            raise urllib.error.HTTPError(
+                request.full_url, 400, "Bad Request", {}, io.BytesIO(b"")
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = self._write_options(
+                directory, {"mobile_connection": "Wi-Fi hotspot"}
+            )
+            set_mobile_connection(
+                "USB (iPhone)",
+                token="secret-token",
+                urlopen=urlopen,
+                options_path=path,
+            )
+        self.assertEqual(attempts, ["http://supervisor/addons/self/options"])
+
+
 class PublisherLifecycleTests(unittest.TestCase):
     def test_connect_sets_lwt_credentials_and_subscriptions(self) -> None:
         publisher, _engine, clients = make_publisher()
@@ -252,7 +517,12 @@ class PublisherLifecycleTests(unittest.TestCase):
         client.trigger_connect(rc=0)
         self.assertEqual(
             set(client.subscriptions),
-            {ENABLED_COMMAND_TOPIC, RECONCILE_COMMAND_TOPIC, STATUS_TOPIC},
+            {
+                ENABLED_COMMAND_TOPIC,
+                RECONCILE_COMMAND_TOPIC,
+                MOBILE_CONNECTION_COMMAND_TOPIC,
+                STATUS_TOPIC,
+            },
         )
         publisher.stop()
 
@@ -346,6 +616,28 @@ class PublisherCommandTests(unittest.TestCase):
         publisher, engine, client = self._connected()
         client.trigger_message(RECONCILE_COMMAND_TOPIC, b"nope")
         self.assertEqual(engine.reconciled, 0)
+        publisher.stop()
+
+    def test_mobile_connection_command_writes_selected_label(self) -> None:
+        publisher, _engine, client = self._connected()
+        with mock.patch(
+            "rootfs.app.mqtt_publisher.set_mobile_connection"
+        ) as writer:
+            client.trigger_message(MOBILE_CONNECTION_COMMAND_TOPIC, b"USB (iPhone)")
+        writer.assert_called_once_with("USB (iPhone)", token=publisher._token)
+        self.assertEqual(client.published[-1][0], STATE_TOPIC)
+        publisher.stop()
+
+    def test_unknown_mobile_connection_is_ignored(self) -> None:
+        publisher, _engine, client = self._connected()
+        with mock.patch(
+            "rootfs.app.mqtt_publisher.set_mobile_connection"
+        ) as writer:
+            client.trigger_message(
+                MOBILE_CONNECTION_COMMAND_TOPIC, b"Carrier pigeon"
+            )
+        writer.assert_not_called()
+        self.assertEqual(client.published[-1][0], STATE_TOPIC)
         publisher.stop()
 
     def test_command_failure_is_swallowed(self) -> None:

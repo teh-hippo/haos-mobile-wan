@@ -12,9 +12,16 @@ if TYPE_CHECKING:
 
 def refresh_health_if_due(engine: GatewayEngine) -> None:
     with engine.lock:
+        enabled = engine.enabled
         last_probe = engine.last_health_probe
         upstream = engine.last_upstream
         generation = engine.health_generation
+    if not enabled:
+        with engine.lock:
+            engine.upstream_healthy = False
+            engine.public_ip = None
+            engine.last_health_probe = None
+        return
     now = time.time()
     if last_probe is not None and now - last_probe < engine.HEALTH_PROBE_INTERVAL:
         return

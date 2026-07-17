@@ -302,6 +302,7 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertIsNone(self.engine.last_health_probe)
 
     def test_stale_health_probe_result_is_discarded(self) -> None:
+        self.engine.enabled = True
         wifi = ResolvedUpstream(
             connection=WIFI_HOTSPOT,
             interface="wlan0",
@@ -329,6 +330,7 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertIsNone(self.engine.last_health_probe)
 
     def test_health_probe_result_is_discarded_after_cleanup(self) -> None:
+        self.engine.enabled = True
         wifi = ResolvedUpstream(
             connection=WIFI_HOTSPOT,
             interface="wlan0",
@@ -911,7 +913,7 @@ class GatewayEngineTests(unittest.TestCase):
     def test_status_remains_responsive_during_blocking_upstream_resolution(self) -> None:
         values = sysctl_values()
         engine = GatewayEngine(
-            make_config(enabled=False, mobile_connection=IPHONE_USB),
+            make_config(enabled=True, mobile_connection=IPHONE_USB),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,
@@ -937,7 +939,30 @@ class GatewayEngineTests(unittest.TestCase):
         release.set()
         worker.join(timeout=2)
         self.assertLess(elapsed, 0.5)
-        self.assertFalse(status["enabled"])
+        self.assertTrue(status["enabled"])
+
+    def test_disabled_reconcile_skips_upstream_and_health_probes(self) -> None:
+        values = sysctl_values()
+        engine = GatewayEngine(
+            make_config(enabled=False, mobile_connection=IPHONE_USB),
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
+        engine.startup_cleanup_pending = False
+        engine.upstream.resolve = lambda *_a, **_k: (_ for _ in ()).throw(
+            AssertionError("upstream resolution must remain dormant")
+        )
+        engine._health_probe = lambda *_a, **_k: (_ for _ in ()).throw(
+            AssertionError("health probe must remain dormant")
+        )
+
+        engine.reconcile(refresh_health=True)
+
+        self.assertFalse(engine.enabled)
+        self.assertIsNone(engine.last_upstream)
+        self.assertIsNone(engine.last_health_probe)
 
     def test_stop_cleans_upstream_after_gateway_cleanup_failure(self) -> None:
         engine = self._prepare_active_engine()

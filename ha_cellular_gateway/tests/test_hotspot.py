@@ -10,16 +10,17 @@ from rootfs.app.hotspot import (
     WIFI_ADAPTER_DISABLED,
     WIFI_NOT_ASSOCIATED,
     classify_wifi_upstream,
+    configure_hotspot,
     interface_status,
-    provision_hotspot,
 )
 
 
 class HotspotProvisioningTests(unittest.TestCase):
     def test_empty_credentials_do_not_call_supervisor(self) -> None:
         calls: list[urllib.request.Request] = []
-        error = provision_hotspot(
+        error = configure_hotspot(
             make_config(),
+            enabled=True,
             token="token",
             urlopen=lambda request, **kwargs: calls.append(request),
         )
@@ -28,12 +29,13 @@ class HotspotProvisioningTests(unittest.TestCase):
 
     def test_iphone_usb_does_not_call_supervisor(self) -> None:
         calls: list[urllib.request.Request] = []
-        error = provision_hotspot(
+        error = configure_hotspot(
             make_config(
                 mobile_connection=IPHONE_USB,
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",
             ),
+            enabled=True,
             token="token",
             urlopen=lambda request, **kwargs: calls.append(request),
         )
@@ -42,12 +44,13 @@ class HotspotProvisioningTests(unittest.TestCase):
 
     def test_combined_connection_provisions_wifi(self) -> None:
         calls: list[urllib.request.Request] = []
-        error = provision_hotspot(
+        error = configure_hotspot(
             make_config(
                 mobile_connection=IPHONE_USB_WIFI_FALLBACK,
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",
             ),
+            enabled=True,
             token="token",
             urlopen=lambda request, **kwargs: calls.append(request),
         )
@@ -62,11 +65,12 @@ class HotspotProvisioningTests(unittest.TestCase):
             captured["timeout"] = kwargs["timeout"]
             return object()
 
-        error = provision_hotspot(
+        error = configure_hotspot(
             make_config(
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",
             ),
+            enabled=True,
             token="token",
             urlopen=urlopen,
         )
@@ -101,6 +105,24 @@ class HotspotProvisioningTests(unittest.TestCase):
             },
         )
 
+    def test_deactivation_disables_the_interface(self) -> None:
+        captured: list[urllib.request.Request] = []
+
+        error = configure_hotspot(
+            make_config(
+                hotspot_ssid="Phone",
+                hotspot_password="supersecret",
+            ),
+            enabled=False,
+            token="token",
+            urlopen=lambda request, **kwargs: captured.append(request),
+        )
+
+        self.assertIsNone(error)
+        self.assertEqual(len(captured), 1)
+        payload = json.loads(captured[0].data.decode("utf-8"))
+        self.assertFalse(payload["enabled"])
+
     def test_supervisor_error_is_safe_and_focused(self) -> None:
         body = json.dumps(
             {"message": "could not apply profile with password supersecret"}
@@ -115,11 +137,12 @@ class HotspotProvisioningTests(unittest.TestCase):
                 io.BytesIO(body),
             )
 
-        error = provision_hotspot(
+        error = configure_hotspot(
             make_config(
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",
             ),
+            enabled=True,
             token="token",
             urlopen=urlopen,
         )

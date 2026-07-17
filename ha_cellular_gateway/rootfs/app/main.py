@@ -13,7 +13,6 @@ from app.api_server import GatewayServer
 from app.command import CommandRunner
 from app.config import GatewayConfig
 from app.gateway import GatewayEngine, load_or_create_token
-from app.hotspot import provision_hotspot
 from app.mqtt_publisher import MqttPublisher
 from app.options_migration import prune_legacy_options
 
@@ -34,16 +33,10 @@ def main() -> None:
     if migration_error:
         _LOGGER.warning("%s", migration_error)
     config, config_error = GatewayConfig.load_path()
-    hotspot_error = (
-        None
-        if config_error
-        else provision_hotspot(config)
-    )
     engine = GatewayEngine(
         config,
         runner=runner,
         config_error=config_error,
-        hotspot_error=hotspot_error,
     )
     token = load_or_create_token()
     server = GatewayServer((config.api_bind, config.api_port), engine, token)

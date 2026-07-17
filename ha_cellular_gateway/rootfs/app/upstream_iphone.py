@@ -81,17 +81,20 @@ class IPhoneUsbUpstream:
         self,
         management: ManagementBaseline | None = None,
     ) -> UpstreamResolution:
-        self.pairing_state = "not_ready"
-        self.pairing_message = None
-        self.device_udid = None
-        self.interface = None
-        self.lease_owner = None
-        self.fallback_safe = True
+        self._reset_status()
 
         errors = self.runtime.capability_errors()
         if errors:
             self._forget_lease()
             return None, errors
+
+        apple_present = self.runtime.apple_usb_present()
+        if not apple_present:
+            self._forget_lease()
+            return self._fail(
+                "waiting_for_device",
+                "Connect a single trusted iPhone with Personal Hotspot enabled",
+            )
 
         try:
             self.nm.ensure_profile()
@@ -101,8 +104,6 @@ class IPhoneUsbUpstream:
                 "profile_failed",
                 f"NetworkManager iPhone USB profile setup failed: {err}",
             )
-
-        apple_present = self.runtime.apple_usb_present()
 
         try:
             self.runtime.ensure_usbmuxd()
@@ -162,6 +163,7 @@ class IPhoneUsbUpstream:
     def cleanup(self) -> None:
         self._forget_lease()
         self.runtime.stop_usbmuxd()
+        self._reset_status()
 
     def _consume(self, result: NetworkManagerResult) -> UpstreamResolution:
         if result.state == "active":
@@ -209,3 +211,11 @@ class IPhoneUsbUpstream:
 
     def _forget_lease(self) -> None:
         self._last_lease = None
+
+    def _reset_status(self) -> None:
+        self.pairing_state = "not_ready"
+        self.pairing_message = None
+        self.device_udid = None
+        self.interface = None
+        self.lease_owner = None
+        self.fallback_safe = True

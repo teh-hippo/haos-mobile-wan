@@ -20,9 +20,10 @@ _WIFI_INACTIVE_ERRORS = {
 }
 
 
-def provision_hotspot(
+def configure_hotspot(
     config: GatewayConfig,
     *,
+    enabled: bool,
     token: str | None = None,
     urlopen: UrlOpen | None = None,
 ) -> str | None:
@@ -36,7 +37,10 @@ def provision_hotspot(
         return "Hotspot Wi-Fi provisioning failed: Supervisor token is unavailable"
     request = urllib.request.Request(
         _interface_url(config.upstream_interface, "update"),
-        data=json.dumps(_payload(config), separators=(",", ":")).encode(),
+        data=json.dumps(
+            _payload(config, enabled=enabled),
+            separators=(",", ":"),
+        ).encode(),
         method="POST",
         headers={
             "Authorization": f"Bearer {supervisor_token}",
@@ -44,14 +48,15 @@ def provision_hotspot(
         },
     )
     opener = urlopen or urllib.request.urlopen
+    action = "provisioning" if enabled else "deactivation"
     try:
         opener(request, timeout=10)
     except urllib.error.HTTPError as err:
-        return _error("Supervisor network API rejected the update", err, config)
+        return _error(action, "Supervisor network API rejected the update", err, config)
     except urllib.error.URLError as err:
-        return _error("Supervisor network API is unavailable", err, config)
+        return _error(action, "Supervisor network API is unavailable", err, config)
     except OSError as err:
-        return _error("Supervisor network API failed", err, config)
+        return _error(action, "Supervisor network API failed", err, config)
     return None
 
 
@@ -115,9 +120,9 @@ def _interface_url(interface: str, action: str) -> str:
     return f"http://supervisor/network/interface/{quoted}/{action}"
 
 
-def _payload(config: GatewayConfig) -> dict[str, object]:
+def _payload(config: GatewayConfig, *, enabled: bool) -> dict[str, object]:
     return {
-        "enabled": True,
+        "enabled": enabled,
         "ipv4": {
             "method": "static",
             "address": [config.upstream_address],
@@ -133,11 +138,17 @@ def _payload(config: GatewayConfig) -> dict[str, object]:
     }
 
 
-def _error(prefix: str, err: Exception, config: GatewayConfig) -> str:
+def _error(
+    action: str,
+    prefix: str,
+    err: Exception,
+    config: GatewayConfig,
+) -> str:
     detail = _supervisor_detail(err)
+    label = f"Hotspot Wi-Fi {action} failed"
     if detail:
-        return f"Hotspot Wi-Fi provisioning failed: {prefix}: {_redact(detail, config)}"
-    return f"Hotspot Wi-Fi provisioning failed: {prefix}"
+        return f"{label}: {prefix}: {_redact(detail, config)}"
+    return f"{label}: {prefix}"
 
 
 def _supervisor_detail(err: Exception) -> str | None:

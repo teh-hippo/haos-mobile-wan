@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from .errors import GatewayError, SafetyError
 from .gateway_cleanup import cleanup
+from .gateway_dormant import reconcile_disabled
 from .gateway_transition import cleanup_changed_ownership
 from .hotspot import classify_wifi_upstream
 from .lifecycle import log_upstream_transitions, wifi_interface_status
@@ -149,6 +150,18 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
             downstream = engine.safety.find_downstream(
                 management.interface if management else None
             )
+            if not enabled:
+                reconcile_disabled(
+                    engine,
+                    downstream,
+                    management.interface if management else None,
+                )
+                return
+
+            engine.upstream_lifecycle.activate(
+                management.interface if management else None
+            )
+            engine.connection.wifi_error = engine.upstream_lifecycle.error
             upstream, upstream_errors = engine._resolve_upstream()
             cleanup_changed_ownership(
                 engine,
@@ -176,43 +189,6 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                 engine.last_safety_errors = errors
             engine._record_upstream(upstream)
             log_upstream_transitions(engine, upstream, wifi_status)
-
-            if not enabled:
-                managed_chains = (
-                    ("iptables", engine.firewall.INPUT_CHAIN),
-                    ("ip6tables", engine.firewall.INPUT6_CHAIN),
-                    ("iptables", engine.firewall.FORWARD_CHAIN),
-                    ("ip6tables", engine.firewall.FORWARD6_CHAIN),
-                )
-                present_chains = {
-                    (family, chain)
-                    for family, chain in managed_chains
-                    if engine.firewall.chain_exists(family, chain)
-                }
-                forwarding_present = any(
-                    chain in {
-                        engine.firewall.FORWARD_CHAIN,
-                        engine.firewall.FORWARD6_CHAIN,
-                    }
-                    for _, chain in present_chains
-                )
-                host_guard_needs_repair = bool(present_chains) and not (
-                    engine.firewall.host_protection_installed(downstream)
-                )
-                if (
-                    engine.owned_state
-                    or engine.applied
-                    or engine.dhcp.running
-                    or forwarding_present
-                    or host_guard_needs_repair
-                ):
-                    cleanup(
-                        engine,
-                        preserve_host_protection=True,
-                        force=bool(engine.owned_state or engine.applied),
-                    )
-                _protect_host(engine, downstream)
-                return
 
             if errors:
                 cleanup(

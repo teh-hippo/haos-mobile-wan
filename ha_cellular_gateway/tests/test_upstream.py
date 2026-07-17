@@ -532,21 +532,29 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         self.assertIsNone(upstream)
         self.assertIn("Required command is unavailable: nmcli", errors)
 
-    def test_profile_is_prepared_before_a_phone_is_present(self) -> None:
+    def test_phone_absence_does_not_prepare_profile_or_start_helper(self) -> None:
+        processes: list[FakeProcess] = []
         network_manager = FakeNetworkManager()
-        manager = self._manager(FakeRunner(), network_manager)
+        manager = self._manager(
+            FakeRunner(),
+            network_manager,
+            popen=lambda *args, **kwargs: processes.append(FakeProcess())
+            or processes[-1],
+        )
 
         upstream, errors = manager.resolve()
 
         self.assertIsNone(upstream)
-        self.assertEqual(network_manager.profile_calls, 1)
+        self.assertEqual(network_manager.profile_calls, 0)
         self.assertEqual(network_manager.inspect_calls, [])
+        self.assertEqual(processes, [])
         self.assertEqual(manager.pairing_state, "waiting_for_device")
 
     def test_profile_setup_failure_allows_fallback(self) -> None:
         runner = self._paired_runner()
         from rootfs.app.errors import GatewayError
 
+        self._add_apple_usb_device()
         network_manager = FakeNetworkManager(profile_error=GatewayError("nm down"))
         manager = self._manager(runner, network_manager)
 

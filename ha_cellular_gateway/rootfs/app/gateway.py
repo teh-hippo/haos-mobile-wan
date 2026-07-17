@@ -31,6 +31,7 @@ from .policy import PolicyRouting
 from .safety import SafetyInspector
 from .state import StateStore
 from .upstream_iphone import IPhoneUsbUpstream
+from .upstream_lifecycle import UpstreamLifecycle
 from .upstream_models import ResolvedUpstream
 
 
@@ -45,7 +46,6 @@ class GatewayEngine:
         read_text: Callable[[Path], str] | None = None,
         state_path: Path | None = None,
         config_error: str | None = None,
-        hotspot_error: str | None = None,
     ) -> None:
         self.config = config
         self.management: ManagementBaseline | None = None
@@ -73,8 +73,8 @@ class GatewayEngine:
         self.connection = MobileConnectionResolver(
             config,
             self.upstream,
-            wifi_error=hotspot_error,
         )
+        self.upstream_lifecycle = UpstreamLifecycle(config, self.upstream)
 
         self.config_error = config_error
         self.enabled = config.enabled and not config_error

@@ -9,6 +9,7 @@ from .mqtt_labels import (
     MOBILE_CONNECTION_INTERNAL_LABELS,
     MOBILE_CONNECTION_LABEL_OPTIONS,
     NO_ACTIVE_CONNECTION_LABEL,
+    NO_ERROR_LABEL,
     NO_INTERFACE_LABEL,
     OFFLINE_LABEL,
     UNKNOWN_PAIRING_LABEL,
@@ -47,7 +48,7 @@ STATE_FIELDS = (
     "upstream_pairing_state",
     "downstream_interface",
     "public_ip",
-    "last_error",
+    "error",
     "upstream_healthy",
     "downstream_present",
     "rules_installed",
@@ -87,10 +88,12 @@ _ENUM_SENSORS = (
 )
 
 _TEXT_SENSORS = (
-    ("downstream_interface", "Downstream interface", "mdi:ethernet", False,
-     NO_INTERFACE_LABEL),
-    ("public_ip", "Public IP", "mdi:ip-network-outline", False, OFFLINE_LABEL),
-    ("last_error", "Last error", "mdi:alert-circle-outline", False, None),
+    ("downstream_interface", "Downstream interface", "downstream_interface",
+     "mdi:ethernet", False, NO_INTERFACE_LABEL),
+    ("public_ip", "Public IP", "public_ip", "mdi:ip-network-outline", False,
+     OFFLINE_LABEL),
+    ("last_error", "Last error", "error", "mdi:alert-circle-outline", False,
+     NO_ERROR_LABEL),
 )
 
 _BINARY_SENSORS = (
@@ -137,12 +140,12 @@ def _enum_sensor(spec: tuple[Any, ...]) -> dict[str, Any]:
 
 
 def _text_sensor(spec: tuple[Any, ...]) -> dict[str, Any]:
-    key, name, icon, enabled, fallback = spec
+    key, name, field, icon, enabled, fallback = spec
     component = _base(key, "sensor", name, enabled)
     component["entity_category"] = "diagnostic"
     component["state_topic"] = STATE_TOPIC
     component["value_template"] = (
-        fallback_value_template(key, fallback) if fallback else _value(key)
+        fallback_value_template(field, fallback) if fallback else _value(field)
     )
     component["icon"] = icon
     return component

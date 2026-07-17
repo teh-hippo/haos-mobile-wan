@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import time
-from collections.abc import Iterable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .status_issues import build_status_issues
 
@@ -72,7 +71,7 @@ def status(engine: GatewayEngine) -> dict[str, object]:
                 engine.enabled,
                 engine.applied,
                 engine.upstream_healthy,
-                engine.last_safety_errors,
+                issues,
             ),
             "enabled": engine.enabled,
             "configured_enabled": engine.config.enabled,
@@ -106,6 +105,7 @@ def status(engine: GatewayEngine) -> dict[str, object]:
             "last_reconcile": engine.last_reconcile,
             "last_health_probe": engine.last_health_probe,
             "last_error": engine.last_error,
+            "error": _display_error(issues),
             "safety_errors": list(engine.last_safety_errors),
             "issues": issues,
             **upstream_status,
@@ -177,15 +177,20 @@ def _derive_state(
     enabled: bool,
     applied: bool,
     upstream_healthy: bool,
-    safety_errors: Iterable[str],
+    issues: list[dict[str, Any]],
 ) -> str:
     if not enabled:
         return "disabled"
-    if any(error != "Safety checks have not run yet" for error in safety_errors):
-        return "offline"
     if applied and upstream_healthy:
         return "connected"
+    if any(not issue["transient"] for issue in issues):
+        return "offline"
     return "connecting"
+
+
+def _display_error(issues: list[dict[str, Any]]) -> str | None:
+    messages = [str(issue["message"]) for issue in issues if not issue["transient"]]
+    return "; ".join(messages) or None
 
 
 def _status_config(engine: GatewayEngine) -> dict[str, object]:

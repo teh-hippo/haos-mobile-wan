@@ -109,7 +109,7 @@ entities:
 | iPhone USB pairing | `sensor` | Current iPhone trust, interface and DHCP state |
 | Downstream interface | `sensor` | Selected router-facing interface, or none |
 | Public IP | `sensor` | Public IPv4 address seen through the mobile connection, or offline |
-| Last error | `sensor` | Latest focused gateway error |
+| Last error | `sensor` | Latest genuine gateway fault, or none while only transient waiting conditions apply |
 
 ### Control reference
 

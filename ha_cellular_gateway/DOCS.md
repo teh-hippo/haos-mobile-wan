@@ -293,6 +293,11 @@ idle diagnostics avoid an "unknown" value: **Public IP** shows "Offline" until
 an upstream is up, the downstream interface shows "None" when no adapter is
 bound, and **Connected via** shows "Not connected" when no path is active.
 
+While the add-on is enabled and still waiting, for example for a trusted iPhone
+or for the Wi-Fi hotspot to associate, **Gateway state** reads "Connecting" and
+**Last error** reads "None". **Last error** reports genuine faults only, so use
+**Safety checks** and its attributes for the full raw diagnostic list.
+
 The **Connection method** selector chooses Wi-Fi hotspot, USB (iPhone) or
 USB-preferred Wi-Fi fallback. Unlike the **Enabled** switch, which controls
 only the running process, changing it rewrites the saved add-on option through

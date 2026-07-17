@@ -245,10 +245,23 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertFalse(self.engine.enabled)
         self.assertEqual(self.engine.status()["state"], "disabled")
 
-    def test_status_reports_offline_state_when_blocked_by_safety_errors(self) -> None:
+    def test_status_reports_offline_state_when_blocked_by_genuine_fault(self) -> None:
         engine = self._prepare_active_engine()
+        engine.last_safety_errors = ["Management interface is unavailable"]
+        status = engine.status()
+        self.assertEqual(status["state"], "offline")
+        self.assertEqual(status["error"], "The management interface is unavailable")
+
+    def test_status_treats_waiting_upstream_condition_as_connecting(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.last_error = None
         engine.last_safety_errors = ["Upstream interface is unavailable"]
-        self.assertEqual(engine.status()["state"], "offline")
+        status = engine.status()
+        self.assertEqual(status["state"], "connecting")
+        self.assertIsNone(status["error"])
+        self.assertEqual(
+            status["safety_errors"], ["Upstream interface is unavailable"]
+        )
 
     def test_status_reports_connecting_state_before_applied_and_healthy(self) -> None:
         engine = self._prepare_active_engine()

@@ -301,11 +301,12 @@ class FriendlyLabelTests(unittest.TestCase):
             " if value_json.downstream_interface else 'None' }}",
         )
 
-    def test_last_error_keeps_plain_template(self) -> None:
+    def test_last_error_reads_error_field_with_none_fallback(self) -> None:
         self.assertEqual(
             self.cmps["last_error"]["value_template"],
-            "{{ value_json.last_error }}",
+            "{{ value_json.error if value_json.error else 'None' }}",
         )
+        self.assertIn("error", mqtt_discovery.STATE_FIELDS)
 
     @unittest.skipUnless(_HAS_JINJA, "jinja2 not installed")
     def test_enum_templates_render_friendly_values(self) -> None:
@@ -349,6 +350,12 @@ class FriendlyLabelTests(unittest.TestCase):
         interface = self.cmps["downstream_interface"]["value_template"]
         self.assertEqual(_render(interface, {"downstream_interface": None}), "None")
         self.assertEqual(_render(interface, {"downstream_interface": "eth1"}), "eth1")
+        error = self.cmps["last_error"]["value_template"]
+        self.assertEqual(_render(error, {"error": None}), "None")
+        self.assertEqual(
+            _render(error, {"error": "The upstream interface is unavailable"}),
+            "The upstream interface is unavailable",
+        )
 
 
 class MobileConnectionSelectTests(unittest.TestCase):

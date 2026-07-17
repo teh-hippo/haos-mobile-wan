@@ -10,6 +10,11 @@
   "Offline" when there is no upstream, the downstream interface sensor reports
   "None" when no adapter is bound, and a missing active connection reads
   "Not connected".
+- Treat transient waiting conditions as normal rather than faults. While the
+  add-on is enabled and waiting, for example for a trusted iPhone or for the
+  Wi-Fi hotspot to associate, the gateway state now reads "Connecting" and the
+  "Last error" sensor reads "None". The "Last error" sensor reflects genuine
+  faults only, while the safety checks sensor keeps the full raw diagnostics.
 - Add a "Connection method" control that selects Wi-Fi hotspot, USB (iPhone) or
   USB-preferred Wi-Fi fallback. Choosing a method writes the add-on option
   through Supervisor and restarts the add-on to apply it. This replaces the

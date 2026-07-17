@@ -256,6 +256,12 @@ app `usbmuxd` helper. It leaves the persistent NetworkManager profile, its
 address and its table 202 routes in place. `/data/state.json` records exact
 ownership so the next start can clean interrupted state before reconciliation.
 
+If the app is terminated ungracefully (a forced kill or container removal),
+in-process cleanup cannot run, so a transient router-facing address and tagged
+host rules can remain until the app next starts, when startup cleanup removes
+the state recorded in `/data/state.json`, or until HAOS reboots. Turn
+**Enabled** off before uninstalling so cleanup completes.
+
 The router can retain its five-minute DHCP lease after gateway service stops,
 but the lease has no usable gateway during that time.
 

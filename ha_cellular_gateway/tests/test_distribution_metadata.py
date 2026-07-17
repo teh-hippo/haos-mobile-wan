@@ -39,24 +39,28 @@ class DistributionMetadataTests(unittest.TestCase):
         self.assertNotIn("## Optional Home Assistant integration", text)
         self.assertNotIn("HACS", text)
 
-    def test_readme_documents_actual_entities_and_controls(self) -> None:
+    def test_readme_documents_status_only_entities(self) -> None:
         text = README.read_text(encoding="utf-8")
         for table_row in (
+            "| Gateway enabled | `binary_sensor` |",
             "| Internet available | `binary_sensor` |",
             "| Downstream interface present | `binary_sensor` |",
             "| Gateway rules applied | `binary_sensor` |",
             "| DHCP server running | `binary_sensor` |",
             "| Safety checks | `binary_sensor` |",
             "| Gateway state | `sensor` |",
+            "| Connection method | `sensor` |",
             "| Connected via | `sensor` |",
             "| iPhone USB pairing | `sensor` |",
             "| Public IP | `sensor` |",
-            "| Enabled | `switch` |",
-            "| Connection method | `select` |",
-            "| Reapply gateway state | `button` |",
+            "| Last error | `sensor` |",
         ):
             self.assertIn(table_row, text)
         self.assertIn("MQTT discovery", text)
+        self.assertIn("status-only", text)
+        self.assertNotIn("| `switch` |", text)
+        self.assertNotIn("| `select` |", text)
+        self.assertNotIn("| `button` |", text)
 
     def test_readme_uses_human_fallback_wan_language(self) -> None:
         text = README.read_text(encoding="utf-8")

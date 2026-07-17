@@ -5,27 +5,18 @@ import logging
 import threading
 from typing import TYPE_CHECKING, Any
 
-from .addon_options import set_mobile_connection
-from .errors import GatewayError
 from .mqtt_client import ClientFactory, MqttConnection
 from .mqtt_discovery import (
     AVAILABILITY_TOPIC,
     DISCOVERY_TOPIC,
-    ENABLED_COMMAND_TOPIC,
-    MOBILE_CONNECTION_COMMAND_TOPIC,
     PAYLOAD_BIRTH,
     PAYLOAD_OFFLINE,
-    PAYLOAD_OFF,
-    PAYLOAD_ON,
     PAYLOAD_ONLINE,
-    PAYLOAD_PRESS,
-    RECONCILE_COMMAND_TOPIC,
     STATE_TOPIC,
     STATUS_TOPIC,
     build_discovery_payload,
     build_state_payload,
 )
-from .mqtt_labels import MOBILE_CONNECTION_LABEL_OPTIONS
 from .mqtt_service import MqttCredentials, read_mqtt_service
 
 if TYPE_CHECKING:
@@ -123,54 +114,12 @@ class MqttPublisher:
             _LOGGER.warning("MQTT broker refused the connection (code %s)", rc)
             return
         self.announce()
-        for topic in (
-            ENABLED_COMMAND_TOPIC,
-            RECONCILE_COMMAND_TOPIC,
-            MOBILE_CONNECTION_COMMAND_TOPIC,
-            STATUS_TOPIC,
-        ):
-            client.subscribe(topic)
+        client.subscribe(STATUS_TOPIC)
 
     def _on_message(self, client: Any, userdata: Any, message: Any) -> None:
         payload = _decode(message.payload)
-        if message.topic == ENABLED_COMMAND_TOPIC:
-            self._handle_enabled(payload)
-        elif message.topic == RECONCILE_COMMAND_TOPIC:
-            self._handle_reconcile(payload)
-        elif message.topic == MOBILE_CONNECTION_COMMAND_TOPIC:
-            self._handle_mobile_connection(payload)
-        elif message.topic == STATUS_TOPIC and payload == PAYLOAD_BIRTH:
+        if message.topic == STATUS_TOPIC and payload == PAYLOAD_BIRTH:
             self.announce()
-
-    def _handle_enabled(self, payload: str) -> None:
-        if payload == PAYLOAD_ON:
-            self._run(self._engine.apply)
-        elif payload == PAYLOAD_OFF:
-            self._run(lambda: self._engine.cleanup(preserve_host_protection=True))
-        else:
-            _LOGGER.warning("Ignoring unknown enabled command %r", payload)
-            return
-        self.publish_state()
-
-    def _handle_reconcile(self, payload: str) -> None:
-        if payload != PAYLOAD_PRESS:
-            _LOGGER.warning("Ignoring unknown reconcile command %r", payload)
-            return
-        self._run(self._engine.reconcile)
-        self.publish_state()
-
-    def _handle_mobile_connection(self, payload: str) -> None:
-        if payload in MOBILE_CONNECTION_LABEL_OPTIONS:
-            set_mobile_connection(payload, token=self._token)
-        else:
-            _LOGGER.warning("Ignoring unknown connection method %r", payload)
-        self.publish_state()
-
-    def _run(self, action: Any) -> None:
-        try:
-            action()
-        except (GatewayError, OSError, ValueError) as err:
-            _LOGGER.warning("MQTT command failed: %s", err)
 
     def _publish_loop(self) -> None:
         while not self._stop.wait(self._interval):

@@ -31,7 +31,6 @@ ACTIVE_CONNECTION_LABELS: dict[str, str] = {
     "iphone_usb": "USB (iPhone)",
 }
 
-MOBILE_CONNECTION_LABEL_OPTIONS: list[str] = list(MOBILE_CONNECTION_OPTIONS)
 MOBILE_CONNECTION_INTERNAL_LABELS: dict[str, str] = {
     internal: label for label, internal in MOBILE_CONNECTION_OPTIONS.items()
 }

@@ -2,23 +2,24 @@
 
 ## 0.7.0
 
-- Show friendlier entity statuses and labels over MQTT: enum sensors now
-  publish human-readable values such as "Waiting for device" and "Connected"
-  instead of raw internal names, the upstream health sensor is named "Internet
-  available" and the active connection sensor is named "Connected via".
+- Expose the gateway over MQTT discovery as status-only monitoring entities,
+  with no Home Assistant controls. Continue to control the gateway through the
+  add-on options. This removes the earlier Enabled switch and Reapply gateway
+  state button; the enabled state is now a read-only "Gateway enabled" binary
+  sensor and the mobile connection is a read-only "Connection method" sensor.
+- Show friendlier statuses and labels: enum sensors publish human-readable
+  values such as "Waiting for device", "Connected" and "USB (iPhone)", the
+  upstream health sensor is named "Internet available" and the active
+  connection sensor is named "Connected via".
 - Stop showing "unknown" for idle diagnostics: the public IP sensor reports
   "Offline" when there is no upstream, the downstream interface sensor reports
   "None" when no adapter is bound, and a missing active connection reads
   "Not connected".
-- Treat transient waiting conditions as normal rather than faults. While the
-  add-on is enabled and waiting, for example for a trusted iPhone or for the
-  Wi-Fi hotspot to associate, the gateway state now reads "Connecting" and the
-  "Last error" sensor reads "None". The "Last error" sensor reflects genuine
-  faults only, while the safety checks sensor keeps the full raw diagnostics.
-- Add a "Connection method" control that selects Wi-Fi hotspot, USB (iPhone) or
-  USB-preferred Wi-Fi fallback. Choosing a method writes the add-on option
-  through Supervisor and restarts the add-on to apply it. This replaces the
-  earlier read-only mobile connection sensor.
+- Stop reporting normal waiting as a fault. While the add-on is enabled and
+  waiting, for example for a trusted iPhone or for the Wi-Fi hotspot to
+  associate, the gateway state reads "Connecting" and the "Last error" sensor
+  reads "None". The "Last error" sensor reflects genuine non-transient faults
+  only, while the safety checks sensor keeps the full raw diagnostics.
 
 ## 0.6.1
 

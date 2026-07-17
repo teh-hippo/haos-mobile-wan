@@ -7,7 +7,6 @@ from .mqtt_labels import (
     GATEWAY_STATE_LABELS,
     MOBILE_CONNECTION_DEFAULT_LABEL,
     MOBILE_CONNECTION_INTERNAL_LABELS,
-    MOBILE_CONNECTION_LABEL_OPTIONS,
     NO_ACTIVE_CONNECTION_LABEL,
     NO_ERROR_LABEL,
     NO_INTERFACE_LABEL,
@@ -29,16 +28,10 @@ SUPPORT_URL = "https://github.com/teh-hippo/haos-mobile-wan"
 DISCOVERY_TOPIC = f"homeassistant/device/{OBJECT_ID}/config"
 AVAILABILITY_TOPIC = f"{OBJECT_ID}/availability"
 STATE_TOPIC = f"{OBJECT_ID}/state"
-ENABLED_COMMAND_TOPIC = f"{OBJECT_ID}/enabled/set"
-RECONCILE_COMMAND_TOPIC = f"{OBJECT_ID}/reconcile/press"
-MOBILE_CONNECTION_COMMAND_TOPIC = f"{OBJECT_ID}/mobile_connection/set"
 STATUS_TOPIC = "homeassistant/status"
 
 PAYLOAD_ONLINE = "online"
 PAYLOAD_OFFLINE = "offline"
-PAYLOAD_ON = "ON"
-PAYLOAD_OFF = "OFF"
-PAYLOAD_PRESS = "PRESS"
 PAYLOAD_BIRTH = "online"
 
 STATE_FIELDS = (
@@ -50,14 +43,32 @@ STATE_FIELDS = (
     "public_ip",
     "error",
     "upstream_healthy",
+    "enabled",
     "downstream_present",
     "rules_installed",
     "dnsmasq_running",
-    "enabled",
     "safety_errors",
 )
 
 _ENUM_SENSORS = (
+    (
+        "gateway_state",
+        "Gateway state",
+        "state",
+        GATEWAY_STATE_LABELS,
+        OFFLINE_LABEL,
+        "mdi:lan-connect",
+        True,
+    ),
+    (
+        "mobile_connection",
+        "Connection method",
+        "mobile_connection",
+        MOBILE_CONNECTION_INTERNAL_LABELS,
+        MOBILE_CONNECTION_DEFAULT_LABEL,
+        "mdi:connection",
+        True,
+    ),
     (
         "active_connection",
         "Connected via",
@@ -76,28 +87,18 @@ _ENUM_SENSORS = (
         "mdi:usb-port",
         False,
     ),
-    (
-        "gateway_state",
-        "Gateway state",
-        "state",
-        GATEWAY_STATE_LABELS,
-        OFFLINE_LABEL,
-        "mdi:lan-connect",
-        True,
-    ),
 )
 
 _TEXT_SENSORS = (
-    ("downstream_interface", "Downstream interface", "downstream_interface",
-     "mdi:ethernet", False, NO_INTERFACE_LABEL),
-    ("public_ip", "Public IP", "public_ip", "mdi:ip-network-outline", False,
-     OFFLINE_LABEL),
-    ("last_error", "Last error", "error", "mdi:alert-circle-outline", False,
-     NO_ERROR_LABEL),
+    ("downstream_interface", "Downstream interface", "mdi:ethernet", False,
+     NO_INTERFACE_LABEL),
+    ("public_ip", "Public IP", "mdi:ip-network-outline", False, OFFLINE_LABEL),
+    ("error", "Last error", "mdi:alert-circle-outline", True, NO_ERROR_LABEL),
 )
 
 _BINARY_SENSORS = (
     ("upstream_healthy", "Internet available", "connectivity", None, True),
+    ("enabled", "Gateway enabled", None, "mdi:wan", True),
     ("downstream_present", "Downstream interface present", None, "mdi:ethernet", False),
     ("rules_installed", "Gateway rules applied", "running", "mdi:firewall", False),
     ("dnsmasq_running", "DHCP server running", "running", "mdi:server-network", False),
@@ -106,10 +107,6 @@ _BINARY_SENSORS = (
 
 def _uid(key: str) -> str:
     return f"{OBJECT_ID}_{key}"
-
-
-def _value(field: str) -> str:
-    return "{{ value_json." + field + " }}"
 
 
 def _bool_value(field: str) -> str:
@@ -140,13 +137,11 @@ def _enum_sensor(spec: tuple[Any, ...]) -> dict[str, Any]:
 
 
 def _text_sensor(spec: tuple[Any, ...]) -> dict[str, Any]:
-    key, name, field, icon, enabled, fallback = spec
+    key, name, icon, enabled, fallback = spec
     component = _base(key, "sensor", name, enabled)
     component["entity_category"] = "diagnostic"
     component["state_topic"] = STATE_TOPIC
-    component["value_template"] = (
-        fallback_value_template(field, fallback) if fallback else _value(field)
-    )
+    component["value_template"] = fallback_value_template(key, fallback)
     component["icon"] = icon
     return component
 
@@ -177,39 +172,6 @@ def _safety_checks() -> dict[str, Any]:
     return component
 
 
-def _enabled_switch() -> dict[str, Any]:
-    component = _base("enabled", "switch", "Enabled", True)
-    component["entity_category"] = "config"
-    component["state_topic"] = STATE_TOPIC
-    component["value_template"] = _bool_value("enabled")
-    component["command_topic"] = ENABLED_COMMAND_TOPIC
-    component["icon"] = "mdi:wan"
-    return component
-
-
-def _mobile_connection_select() -> dict[str, Any]:
-    component = _base("mobile_connection", "select", "Connection method", True)
-    component["entity_category"] = "config"
-    component["state_topic"] = STATE_TOPIC
-    component["command_topic"] = MOBILE_CONNECTION_COMMAND_TOPIC
-    component["options"] = list(MOBILE_CONNECTION_LABEL_OPTIONS)
-    component["value_template"] = enum_value_template(
-        "mobile_connection",
-        MOBILE_CONNECTION_INTERNAL_LABELS,
-        MOBILE_CONNECTION_DEFAULT_LABEL,
-    )
-    component["icon"] = "mdi:connection"
-    return component
-
-
-def _reconcile_button() -> dict[str, Any]:
-    component = _base("reconcile", "button", "Reapply gateway state", False)
-    component["entity_category"] = "diagnostic"
-    component["command_topic"] = RECONCILE_COMMAND_TOPIC
-    component["icon"] = "mdi:sync"
-    return component
-
-
 def build_components() -> dict[str, dict[str, Any]]:
     components: dict[str, dict[str, Any]] = {}
     for spec in _ENUM_SENSORS:
@@ -218,10 +180,7 @@ def build_components() -> dict[str, dict[str, Any]]:
         components[spec[0]] = _text_sensor(spec)
     for spec in _BINARY_SENSORS:
         components[spec[0]] = _binary_sensor(spec)
-    components["mobile_connection"] = _mobile_connection_select()
     components["safety_checks"] = _safety_checks()
-    components["enabled"] = _enabled_switch()
-    components["reconcile"] = _reconcile_button()
     return components
 
 

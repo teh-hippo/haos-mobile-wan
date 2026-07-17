@@ -193,9 +193,9 @@ The Wi-Fi name and password must both be set or both be empty.
 | Wi-Fi gateway | `172.20.10.1` | Override the phone address |
 
 Options are read when the app starts. Restart the app after changing them.
-The app option controls startup state. The Home Assistant **Enabled** switch,
-published over MQTT, controls the current app process and does not rewrite saved
-app options.
+The **Enabled** option controls the gateway. The Home Assistant entities
+published over MQTT are status-only monitoring; they do not change app options
+or control the gateway.
 
 ## Upgrade to 0.4.0
 
@@ -285,23 +285,20 @@ broker add-on. Enable both before starting the add-on.
 
 The **HAOS Mobile WAN** device and its entities then appear automatically. The
 add-on refreshes their state while it runs, so no reload is needed after an
-add-on update. The entities include an **Enabled** switch, a **Connection
-method** selector, **Gateway state**, **Connected via**, **iPhone USB
-pairing**, **Internet available**, safety, interface and diagnostic sensors,
-and a **Reapply gateway state** button. Statuses read in plain language, and
-idle diagnostics avoid an "unknown" value: **Public IP** shows "Offline" until
-an upstream is up, the downstream interface shows "None" when no adapter is
-bound, and **Connected via** shows "Not connected" when no path is active.
+add-on update. The entities are status-only for monitoring; there are no Home
+Assistant controls, so continue to control the gateway through the add-on
+options. They include **Gateway enabled**, **Gateway state**, **Connection
+method**, **Connected via**, **iPhone USB pairing**, **Internet available**,
+safety, interface and diagnostic sensors, and a **Last error** sensor. Statuses
+read in plain language, and idle diagnostics avoid an "unknown" value: **Public
+IP** shows "Offline" until an upstream is up, the downstream interface shows
+"None" when no adapter is bound, and **Connected via** shows "Not connected"
+when no path is active.
 
 While the add-on is enabled and still waiting, for example for a trusted iPhone
 or for the Wi-Fi hotspot to associate, **Gateway state** reads "Connecting" and
 **Last error** reads "None". **Last error** reports genuine faults only, so use
 **Safety checks** and its attributes for the full raw diagnostic list.
-
-The **Connection method** selector chooses Wi-Fi hotspot, USB (iPhone) or
-USB-preferred Wi-Fi fallback. Unlike the **Enabled** switch, which controls
-only the running process, changing it rewrites the saved add-on option through
-Supervisor and restarts the add-on to apply the new method.
 
 Add the entities to a dashboard with any built-in card, for example an
 `entities` card:
@@ -310,9 +307,9 @@ Add the entities to a dashboard with any built-in card, for example an
 type: entities
 title: HAOS Mobile WAN
 entities:
-  - entity: switch.haos_mobile_wan_enabled
-  - entity: select.haos_mobile_wan_connection_method
+  - entity: binary_sensor.haos_mobile_wan_gateway_enabled
   - entity: sensor.haos_mobile_wan_gateway_state
+  - entity: sensor.haos_mobile_wan_connection_method
   - entity: sensor.haos_mobile_wan_connected_via
   - entity: binary_sensor.haos_mobile_wan_internet_available
   - entity: binary_sensor.haos_mobile_wan_safety_checks

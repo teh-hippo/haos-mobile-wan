@@ -87,9 +87,9 @@ Add the entities to any built-in card, for example an `entities` card:
 type: entities
 title: HAOS Mobile WAN
 entities:
-  - entity: switch.haos_mobile_wan_enabled
-  - entity: select.haos_mobile_wan_connection_method
+  - entity: binary_sensor.haos_mobile_wan_gateway_enabled
   - entity: sensor.haos_mobile_wan_gateway_state
+  - entity: sensor.haos_mobile_wan_connection_method
   - entity: sensor.haos_mobile_wan_connected_via
   - entity: binary_sensor.haos_mobile_wan_internet_available
   - entity: binary_sensor.haos_mobile_wan_safety_checks
@@ -99,12 +99,14 @@ entities:
 
 | Entity | Platform | Purpose |
 |---|---|---|
+| Gateway enabled | `binary_sensor` | Whether gateway service is enabled |
 | Internet available | `binary_sensor` | Whether the selected mobile connection passed its latest Internet health check |
 | Downstream interface present | `binary_sensor` | Whether the router-facing USB Ethernet adapter is present |
 | Gateway rules applied | `binary_sensor` | Whether forwarding, NAT and policy routing are active |
 | DHCP server running | `binary_sensor` | Whether the router WAN DHCP service is running |
 | Safety checks | `binary_sensor` | Whether current host and network checks pass |
 | Gateway state | `sensor` | Derived gateway state: disabled, offline, connecting or connected |
+| Connection method | `sensor` | Configured Wi-Fi, USB or USB-preferred strategy |
 | Connected via | `sensor` | Wi-Fi hotspot or USB (iPhone) currently carrying gateway traffic, or not connected |
 | iPhone USB pairing | `sensor` | Current iPhone trust, interface and DHCP state |
 | Downstream interface | `sensor` | Selected router-facing interface, or none |
@@ -113,16 +115,8 @@ entities:
 
 ### Control reference
 
-| Control | Platform | Behaviour |
-|---|---|---|
-| Enabled | `switch` | Enables or disables gateway service to the router |
-| Connection method | `select` | Selects the configured mobile path, then restarts the add-on to apply it |
-| Reapply gateway state | `button` | Runs reconciliation immediately |
-
-The switch represents user intent. If safety checks fail, it stays enabled
-while the gateway removes forwarding and retries automatically.
-It controls the current app process; the saved app option controls startup
-state after an app restart.
+The MQTT entities are status-only for monitoring. There are no Home Assistant
+control entities; control the gateway through the add-on options.
 
 ### Use cases
 
@@ -130,7 +124,7 @@ state after an app restart.
 - prefer the lower-latency iPhone USB connection while retaining Wi-Fi
   fallback;
 - alert when the mobile connection or gateway safety checks fail;
-- enable or disable the gateway from Home Assistant without using SSH.
+- monitor the mobile connection and gateway health from Home Assistant.
 
 ### Automation examples
 
@@ -146,7 +140,7 @@ automation:
         for: "00:02:00"
     conditions:
       - condition: state
-        entity_id: switch.haos_mobile_wan_enabled
+        entity_id: binary_sensor.haos_mobile_wan_gateway_enabled
         state: "on"
     actions:
       - action: persistent_notification.create
@@ -155,19 +149,24 @@ automation:
           message: Check the HAOS Mobile WAN safety and connection entities.
 ```
 
-Retry immediately after accepting iPhone trust:
+Notify when a genuine gateway fault appears:
 
 ```yaml
 automation:
-  - alias: Reapply Mobile WAN after iPhone trust
+  - alias: Mobile WAN error
     triggers:
       - trigger: state
-        entity_id: sensor.haos_mobile_wan_usb_pairing
-        to: "paired"
+        entity_id: sensor.haos_mobile_wan_last_error
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ states('sensor.haos_mobile_wan_last_error')
+             not in ['None', 'unknown', 'unavailable'] }}
     actions:
-      - action: button.press
-        target:
-          entity_id: button.haos_mobile_wan_reapply_gateway_state
+      - action: persistent_notification.create
+        data:
+          title: HAOS Mobile WAN error
+          message: "{{ states('sensor.haos_mobile_wan_last_error') }}"
 ```
 
 ### Supported hardware

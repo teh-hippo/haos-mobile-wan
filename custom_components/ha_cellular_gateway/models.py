@@ -8,6 +8,12 @@ GatewayMobileConnection: TypeAlias = Literal[
     "iphone_usb_wifi_fallback",
 ]
 GatewayActiveConnection: TypeAlias = Literal["wifi_hotspot", "iphone_usb"]
+GatewayState: TypeAlias = Literal[
+    "disabled",
+    "offline",
+    "connecting",
+    "connected",
+]
 GatewayPairingState: TypeAlias = Literal[
     "not_applicable",
     "not_ready",
@@ -49,6 +55,7 @@ class GatewayRuntimeConfig(TypedDict):
 
 
 class GatewayStatus(TypedDict):
+    state: GatewayState
     enabled: bool
     configured_enabled: bool
     active: bool

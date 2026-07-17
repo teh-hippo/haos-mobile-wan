@@ -100,6 +100,20 @@ DESCRIPTIONS = (
         icon="mdi:alert-circle-outline",
         value_fn=lambda data: data["last_error"],
     ),
+    GatewaySensorEntityDescription(
+        key="gateway_state",
+        translation_key="gateway_state",
+        device_class=SensorDeviceClass.ENUM,
+        options=[
+            "disabled",
+            "offline",
+            "connecting",
+            "connected",
+        ],
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:lan-connect",
+        value_fn=lambda data: data["state"],
+    ),
 )
 
 

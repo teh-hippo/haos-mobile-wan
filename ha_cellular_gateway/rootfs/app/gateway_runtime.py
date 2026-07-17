@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import time
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from .status_issues import build_status_issues
@@ -67,6 +68,12 @@ def status(engine: GatewayEngine) -> dict[str, object]:
             engine.connection_warnings,
         )
         return {
+            "state": _derive_state(
+                engine.enabled,
+                engine.applied,
+                engine.upstream_healthy,
+                engine.last_safety_errors,
+            ),
             "enabled": engine.enabled,
             "configured_enabled": engine.config.enabled,
             "active": engine.applied,
@@ -164,6 +171,21 @@ def stop(engine: GatewayEngine) -> None:
             raise
         if cleanup_error:
             raise cleanup_error
+
+
+def _derive_state(
+    enabled: bool,
+    applied: bool,
+    upstream_healthy: bool,
+    safety_errors: Iterable[str],
+) -> str:
+    if not enabled:
+        return "disabled"
+    if any(error != "Safety checks have not run yet" for error in safety_errors):
+        return "offline"
+    if applied and upstream_healthy:
+        return "connected"
+    return "connecting"
 
 
 def _status_config(engine: GatewayEngine) -> dict[str, object]:

@@ -23,6 +23,7 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 @pytest.fixture
 def status_payload() -> dict[str, object]:
     return {
+        "state": "connected",
         "enabled": True,
         "configured_enabled": False,
         "active": True,

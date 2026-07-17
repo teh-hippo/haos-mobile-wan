@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from homeassistant.components.button import ButtonEntityDescription
+from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.helpers.entity import EntityCategory
 
 from custom_components.ha_cellular_gateway import (
@@ -103,6 +104,13 @@ async def test_sensor_setup_and_values(runtime_coordinator) -> None:
     runtime_coordinator.data["mobile_connection"] = None
     assert created[0].native_value is None
 
+    state_sensor = next(
+        s for s in created if s.entity_description.key == "gateway_state"
+    )
+    assert state_sensor.native_value == "connected"
+    runtime_coordinator.data["state"] = "offline"
+    assert state_sensor.native_value == "offline"
+
 
 async def test_gateway_entity_sets_device_metadata(runtime_coordinator) -> None:
     gateway_entity = entity.GatewayEntity(
@@ -133,6 +141,16 @@ async def test_entity_description_metadata(runtime_coordinator) -> None:
         "wifi_hotspot",
         "iphone_usb",
     ]
+    assert sensor_desc_by_key["gateway_state"].options == [
+        "disabled",
+        "offline",
+        "connecting",
+        "connected",
+    ]
+    assert (
+        sensor_desc_by_key["gateway_state"].device_class is SensorDeviceClass.ENUM
+    )
+    assert sensor_desc_by_key["gateway_state"].entity_registry_enabled_default is True
     assert sensor_desc_by_key["upstream_pairing_state"].options == [
         "not_applicable",
         "not_ready",

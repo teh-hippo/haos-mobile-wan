@@ -156,6 +156,15 @@
       },
       "last_error": {
         "name": "Last error"
+      },
+      "gateway_state": {
+        "name": "Gateway state",
+        "state": {
+          "disabled": "Disabled",
+          "offline": "Offline",
+          "connecting": "Connecting",
+          "connected": "Connected"
+        }
       }
     }
   }

@@ -240,6 +240,29 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertTrue(status["upstream_healthy"])
         self.assertEqual(status["public_ip"], "203.0.113.10")
 
+    def test_status_reports_disabled_state_when_not_enabled(self) -> None:
+        self.assertFalse(self.engine.enabled)
+        self.assertEqual(self.engine.status()["state"], "disabled")
+
+    def test_status_reports_offline_state_when_blocked_by_safety_errors(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.last_safety_errors = ["Upstream interface is unavailable"]
+        self.assertEqual(engine.status()["state"], "offline")
+
+    def test_status_reports_connecting_state_before_applied_and_healthy(self) -> None:
+        engine = self._prepare_active_engine()
+        self.assertEqual(engine.status()["state"], "connecting")
+        engine.apply()
+        self.assertTrue(engine.applied)
+        self.assertFalse(engine.upstream_healthy)
+        self.assertEqual(engine.status()["state"], "connecting")
+
+    def test_status_reports_connected_state_when_applied_and_healthy(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply()
+        engine.upstream_healthy = True
+        self.assertEqual(engine.status()["state"], "connected")
+
     def test_upstream_change_invalidates_cached_health(self) -> None:
         wifi = ResolvedUpstream(
             connection=WIFI_HOTSPOT,

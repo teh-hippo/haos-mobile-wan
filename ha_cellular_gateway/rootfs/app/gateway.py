@@ -85,6 +85,8 @@ class GatewayEngine:
         self.last_downstream: str | None = None
         self.last_upstream: ResolvedUpstream | None = None
         self.active_connection: str | None = None
+        self._prev_iphone_present = False
+        self._prev_wifi_connected = False
         self.health_generation = 0
         self.connection_warnings: list[str] = []
         self.fallback_selected = False

@@ -67,6 +67,7 @@ def build_status_issues(
     connection_warnings: Iterable[str] = (),
     runtime_errors: Iterable[str] = (),
 ) -> list[dict[str, Any]]:
+    safety_error_list = list(safety_errors)
     issues: list[dict[str, Any]] = []
     seen: set[str] = set()
     suppressed_errors: set[str] = set()
@@ -79,7 +80,7 @@ def build_status_issues(
         if isinstance(pairing_message, str) and pairing_message:
             suppressed_errors.add(pairing_message)
 
-    for error in safety_errors:
+    for error in safety_error_list:
         if error == "Safety checks have not run yet" or error in suppressed_errors:
             continue
         issue = _issue_from_error(error) or _generic_issue(error)
@@ -99,7 +100,7 @@ def build_status_issues(
         seen.add(issue_id)
         issues.append(issue)
 
-    if last_error and not any(last_error == error for error in safety_errors):
+    if last_error and not safety_error_list:
         issue = _issue_from_error(last_error) or _generic_issue(last_error)
         if issue is not None:
             issue_id = str(issue["id"])

@@ -215,6 +215,28 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["id"], "upstream_driver_inactive")
 
+    def test_aggregate_transient_last_error_is_not_actionable(self) -> None:
+        pairing_message = (
+            "Connect a single trusted iPhone with Personal Hotspot enabled"
+        )
+        errors = [pairing_message, "Upstream interface is unavailable"]
+
+        result = build_status_issues(
+            errors,
+            "; ".join(errors),
+            {
+                "upstream_pairing_state": "waiting_for_device",
+                "upstream_pairing_message": pairing_message,
+            },
+        )
+
+        self.assertTrue(result)
+        self.assertTrue(all(issue["transient"] for issue in result))
+        self.assertNotIn(
+            "gateway_runtime_error",
+            {issue["id"] for issue in result},
+        )
+
     def test_multiple_distinct_errors_produce_distinct_issues(self) -> None:
         result = build_status_issues(
             [

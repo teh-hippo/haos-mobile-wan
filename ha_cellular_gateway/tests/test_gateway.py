@@ -269,6 +269,23 @@ class GatewayEngineTests(unittest.TestCase):
             status["safety_errors"], ["Upstream interface is unavailable"]
         )
 
+    def test_status_keeps_combined_usb_waiting_errors_healthy(self) -> None:
+        engine = self._prepare_active_engine()
+        pairing_message = (
+            "Connect a single trusted iPhone with Personal Hotspot enabled"
+        )
+        errors = [pairing_message, "Upstream interface is unavailable"]
+        engine.upstream.pairing_state = "waiting_for_device"
+        engine.upstream.pairing_message = pairing_message
+        engine.last_safety_errors = errors
+        engine.last_error = "; ".join(errors)
+
+        status = engine.status()
+
+        self.assertEqual(status["state"], "waiting")
+        self.assertEqual(status["health"], "healthy")
+        self.assertEqual(status["health_issues"], [])
+
     def test_status_reports_connecting_while_source_setup_is_in_progress(self) -> None:
         engine = self._prepare_active_engine()
         engine.upstream.pairing_state = "waiting_for_profile"

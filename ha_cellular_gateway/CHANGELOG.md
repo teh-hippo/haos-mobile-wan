@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1
+
+- Keep USB device absence as healthy waiting when the runtime records more than
+  one transient diagnostic. The aggregate diagnostic is no longer reclassified
+  as a generic actionable error.
+
 ## 0.8.0
 
 - Make Disabled genuinely dormant. The app no longer provisions or inspects

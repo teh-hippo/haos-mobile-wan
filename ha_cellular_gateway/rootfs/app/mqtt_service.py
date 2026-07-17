@@ -38,7 +38,7 @@ def read_mqtt_service(
     request = urllib.request.Request(
         MQTT_SERVICE_URL,
         method="GET",
-        headers={"Authorization": f"******"},
+        headers={"Authorization": f"Bearer {supervisor_token}"},
     )
     opener = urlopen or urllib.request.urlopen
     try:

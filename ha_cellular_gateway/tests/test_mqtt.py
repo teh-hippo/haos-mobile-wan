@@ -391,10 +391,14 @@ class GracefulDegradationTests(unittest.TestCase):
             }
         ).encode()
 
-        def opener(*_args, **_kwargs):
+        captured = {}
+
+        def opener(request, *_args, **_kwargs):
+            captured["auth"] = request.get_header("Authorization")
             return SimpleNamespace(read=lambda: body)
 
         credentials = read_mqtt_service(token="t", urlopen=opener)
+        self.assertEqual(captured["auth"], "Bearer t")
         self.assertEqual(credentials.host, "core-mosquitto")
         self.assertEqual(credentials.port, 1883)
         self.assertEqual(credentials.username, "addons")

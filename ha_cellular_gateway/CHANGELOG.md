@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1
+
+- Fix the MQTT broker credential lookup: the Supervisor request sent a
+  malformed authorization header, so the add-on could not read the MQTT
+  service and started without discovery.
+
 ## 0.6.0
 
 - Publish the gateway device and entities to Home Assistant through built-in

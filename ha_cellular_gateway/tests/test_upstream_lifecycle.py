@@ -9,9 +9,12 @@ from rootfs.app.upstream_lifecycle import RETRY_SECONDS, UpstreamLifecycle
 class FakeIPhone:
     def __init__(self) -> None:
         self.cleanup_calls = 0
+        self.cleanup_error: OSError | None = None
 
     def cleanup(self) -> None:
         self.cleanup_calls += 1
+        if self.cleanup_error is not None:
+            raise self.cleanup_error
 
 
 class UpstreamLifecycleTests(unittest.TestCase):
@@ -63,6 +66,28 @@ class UpstreamLifecycleTests(unittest.TestCase):
 
         self.assertEqual(calls, [])
         self.assertIn("management interface", lifecycle.error or "")
+
+    def test_unknown_management_interface_is_never_reconfigured(self) -> None:
+        calls: list[bool] = []
+        lifecycle, _ = self._lifecycle(
+            lambda config, *, enabled: calls.append(enabled) or None
+        )
+
+        lifecycle.deactivate(None)
+
+        self.assertEqual(calls, [])
+        self.assertIn("Management interface is unavailable", lifecycle.error or "")
+
+    def test_usb_cleanup_failure_is_reported_without_escaping(self) -> None:
+        lifecycle, iphone = self._lifecycle(
+            lambda config, *, enabled: None
+        )
+        iphone.cleanup_error = ProcessLookupError("already stopped")
+
+        lifecycle.deactivate("eth0")
+
+        self.assertIn("iPhone USB cleanup failed", lifecycle.error or "")
+        self.assertEqual(iphone.cleanup_calls, 1)
 
     def test_failed_hotspot_change_is_rate_limited(self) -> None:
         now = [100.0]

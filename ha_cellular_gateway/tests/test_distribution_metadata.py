@@ -47,13 +47,12 @@ class DistributionMetadataTests(unittest.TestCase):
             "| Downstream interface present | `binary_sensor` |",
             "| Gateway rules applied | `binary_sensor` |",
             "| DHCP server running | `binary_sensor` |",
-            "| Safety checks | `binary_sensor` |",
             "| Gateway state | `sensor` |",
+            "| Health | `sensor` |",
             "| Connection method | `sensor` |",
             "| Connected via | `sensor` |",
             "| iPhone USB pairing | `sensor` |",
             "| Public IP | `sensor` |",
-            "| Last error | `sensor` |",
         ):
             self.assertIn(table_row, text)
         self.assertIn("MQTT discovery", text)

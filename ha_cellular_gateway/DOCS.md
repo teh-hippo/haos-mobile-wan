@@ -186,6 +186,7 @@ The Wi-Fi name and password must both be set or both be empty.
 
 | Option | Default | Use |
 |---|---|---|
+| Auto-disable after disconnect | `30` minutes | Persist Enabled off after this long without an active gateway; use `0` to disable |
 | Router adapter MAC address | Automatic | Select between multiple USB Ethernet adapters |
 | Router WAN address | `192.168.80.1/24` | Avoid a subnet overlap |
 | Wi-Fi interface | `wlan0` | Override the hotspot interface |
@@ -214,14 +215,14 @@ select entities are not retained.
 ## Commission the gateway
 
 1. Start the app with **Enabled** off.
-2. Review the logs, **Safety checks**, **USB pairing** and **Last error**.
-3. Resolve every host or ownership error.
-4. If using USB, connect and trust the iPhone.
-5. Confirm the selected mobile connection is ready while the gateway remains
-   disabled.
-6. Connect the prepared USB Ethernet adapter only to the intended router WAN
+2. Review the logs and confirm **Health** is healthy.
+3. Resolve every host or ownership issue.
+4. Connect the prepared USB Ethernet adapter only to the intended router WAN
    port.
-7. Turn **Enabled** on.
+5. Turn **Enabled** on.
+6. If using USB, connect and trust the iPhone. If using Wi-Fi, enable the phone
+   hotspot.
+7. Confirm **Gateway state** moves through Waiting or Connecting to Connected.
 8. Confirm the router receives the single WAN lease.
 9. Confirm DNS and HTTPS traffic use the selected mobile connection.
 10. Confirm Home Assistant remains reachable through management Ethernet.
@@ -289,16 +290,14 @@ add-on update. The entities are status-only for monitoring; there are no Home
 Assistant controls, so continue to control the gateway through the add-on
 options. They include **Gateway enabled**, **Gateway state**, **Connection
 method**, **Connected via**, **iPhone USB pairing**, **Internet available**,
-safety, interface and diagnostic sensors, and a **Last error** sensor. Statuses
-read in plain language, and idle diagnostics avoid an "unknown" value: **Public
-IP** shows "Offline" until an upstream is up, the downstream interface shows
-"Not present" when no adapter is bound, and **Connected via** shows "Not
-connected" when no path is active.
+**Health**, interface and diagnostic sensors. Statuses read in plain language:
+**Public IP** and **Connected via** show "Not connected" when no path is active,
+and the downstream interface shows "Not present" when no adapter is bound.
 
-While the add-on is enabled and still waiting, for example for a trusted iPhone
-or for the Wi-Fi hotspot to associate, **Gateway state** reads "Connecting" and
-**Last error** reads "No error". **Last error** reports genuine faults only, so
-use **Safety checks** and its attributes for the full raw diagnostic list.
+Normal source absence reads "Waiting for iPhone", "Waiting for hotspot" or
+"Waiting", depending on the configured method. **Health** remains "Healthy"
+during normal waiting and changes to "Attention needed" only for actionable
+issues, which are included in its attributes.
 
 Add the entities to a dashboard with any built-in card, for example an
 `entities` card:
@@ -308,11 +307,21 @@ type: entities
 title: HAOS Mobile WAN
 entities:
   - entity: binary_sensor.haos_mobile_wan_gateway_enabled
+    name: Gateway enabled
   - entity: sensor.haos_mobile_wan_gateway_state
+    name: Gateway state
+  - entity: sensor.haos_mobile_wan_health
+    name: Health
   - entity: sensor.haos_mobile_wan_connection_method
+    name: Connection method
   - entity: sensor.haos_mobile_wan_connected_via
+    name: Connected via
   - entity: binary_sensor.haos_mobile_wan_internet_available
-  - entity: binary_sensor.haos_mobile_wan_safety_checks
+    name: Internet available
+  - entity: sensor.haos_mobile_wan_iphone_usb_pairing
+    name: iPhone USB pairing
+  - entity: sensor.haos_mobile_wan_public_ip
+    name: Public IP
 ```
 
 The add-on still serves `GET /v2/status` and `/health` on the Supervisor-side

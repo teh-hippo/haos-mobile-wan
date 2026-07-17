@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import subprocess
 import time
 from collections.abc import Callable
 
 from .config import GatewayConfig
+from .errors import GatewayError
 from .hotspot import configure_hotspot
 from .upstream_iphone import IPhoneUsbUpstream
 
@@ -35,10 +37,26 @@ class UpstreamLifecycle:
         self._set_hotspot(True, management_interface)
 
     def deactivate(self, management_interface: str | None) -> None:
+        iphone_error: str | None = None
         if not self._iphone_dormant:
-            self.iphone.cleanup()
-            self._iphone_dormant = True
+            try:
+                self.iphone.cleanup()
+            except (
+                GatewayError,
+                OSError,
+                subprocess.SubprocessError,
+                ValueError,
+            ) as err:
+                iphone_error = f"iPhone USB cleanup failed: {err}"
+            else:
+                self._iphone_dormant = True
         self._set_hotspot(False, management_interface)
+        if iphone_error:
+            self.error = (
+                f"{iphone_error}; {self.error}"
+                if self.error
+                else iphone_error
+            )
 
     def _set_hotspot(
         self,
@@ -51,6 +69,11 @@ class UpstreamLifecycle:
         ):
             self.error = None
             self._hotspot_enabled = enabled
+            return
+        if management_interface is None:
+            self.error = (
+                "Management interface is unavailable; hotspot state was not changed"
+            )
             return
         if management_interface == self.config.upstream_interface:
             self.error = (

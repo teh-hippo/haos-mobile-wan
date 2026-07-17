@@ -53,7 +53,11 @@ _EXACT_ERRORS: dict[str, tuple[str, str | None, str]] = {
     "USB device access is unavailable; enable the app usb permission": ("upstream_usb_access_unavailable", "upstream_configuration", "USB device access is unavailable; enable the app USB permission"),
 }
 
-_TRANSIENT_EXACT = {"Upstream interface is unavailable", "Upstream interface/address is not active"}
+_TRANSIENT_EXACT = {
+    "Hotspot Wi-Fi is enabled but not associated",
+    "Upstream interface is unavailable",
+    "Upstream interface/address is not active",
+}
 
 
 def build_status_issues(
@@ -61,6 +65,7 @@ def build_status_issues(
     last_error: str | None,
     upstream_status: dict[str, Any],
     connection_warnings: Iterable[str] = (),
+    runtime_errors: Iterable[str] = (),
 ) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -77,9 +82,7 @@ def build_status_issues(
     for error in safety_errors:
         if error == "Safety checks have not run yet" or error in suppressed_errors:
             continue
-        issue = _issue_from_error(error)
-        if issue is None:
-            continue
+        issue = _issue_from_error(error) or _generic_issue(error)
         issue_id = str(issue["id"])
         if issue_id in seen:
             continue
@@ -97,11 +100,19 @@ def build_status_issues(
         issues.append(issue)
 
     if last_error and not any(last_error == error for error in safety_errors):
-        issue = _issue_from_error(last_error)
+        issue = _issue_from_error(last_error) or _generic_issue(last_error)
         if issue is not None:
             issue_id = str(issue["id"])
             if issue_id not in seen:
+                seen.add(issue_id)
                 issues.append(issue)
+
+    for error in runtime_errors:
+        issue = _issue_from_error(error) or _generic_issue(error)
+        issue_id = str(issue["id"])
+        if issue_id not in seen:
+            seen.add(issue_id)
+            issues.append(issue)
 
     return issues
 
@@ -158,7 +169,21 @@ def _issue_from_error(error: str) -> dict[str, Any] | None:
         return _issue("safety_inspection_failed", "host_configuration", "The gateway could not complete its safety inspection")
     if error.startswith("Activation failed:"):
         return _issue("activation_failed", "host_configuration", "The gateway could not apply the requested network state")
+    if error.startswith("Auto-disable option update failed:"):
+        return _issue("auto_disable_update_failed", None, error)
+    if error.startswith("Auto-disable cleanup failed:"):
+        return _issue("auto_disable_cleanup_failed", None, error)
+    if error.startswith("Auto-disable state persistence failed:"):
+        return _issue("auto_disable_state_failed", None, error)
+    if error.startswith("Hotspot Wi-Fi deactivation failed:"):
+        return _issue("hotspot_deactivation_failed", None, error)
+    if error == "Hotspot Wi-Fi interface is the management interface":
+        return _issue("hotspot_management_overlap", None, error)
     return None
+
+
+def _generic_issue(error: str) -> dict[str, Any]:
+    return _issue("gateway_runtime_error", None, error)
 
 
 def _issue(

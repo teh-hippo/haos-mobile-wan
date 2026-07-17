@@ -53,9 +53,10 @@ sources based on connection readiness, not an external connectivity probe.
 The app starts disabled and uses manual boot. Before enabling it:
 
 1. choose a **Mobile connection**;
-2. optionally enter the Wi-Fi hotspot name and password;
-3. prepare one USB Ethernet adapter for the router WAN;
-4. follow the [commissioning guide](ha_cellular_gateway/DOCS.md).
+2. set the automatic disable delay, or use `0` to keep the gateway enabled;
+3. optionally enter the Wi-Fi hotspot name and password;
+4. prepare one USB Ethernet adapter for the router WAN;
+5. follow the [commissioning guide](ha_cellular_gateway/DOCS.md).
 
 The normal form contains only the settings needed for everyday use. Interface,
 address and adapter overrides remain available under unused optional settings.
@@ -88,11 +89,21 @@ type: entities
 title: HAOS Mobile WAN
 entities:
   - entity: binary_sensor.haos_mobile_wan_gateway_enabled
+    name: Gateway enabled
   - entity: sensor.haos_mobile_wan_gateway_state
+    name: Gateway state
+  - entity: sensor.haos_mobile_wan_health
+    name: Health
   - entity: sensor.haos_mobile_wan_connection_method
+    name: Connection method
   - entity: sensor.haos_mobile_wan_connected_via
+    name: Connected via
   - entity: binary_sensor.haos_mobile_wan_internet_available
-  - entity: binary_sensor.haos_mobile_wan_safety_checks
+    name: Internet available
+  - entity: sensor.haos_mobile_wan_iphone_usb_pairing
+    name: iPhone USB pairing
+  - entity: sensor.haos_mobile_wan_public_ip
+    name: Public IP
 ```
 
 ### Entity reference
@@ -104,14 +115,13 @@ entities:
 | Downstream interface present | `binary_sensor` | Whether the router-facing USB Ethernet adapter is present |
 | Gateway rules applied | `binary_sensor` | Whether forwarding, NAT and policy routing are active |
 | DHCP server running | `binary_sensor` | Whether the router WAN DHCP service is running |
-| Safety checks | `binary_sensor` | Whether current host and network checks pass |
-| Gateway state | `sensor` | Derived gateway state: disabled, offline, connecting or connected |
+| Gateway state | `sensor` | Disabled, waiting, connecting, connected or error |
+| Health | `sensor` | Healthy or attention needed, with actionable issues as attributes |
 | Connection method | `sensor` | Configured Wi-Fi, USB or USB-preferred strategy |
 | Connected via | `sensor` | Wi-Fi hotspot or USB (iPhone) currently carrying gateway traffic, or not connected |
 | iPhone USB pairing | `sensor` | Current iPhone trust, interface and DHCP state |
 | Downstream interface | `sensor` | Selected router-facing interface, or not present |
-| Public IP | `sensor` | Public IPv4 address seen through the mobile connection, or offline |
-| Last error | `sensor` | Latest genuine gateway fault, or no error while only transient waiting conditions apply |
+| Public IP | `sensor` | Public IPv4 address seen through the mobile connection, or not connected |
 
 ### Control reference
 
@@ -123,50 +133,27 @@ control entities; control the gateway through the add-on options.
 - keep the home network online through a phone during an ISP outage;
 - prefer the lower-latency iPhone USB connection while retaining Wi-Fi
   fallback;
-- alert when the mobile connection or gateway safety checks fail;
+- alert when gateway Health needs attention;
 - monitor the mobile connection and gateway health from Home Assistant.
 
 ### Automation examples
 
-Notify when the gateway is enabled but no rules are applied for two minutes:
+Notify when gateway Health needs attention:
 
 ```yaml
 automation:
-  - alias: Mobile WAN unavailable
+  - alias: Mobile WAN needs attention
     triggers:
       - trigger: state
-        entity_id: binary_sensor.haos_mobile_wan_gateway_rules_applied
-        to: "off"
-        for: "00:02:00"
-    conditions:
-      - condition: state
-        entity_id: binary_sensor.haos_mobile_wan_gateway_enabled
-        state: "on"
+        entity_id: sensor.haos_mobile_wan_health
+        to: "Attention needed"
     actions:
       - action: persistent_notification.create
         data:
-          title: Mobile WAN unavailable
-          message: Check the HAOS Mobile WAN safety and connection entities.
-```
-
-Notify when a genuine gateway fault appears:
-
-```yaml
-automation:
-  - alias: Mobile WAN error
-    triggers:
-      - trigger: state
-        entity_id: sensor.haos_mobile_wan_last_error
-    conditions:
-      - condition: template
-        value_template: >-
-          {{ states('sensor.haos_mobile_wan_last_error')
-             not in ['None', 'unknown', 'unavailable'] }}
-    actions:
-      - action: persistent_notification.create
-        data:
-          title: HAOS Mobile WAN error
-          message: "{{ states('sensor.haos_mobile_wan_last_error') }}"
+          title: HAOS Mobile WAN needs attention
+          message: >-
+            {{ state_attr('sensor.haos_mobile_wan_health', 'issues')
+               | join('; ') }}
 ```
 
 ### Supported hardware
@@ -207,7 +194,7 @@ addressing, interface names and iPhone identifiers.
 
 | Problem | Check |
 |---|---|
-| The gateway remains inactive while Enabled is on | Review **Safety checks** and **Last error** |
+| The gateway remains inactive while Enabled is on | Review **Gateway state** and **Health** |
 | USB is not selected | Unlock the iPhone, enable **Allow Others to Join** under Personal Hotspot, accept Trust, check `ipheth`, and confirm no other `ipheth` profile is configured in HAOS |
 | Wi-Fi fallback is unavailable | Check the Wi-Fi hotspot profile and app credentials, then restart the app |
 | The router receives no WAN lease | Confirm the router-facing USB adapter has HAOS IPv4 and IPv6 disabled |

@@ -37,6 +37,7 @@ class AutoDisable:
         self.pending = False
         self.option_error: str | None = None
         self.runtime_error: str | None = None
+        self.persistence_error: str | None = None
         self._retry_at = 0.0
         self.state_error = self._restore(state.get("auto_disable"))
         if not config.enabled or self.minutes == 0:
@@ -48,7 +49,12 @@ class AutoDisable:
 
     @property
     def error(self) -> str | None:
-        return self.option_error or self.runtime_error or self.state_error
+        return (
+            self.option_error
+            or self.persistence_error
+            or self.runtime_error
+            or self.state_error
+        )
 
     @property
     def deadline_iso(self) -> str | None:
@@ -71,14 +77,14 @@ class AutoDisable:
             confirmed = self._confirm_persisted_disable()
             if confirmed:
                 engine.enabled = False
-                engine._persist_state()
+                self._persist(engine)
                 return
             changed = False
             if self.pending:
                 engine.enabled = False
                 changed = self._write_disable_if_due() or changed
-                if changed:
-                    engine._persist_state()
+                if changed or self.persistence_error:
+                    self._persist(engine)
                 return
             if not engine.enabled or self.minutes == 0:
                 changed = self._clear_deadline() or changed
@@ -90,18 +96,19 @@ class AutoDisable:
             elif self.clock() >= self.deadline:
                 self.deadline = None
                 self.pending = True
-                engine._persist_state()
                 engine.enabled = False
                 self._disable_runtime(engine)
+                self._persist(engine)
                 changed = self._write_disable_if_due(force=True) or changed
-            if changed:
-                engine._persist_state()
+            if changed or self.persistence_error:
+                self._persist(engine)
 
     def clear(self) -> None:
         self.deadline = None
         self.pending = False
         self.option_error = None
         self.runtime_error = None
+        self.persistence_error = None
         self._retry_at = 0.0
 
     def _restore(self, value: object) -> str | None:
@@ -174,4 +181,15 @@ class AutoDisable:
         if error == self.option_error:
             return False
         self.option_error = error
+        return True
+
+    def _persist(self, engine: GatewayEngine) -> bool:
+        try:
+            engine._persist_state()
+        except (OSError, ValueError) as err:
+            self.persistence_error = (
+                f"Auto-disable state persistence failed: {err}"
+            )
+            return False
+        self.persistence_error = None
         return True

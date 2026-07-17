@@ -37,9 +37,11 @@ class StatusIssuesTests(unittest.TestCase):
                 )
                 self.assertTrue(result[0]["repairable"])
 
-    def test_unknown_safety_error_is_ignored(self) -> None:
+    def test_unknown_safety_error_fails_visible(self) -> None:
         result = build_status_issues(["Some random unknown error"], None, {})
-        self.assertEqual(result, [])
+        self.assertEqual(result[0]["id"], "gateway_runtime_error")
+        self.assertEqual(result[0]["message"], "Some random unknown error")
+        self.assertFalse(result[0]["transient"])
 
     def test_configuration_load_error_is_repairable(self) -> None:
         result = build_status_issues(
@@ -65,6 +67,29 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertIsNone(issue["translation_key"])
         self.assertFalse(issue["repairable"])
         self.assertTrue(issue["transient"])
+
+    def test_missing_hotspot_is_a_transient_waiting_issue(self) -> None:
+        result = build_status_issues(
+            ["Hotspot Wi-Fi is enabled but not associated"],
+            None,
+            {},
+        )
+
+        self.assertEqual(result[0]["id"], "hotspot_not_associated")
+        self.assertTrue(result[0]["transient"])
+
+    def test_runtime_option_failure_is_actionable(self) -> None:
+        result = build_status_issues(
+            [],
+            None,
+            {},
+            runtime_errors=[
+                "Auto-disable option update failed: Supervisor unavailable"
+            ],
+        )
+
+        self.assertEqual(result[0]["id"], "auto_disable_update_failed")
+        self.assertFalse(result[0]["transient"])
 
     def test_stable_upstream_pairing_state_produces_repairable_issue(self) -> None:
         result = build_status_issues(
@@ -233,7 +258,10 @@ class StatusIssuesTests(unittest.TestCase):
         result = build_status_issues(
             ["waiting for NetworkManager"],
             None,
-            {"upstream_pairing_state": "waiting_for_profile"},
+            {
+                "upstream_pairing_state": "waiting_for_profile",
+                "upstream_pairing_message": "waiting for NetworkManager",
+            },
         )
         self.assertEqual(len(result), 1)
         issue = result[0]
@@ -317,7 +345,7 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertTrue(issue["repairable"])
         self.assertFalse(issue["transient"])
 
-    def test_hotspot_not_associated_is_repairable(self) -> None:
+    def test_hotspot_not_associated_is_transient(self) -> None:
         result = build_status_issues(
             ["Hotspot Wi-Fi is enabled but not associated"], None, {}
         )
@@ -325,8 +353,8 @@ class StatusIssuesTests(unittest.TestCase):
         issue = result[0]
         self.assertEqual(issue["id"], "hotspot_not_associated")
         self.assertEqual(issue["translation_key"], "hotspot_not_associated")
-        self.assertTrue(issue["repairable"])
-        self.assertFalse(issue["transient"])
+        self.assertFalse(issue["repairable"])
+        self.assertTrue(issue["transient"])
 
     def test_hotspot_wifi_faults_are_distinct_issues(self) -> None:
         result = build_status_issues(

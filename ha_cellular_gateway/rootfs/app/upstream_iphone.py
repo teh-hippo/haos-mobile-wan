@@ -82,6 +82,7 @@ class IPhoneUsbUpstream:
         management: ManagementBaseline | None = None,
     ) -> UpstreamResolution:
         self._reset_status()
+        self.pairing_state = "not_ready"
 
         errors = self.runtime.capability_errors()
         if errors:
@@ -213,7 +214,7 @@ class IPhoneUsbUpstream:
         self._last_lease = None
 
     def _reset_status(self) -> None:
-        self.pairing_state = "not_ready"
+        self.pairing_state = "not_applicable"
         self.pairing_message = None
         self.device_udid = None
         self.interface = None

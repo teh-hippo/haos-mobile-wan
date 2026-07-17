@@ -3,7 +3,7 @@ from __future__ import annotations
 from .const import DEFAULT_MOBILE_CONNECTION_OPTION, MOBILE_CONNECTION_OPTIONS
 
 UPSTREAM_PAIRING_STATE_LABELS: dict[str, str] = {
-    "not_applicable": "Not applicable",
+    "not_applicable": "Not active",
     "not_ready": "Not ready",
     "waiting_for_device": "Waiting for device",
     "multiple_devices": "Multiple devices",
@@ -21,9 +21,21 @@ UPSTREAM_PAIRING_STATE_LABELS: dict[str, str] = {
 
 GATEWAY_STATE_LABELS: dict[str, str] = {
     "disabled": "Disabled",
-    "offline": "Offline",
+    "waiting": "Waiting",
     "connecting": "Connecting",
     "connected": "Connected",
+    "error": "Error",
+}
+
+GATEWAY_WAITING_LABELS: dict[str, str] = {
+    "iphone_usb": "Waiting for iPhone",
+    "wifi_hotspot": "Waiting for hotspot",
+    "iphone_usb_wifi_fallback": "Waiting",
+}
+
+HEALTH_LABELS: dict[str, str] = {
+    "healthy": "Healthy",
+    "attention": "Attention needed",
 }
 
 ACTIVE_CONNECTION_LABELS: dict[str, str] = {
@@ -37,9 +49,8 @@ MOBILE_CONNECTION_INTERNAL_LABELS: dict[str, str] = {
 MOBILE_CONNECTION_DEFAULT_LABEL = DEFAULT_MOBILE_CONNECTION_OPTION
 
 NO_ACTIVE_CONNECTION_LABEL = "Not connected"
-OFFLINE_LABEL = "Offline"
+NOT_CONNECTED_LABEL = "Not connected"
 NO_INTERFACE_LABEL = "Not present"
-NO_ERROR_LABEL = "No error"
 UNKNOWN_PAIRING_LABEL = UPSTREAM_PAIRING_STATE_LABELS["not_applicable"]
 
 
@@ -65,6 +76,17 @@ def enum_value_template(field: str, labels: dict[str, str], default: str) -> str
 def fallback_value_template(field: str, fallback: str) -> str:
     expr = "value_json." + field
     return "{{ " + expr + " if " + expr + " else " + _quote(fallback) + " }}"
+
+
+def gateway_state_value_template() -> str:
+    return (
+        "{{ "
+        + _jinja_mapping(GATEWAY_WAITING_LABELS)
+        + ".get(value_json.mobile_connection, 'Waiting')"
+        + " if value_json.state == 'waiting' else "
+        + _jinja_mapping(GATEWAY_STATE_LABELS)
+        + ".get(value_json.state, 'Error') }}"
+    )
 
 
 def _jinja_mapping(labels: dict[str, str]) -> str:

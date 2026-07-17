@@ -13,6 +13,7 @@ from rootfs.app.const import (
 from rootfs.app.errors import GatewayError, SafetyError
 from rootfs.app.gateway import GatewayEngine
 from rootfs.app.hotspot import WIFI_ADAPTER_DISABLED, WIFI_NOT_ASSOCIATED
+from rootfs.app.management import ManagementBaseline
 from rootfs.app.upstream_iphone import IPhoneUsbUpstream
 from rootfs.app.upstream_models import ResolvedUpstream
 
@@ -245,36 +246,42 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertFalse(self.engine.enabled)
         self.assertEqual(self.engine.status()["state"], "disabled")
 
-    def test_status_reports_offline_state_when_blocked_by_genuine_fault(self) -> None:
+    def test_status_reports_error_and_attention_for_genuine_fault(self) -> None:
         engine = self._prepare_active_engine()
         engine.last_safety_errors = ["Management interface is unavailable"]
         status = engine.status()
-        self.assertEqual(status["state"], "offline")
-        self.assertEqual(status["error"], "The management interface is unavailable")
+        self.assertEqual(status["state"], "error")
+        self.assertEqual(status["health"], "attention")
+        self.assertEqual(
+            status["health_issues"],
+            ["The management interface is unavailable"],
+        )
 
-    def test_status_treats_waiting_upstream_condition_as_connecting(self) -> None:
+    def test_status_treats_missing_upstream_as_healthy_waiting(self) -> None:
         engine = self._prepare_active_engine()
         engine.last_error = None
         engine.last_safety_errors = ["Upstream interface is unavailable"]
         status = engine.status()
-        self.assertEqual(status["state"], "connecting")
-        self.assertIsNone(status["error"])
+        self.assertEqual(status["state"], "waiting")
+        self.assertEqual(status["health"], "healthy")
+        self.assertEqual(status["health_issues"], [])
         self.assertEqual(
             status["safety_errors"], ["Upstream interface is unavailable"]
         )
 
-    def test_status_reports_connecting_state_before_applied_and_healthy(self) -> None:
+    def test_status_reports_connecting_while_source_setup_is_in_progress(self) -> None:
         engine = self._prepare_active_engine()
+        engine.upstream.pairing_state = "waiting_for_profile"
         self.assertEqual(engine.status()["state"], "connecting")
         engine.apply()
         self.assertTrue(engine.applied)
         self.assertFalse(engine.upstream_healthy)
-        self.assertEqual(engine.status()["state"], "connecting")
+        self.assertEqual(engine.status()["state"], "connected")
 
-    def test_status_reports_connected_state_when_applied_and_healthy(self) -> None:
+    def test_status_reports_connected_when_gateway_is_applied(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply()
-        engine.upstream_healthy = True
+        engine.upstream_healthy = False
         self.assertEqual(engine.status()["state"], "connected")
 
     def test_upstream_change_invalidates_cached_health(self) -> None:
@@ -983,6 +990,29 @@ class GatewayEngineTests(unittest.TestCase):
             engine.stop()
 
         self.assertTrue(upstream_cleaned)
+
+    def test_stop_deactivates_managed_hotspot(self) -> None:
+        values = sysctl_values()
+        engine = GatewayEngine(
+            make_config(
+                enabled=False,
+                hotspot_ssid="Phone",
+                hotspot_password="supersecret",
+            ),
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        engine.management = ManagementBaseline("eth0", "192.168.1.2/24")
+        engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
+        calls: list[bool] = []
+        engine.upstream_lifecycle.configure = (
+            lambda config, *, enabled: calls.append(enabled) or None
+        )
+
+        engine.stop()
+
+        self.assertEqual(calls, [False])
 
     def test_stop_after_detected_usb_does_not_flush_external_interface(self) -> None:
         values = sysctl_values()

@@ -5,17 +5,18 @@ from typing import Any
 from .mqtt_labels import (
     ACTIVE_CONNECTION_LABELS,
     GATEWAY_STATE_LABELS,
+    HEALTH_LABELS,
     MOBILE_CONNECTION_DEFAULT_LABEL,
     MOBILE_CONNECTION_INTERNAL_LABELS,
     NO_ACTIVE_CONNECTION_LABEL,
-    NO_ERROR_LABEL,
     NO_INTERFACE_LABEL,
-    OFFLINE_LABEL,
+    NOT_CONNECTED_LABEL,
     UNKNOWN_PAIRING_LABEL,
     UPSTREAM_PAIRING_STATE_LABELS,
     enum_options,
     enum_value_template,
     fallback_value_template,
+    gateway_state_value_template,
 )
 
 OBJECT_ID = "haos_mobile_wan"
@@ -41,25 +42,17 @@ STATE_FIELDS = (
     "upstream_pairing_state",
     "downstream_interface",
     "public_ip",
-    "error",
+    "health",
+    "health_issues",
+    "auto_disable_at",
     "upstream_healthy",
     "enabled",
     "downstream_present",
     "rules_installed",
     "dnsmasq_running",
-    "safety_errors",
 )
 
 _ENUM_SENSORS = (
-    (
-        "gateway_state",
-        "Gateway state",
-        "state",
-        GATEWAY_STATE_LABELS,
-        OFFLINE_LABEL,
-        "mdi:lan-connect",
-        True,
-    ),
     (
         "mobile_connection",
         "Connection method",
@@ -85,15 +78,20 @@ _ENUM_SENSORS = (
         UPSTREAM_PAIRING_STATE_LABELS,
         UNKNOWN_PAIRING_LABEL,
         "mdi:usb-port",
-        False,
+        True,
     ),
 )
 
 _TEXT_SENSORS = (
     ("downstream_interface", "Downstream interface", "mdi:ethernet", False,
      NO_INTERFACE_LABEL),
-    ("public_ip", "Public IP", "mdi:ip-network-outline", False, OFFLINE_LABEL),
-    ("error", "Last error", "mdi:alert-circle-outline", True, NO_ERROR_LABEL),
+    (
+        "public_ip",
+        "Public IP",
+        "mdi:ip-network-outline",
+        True,
+        NOT_CONNECTED_LABEL,
+    ),
 )
 
 _BINARY_SENSORS = (
@@ -136,6 +134,48 @@ def _enum_sensor(spec: tuple[Any, ...]) -> dict[str, Any]:
     return component
 
 
+def _gateway_state() -> dict[str, Any]:
+    component = _base("gateway_state", "sensor", "Gateway state", True)
+    component["entity_category"] = "diagnostic"
+    component["device_class"] = "enum"
+    component["options"] = [
+        "Disabled",
+        "Waiting for iPhone",
+        "Waiting for hotspot",
+        "Waiting",
+        "Connecting",
+        "Connected",
+        "Error",
+    ]
+    component["state_topic"] = STATE_TOPIC
+    component["value_template"] = gateway_state_value_template()
+    component["json_attributes_topic"] = STATE_TOPIC
+    component["json_attributes_template"] = (
+        "{{ {'auto_disable_at': value_json.auto_disable_at} | tojson }}"
+    )
+    component["icon"] = "mdi:lan-connect"
+    return component
+
+
+def _health() -> dict[str, Any]:
+    component = _base("health", "sensor", "Health", True)
+    component["entity_category"] = "diagnostic"
+    component["device_class"] = "enum"
+    component["options"] = enum_options(HEALTH_LABELS, "Attention needed")
+    component["state_topic"] = STATE_TOPIC
+    component["value_template"] = enum_value_template(
+        "health",
+        HEALTH_LABELS,
+        "Attention needed",
+    )
+    component["json_attributes_topic"] = STATE_TOPIC
+    component["json_attributes_template"] = (
+        "{{ {'issues': value_json.health_issues} | tojson }}"
+    )
+    component["icon"] = "mdi:heart-pulse"
+    return component
+
+
 def _text_sensor(spec: tuple[Any, ...]) -> dict[str, Any]:
     key, name, icon, enabled, fallback = spec
     component = _base(key, "sensor", name, enabled)
@@ -159,28 +199,17 @@ def _binary_sensor(spec: tuple[Any, ...]) -> dict[str, Any]:
     return component
 
 
-def _safety_checks() -> dict[str, Any]:
-    component = _base("safety_checks", "binary_sensor", "Safety checks", True)
-    component["entity_category"] = "diagnostic"
-    component["state_topic"] = STATE_TOPIC
-    component["value_template"] = "{{ 'OFF' if value_json.safety_errors else 'ON' }}"
-    component["json_attributes_topic"] = STATE_TOPIC
-    component["json_attributes_template"] = (
-        "{{ {'errors': value_json.safety_errors} | tojson }}"
-    )
-    component["icon"] = "mdi:shield-check"
-    return component
-
-
 def build_components() -> dict[str, dict[str, Any]]:
-    components: dict[str, dict[str, Any]] = {}
+    components: dict[str, dict[str, Any]] = {
+        "gateway_state": _gateway_state(),
+        "health": _health(),
+    }
     for spec in _ENUM_SENSORS:
         components[spec[0]] = _enum_sensor(spec)
     for spec in _TEXT_SENSORS:
         components[spec[0]] = _text_sensor(spec)
     for spec in _BINARY_SENSORS:
         components[spec[0]] = _binary_sensor(spec)
-    components["safety_checks"] = _safety_checks()
     return components
 
 

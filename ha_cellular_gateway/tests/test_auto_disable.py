@@ -27,9 +27,12 @@ class FakeEngine:
         self.upstream_lifecycle = FakeLifecycle()
         self.persist_calls = 0
         self.cleanup_calls = 0
+        self.persist_error: OSError | None = None
 
     def _persist_state(self) -> None:
         self.persist_calls += 1
+        if self.persist_error is not None:
+            raise self.persist_error
 
     def cleanup(self, *, preserve_host_protection=False) -> None:
         self.cleanup_calls += 1
@@ -157,6 +160,40 @@ class AutoDisableTests(unittest.TestCase):
 
         self.assertTrue(controller.latched)
         self.assertIn("invalid", controller.error or "")
+
+    def test_state_write_failure_still_disables_and_updates_options(self) -> None:
+        now = [200.0]
+        writes: list[bool] = []
+        controller = self._controller(
+            now,
+            state={"auto_disable": {"deadline": 100.0}},
+            writer=lambda enabled: writes.append(enabled) or None,
+        )
+        engine = FakeEngine()
+        engine.persist_error = OSError("disk full")
+
+        controller.reconcile(engine)
+
+        self.assertFalse(engine.enabled)
+        self.assertEqual(engine.cleanup_calls, 1)
+        self.assertEqual(writes, [False])
+        self.assertIn("state persistence failed", controller.error or "")
+
+    def test_state_write_failure_retries_without_extending_deadline(self) -> None:
+        now = [100.0]
+        controller = self._controller(now)
+        engine = FakeEngine()
+        engine.persist_error = OSError("disk full")
+
+        controller.reconcile(engine)
+        deadline = controller.deadline
+        engine.persist_error = None
+        now[0] += 5
+        controller.reconcile(engine)
+
+        self.assertEqual(controller.deadline, deadline)
+        self.assertIsNone(controller.error)
+        self.assertEqual(engine.persist_calls, 2)
 
 
 if __name__ == "__main__":

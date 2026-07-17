@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.8.0
+
+- Make Disabled genuinely dormant. The app no longer provisions or inspects
+  mobile upstreams, starts iPhone helpers or probes the Internet while disabled.
+  USB setup now begins only after a physical Apple device is detected.
+- Add a configurable automatic shutdown. After an enabled gateway has no active
+  path for 30 minutes by default, it persists Enabled off and tears down the
+  gateway. Set the delay to 0 to disable automatic shutdown.
+- Replace the gateway states with Disabled, Waiting, Connecting, Connected and
+  Error. Waiting identifies the configured source, while Connected now means
+  that the gateway path is applied independently of the Internet health probe.
+- Replace Last error and Safety checks with a positive Health sensor reporting
+  Healthy or Attention needed, with actionable issues in its attributes.
+- Show Not connected instead of Offline for an unavailable public IP, and add
+  the pending auto-disable deadline to Gateway state attributes.
+- Remove the unused control POST endpoints. The MQTT and diagnostic HTTP
+  surfaces are read-only; use the app Enabled option to activate the gateway.
+
 ## 0.7.1
 
 - Keep idle text diagnostics as explicit Home Assistant states. "Last error"

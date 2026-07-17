@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import subprocess
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+from .status_model import derive_gateway_state, derive_health
 from .status_issues import build_status_issues
 
 if TYPE_CHECKING:
@@ -52,6 +53,11 @@ def fail_closed(engine: GatewayEngine, error: Exception) -> None:
             ValueError,
         ) as err:
             cleanup_error = err
+        management_interface = (
+            engine.management.interface if engine.management else None
+        )
+        engine.upstream_lifecycle.deactivate(management_interface)
+        lifecycle_error = engine.upstream_lifecycle.error
         with engine.lock:
             engine.applied = False
             engine.active_connection = None
@@ -60,6 +66,8 @@ def fail_closed(engine: GatewayEngine, error: Exception) -> None:
                 if cleanup_error
                 else str(error)
             )
+            if lifecycle_error:
+                engine.last_error += f"; {lifecycle_error}"
             engine.last_safety_errors = [engine.last_error]
 
 
@@ -72,14 +80,24 @@ def status(engine: GatewayEngine) -> dict[str, object]:
             engine.last_error,
             upstream_status,
             engine.connection_warnings,
+            [
+                error
+                for error in (
+                    engine.auto_disable.error,
+                    engine.upstream_lifecycle.error,
+                )
+                if error
+            ],
         )
+        health_state, health_issues = derive_health(issues)
         return {
-            "state": _derive_state(
+            "state": derive_gateway_state(
                 engine.enabled,
                 engine.applied,
-                engine.upstream_healthy,
                 issues,
             ),
+            "health": health_state,
+            "health_issues": health_issues,
             "enabled": engine.enabled,
             "configured_enabled": engine.config.enabled,
             "active": engine.applied,
@@ -113,7 +131,6 @@ def status(engine: GatewayEngine) -> dict[str, object]:
             "last_reconcile": engine.last_reconcile,
             "last_health_probe": engine.last_health_probe,
             "last_error": engine.last_error,
-            "error": _display_error(issues),
             "safety_errors": list(engine.last_safety_errors),
             "issues": issues,
             **upstream_status,
@@ -165,41 +182,19 @@ def stop(engine: GatewayEngine) -> None:
             ValueError,
         ) as err:
             cleanup_error = err
-        try:
-            engine.upstream.cleanup()
-        except (
-            engine.gateway_error,
-            OSError,
-            subprocess.SubprocessError,
-            ValueError,
-        ) as err:
+        management_interface = (
+            engine.management.interface if engine.management else None
+        )
+        engine.upstream_lifecycle.deactivate(management_interface)
+        lifecycle_error = engine.upstream_lifecycle.error
+        if lifecycle_error:
             if cleanup_error:
                 raise engine.gateway_error(
-                    f"{cleanup_error}; upstream cleanup failed: {err}"
-                ) from err
-            raise
+                    f"{cleanup_error}; {lifecycle_error}"
+                )
+            raise engine.gateway_error(lifecycle_error)
         if cleanup_error:
             raise cleanup_error
-
-
-def _derive_state(
-    enabled: bool,
-    applied: bool,
-    upstream_healthy: bool,
-    issues: list[dict[str, Any]],
-) -> str:
-    if not enabled:
-        return "disabled"
-    if applied and upstream_healthy:
-        return "connected"
-    if any(not issue["transient"] for issue in issues):
-        return "offline"
-    return "connecting"
-
-
-def _display_error(issues: list[dict[str, Any]]) -> str | None:
-    messages = [str(issue["message"]) for issue in issues if not issue["transient"]]
-    return "; ".join(messages) or None
 
 
 def _status_config(engine: GatewayEngine) -> dict[str, object]:
@@ -207,6 +202,7 @@ def _status_config(engine: GatewayEngine) -> dict[str, object]:
     management = engine.management
     return {
         "enabled": config.enabled,
+        "auto_disable_minutes": config.auto_disable_minutes,
         "management_interface": management.interface if management else None,
         "management_address": management.address if management else None,
         "mobile_connection": config.mobile_connection,

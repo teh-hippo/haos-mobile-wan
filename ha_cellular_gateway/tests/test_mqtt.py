@@ -50,29 +50,29 @@ STATUS = {
     "upstream_pairing_state": "paired",
     "downstream_interface": "eth1",
     "public_ip": "203.0.113.10",
-    "error": None,
+    "health": "healthy",
+    "health_issues": [],
+    "auto_disable_at": None,
     "upstream_healthy": True,
     "downstream_present": True,
     "rules_installed": True,
     "dnsmasq_running": False,
-    "safety_errors": ["boom"],
     "ignored_extra_field": "drop-me",
 }
 
 EXPECTED_COMPONENTS = {
     "gateway_state",
+    "health",
     "mobile_connection",
     "active_connection",
     "upstream_pairing_state",
     "downstream_interface",
     "public_ip",
-    "error",
     "upstream_healthy",
     "enabled",
     "downstream_present",
     "rules_installed",
     "dnsmasq_running",
-    "safety_checks",
 }
 
 
@@ -186,6 +186,7 @@ class DiscoveryPayloadTests(unittest.TestCase):
     def test_platforms_and_unique_ids(self) -> None:
         platforms = {key: comp["platform"] for key, comp in self.cmps.items()}
         self.assertEqual(platforms["gateway_state"], "sensor")
+        self.assertEqual(platforms["health"], "sensor")
         self.assertEqual(platforms["mobile_connection"], "sensor")
         self.assertEqual(platforms["active_connection"], "sensor")
         self.assertEqual(platforms["upstream_healthy"], "binary_sensor")
@@ -198,7 +199,19 @@ class DiscoveryPayloadTests(unittest.TestCase):
         self.assertEqual(gateway_state["device_class"], "enum")
         self.assertEqual(
             gateway_state["options"],
-            ["Disabled", "Offline", "Connecting", "Connected"],
+            [
+                "Disabled",
+                "Waiting for iPhone",
+                "Waiting for hotspot",
+                "Waiting",
+                "Connecting",
+                "Connected",
+                "Error",
+            ],
+        )
+        self.assertEqual(
+            self.cmps["health"]["options"],
+            ["Healthy", "Attention needed"],
         )
         self.assertEqual(
             self.cmps["active_connection"]["options"],
@@ -228,20 +241,20 @@ class DiscoveryPayloadTests(unittest.TestCase):
         self.assertNotIn("enabled_by_default", self.cmps["gateway_state"])
         self.assertNotIn("enabled_by_default", self.cmps["mobile_connection"])
         self.assertNotIn("enabled_by_default", self.cmps["enabled"])
-        self.assertNotIn("enabled_by_default", self.cmps["error"])
-        self.assertEqual(
-            self.cmps["upstream_pairing_state"]["enabled_by_default"], False
+        self.assertNotIn("enabled_by_default", self.cmps["health"])
+        self.assertNotIn(
+            "enabled_by_default",
+            self.cmps["upstream_pairing_state"],
         )
-        self.assertEqual(self.cmps["public_ip"]["enabled_by_default"], False)
+        self.assertNotIn("enabled_by_default", self.cmps["public_ip"])
 
-    def test_safety_checks_attributes(self) -> None:
-        safety = self.cmps["safety_checks"]
-        self.assertEqual(safety["json_attributes_topic"], STATE_TOPIC)
-        self.assertIn("errors", safety["json_attributes_template"])
-        self.assertEqual(
-            safety["value_template"],
-            "{{ 'OFF' if value_json.safety_errors else 'ON' }}",
-        )
+    def test_health_and_gateway_state_attributes(self) -> None:
+        health = self.cmps["health"]
+        self.assertEqual(health["json_attributes_topic"], STATE_TOPIC)
+        self.assertIn("health_issues", health["json_attributes_template"])
+        gateway = self.cmps["gateway_state"]
+        self.assertEqual(gateway["json_attributes_topic"], STATE_TOPIC)
+        self.assertIn("auto_disable_at", gateway["json_attributes_template"])
 
     def test_state_topic_shared_by_stateful_components(self) -> None:
         for key in ("gateway_state", "upstream_healthy", "enabled"):
@@ -253,9 +266,11 @@ class StatePayloadTests(unittest.TestCase):
         payload = build_state_payload(dict(STATUS))
         self.assertEqual(set(payload), set(mqtt_discovery.STATE_FIELDS))
         self.assertIsNone(payload["active_connection"])
-        self.assertEqual(payload["safety_errors"], ["boom"])
+        self.assertEqual(payload["health"], "healthy")
+        self.assertEqual(payload["health_issues"], [])
         self.assertNotIn("ignored_extra_field", payload)
         self.assertNotIn("last_error", payload)
+        self.assertNotIn("safety_errors", payload)
 
 
 class FriendlyLabelTests(unittest.TestCase):
@@ -271,14 +286,14 @@ class FriendlyLabelTests(unittest.TestCase):
         self.assertEqual(self.cmps["gateway_state"]["name"], "Gateway state")
         self.assertEqual(self.cmps["mobile_connection"]["name"], "Connection method")
         self.assertEqual(self.cmps["enabled"]["name"], "Gateway enabled")
-        self.assertEqual(self.cmps["error"]["name"], "Last error")
+        self.assertEqual(self.cmps["health"]["name"], "Health")
 
     def test_pairing_template_embeds_friendly_mapping(self) -> None:
         template = self.cmps["upstream_pairing_state"]["value_template"]
         self.assertIn("'waiting_for_device': 'Waiting for device'", template)
         self.assertIn("'daemon_failed': 'Pairing helper failed'", template)
         self.assertIn(
-            ".get(value_json.upstream_pairing_state, 'Not applicable')", template
+            ".get(value_json.upstream_pairing_state, 'Not active')", template
         )
 
     def test_mobile_connection_template_embeds_internal_to_label(self) -> None:
@@ -288,10 +303,10 @@ class FriendlyLabelTests(unittest.TestCase):
         )
         self.assertIn(".get(value_json.mobile_connection,", template)
 
-    def test_public_ip_offline_fallback(self) -> None:
+    def test_public_ip_not_connected_fallback(self) -> None:
         self.assertEqual(
             self.cmps["public_ip"]["value_template"],
-            "{{ value_json.public_ip if value_json.public_ip else 'Offline' }}",
+            "{{ value_json.public_ip if value_json.public_ip else 'Not connected' }}",
         )
 
     def test_downstream_interface_not_present_fallback(self) -> None:
@@ -300,13 +315,6 @@ class FriendlyLabelTests(unittest.TestCase):
             "{{ value_json.downstream_interface"
             " if value_json.downstream_interface else 'Not present' }}",
         )
-
-    def test_error_reads_error_field_with_no_error_fallback(self) -> None:
-        self.assertEqual(
-            self.cmps["error"]["value_template"],
-            "{{ value_json.error if value_json.error else 'No error' }}",
-        )
-        self.assertIn("error", mqtt_discovery.STATE_FIELDS)
 
     @unittest.skipUnless(_HAS_JINJA, "jinja2 not installed")
     def test_enum_templates_render_friendly_values(self) -> None:
@@ -320,11 +328,40 @@ class FriendlyLabelTests(unittest.TestCase):
             "Pairing helper failed",
         )
         self.assertEqual(
-            _render(pairing, {"upstream_pairing_state": None}), "Not applicable"
+            _render(pairing, {"upstream_pairing_state": None}), "Not active"
         )
         gateway = self.cmps["gateway_state"]["value_template"]
-        self.assertEqual(_render(gateway, {"state": "connected"}), "Connected")
-        self.assertEqual(_render(gateway, {"state": None}), "Offline")
+        self.assertEqual(
+            _render(
+                gateway,
+                {"state": "connected", "mobile_connection": "iphone_usb"},
+            ),
+            "Connected",
+        )
+        self.assertEqual(
+            _render(
+                gateway,
+                {"state": "waiting", "mobile_connection": "iphone_usb"},
+            ),
+            "Waiting for iPhone",
+        )
+        self.assertEqual(
+            _render(
+                gateway,
+                {"state": "waiting", "mobile_connection": "wifi_hotspot"},
+            ),
+            "Waiting for hotspot",
+        )
+        self.assertEqual(
+            _render(
+                gateway,
+                {
+                    "state": "waiting",
+                    "mobile_connection": "iphone_usb_wifi_fallback",
+                },
+            ),
+            "Waiting",
+        )
 
     @unittest.skipUnless(_HAS_JINJA, "jinja2 not installed")
     def test_mobile_connection_renders_internal_to_label(self) -> None:
@@ -357,8 +394,8 @@ class FriendlyLabelTests(unittest.TestCase):
     @unittest.skipUnless(_HAS_JINJA, "jinja2 not installed")
     def test_text_fallbacks_render_for_null(self) -> None:
         public_ip = self.cmps["public_ip"]["value_template"]
-        self.assertEqual(_render(public_ip, {"public_ip": None}), "Offline")
-        self.assertEqual(_render(public_ip, {"public_ip": ""}), "Offline")
+        self.assertEqual(_render(public_ip, {"public_ip": None}), "Not connected")
+        self.assertEqual(_render(public_ip, {"public_ip": ""}), "Not connected")
         self.assertEqual(
             _render(public_ip, {"public_ip": "203.0.113.10"}), "203.0.113.10"
         )
@@ -367,12 +404,8 @@ class FriendlyLabelTests(unittest.TestCase):
             _render(interface, {"downstream_interface": None}), "Not present"
         )
         self.assertEqual(_render(interface, {"downstream_interface": "eth1"}), "eth1")
-        error = self.cmps["error"]["value_template"]
-        self.assertEqual(_render(error, {"error": None}), "No error")
-        self.assertEqual(
-            _render(error, {"error": "The upstream interface is unavailable"}),
-            "The upstream interface is unavailable",
-        )
+        health = self.cmps["health"]["value_template"]
+        self.assertEqual(_render(health, {"health": "healthy"}), "Healthy")
 
     @unittest.skipUnless(
         _HAS_HOME_ASSISTANT,
@@ -390,15 +423,18 @@ class FriendlyLabelTests(unittest.TestCase):
                 {"value_json": {"downstream_interface": None}},
                 parse_result=True,
             )
-            error = Template(
-                self.cmps["error"]["value_template"], hass
+            public_ip = Template(
+                self.cmps["public_ip"]["value_template"], hass
             ).async_render(
-                {"value_json": {"error": None}},
+                {"value_json": {"public_ip": None}},
                 parse_result=True,
             )
-            return interface, error
+            return interface, public_ip
 
-        self.assertEqual(asyncio.run(render()), ("Not present", "No error"))
+        self.assertEqual(
+            asyncio.run(render()),
+            ("Not present", "Not connected"),
+        )
 
     @unittest.skipUnless(_HAS_JINJA, "jinja2 not installed")
     def test_enabled_binary_sensor_renders_on_off(self) -> None:

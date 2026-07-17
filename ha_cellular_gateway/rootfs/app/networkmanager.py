@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -28,6 +29,7 @@ from .upstream_models import ResolvedUpstream, validate_dynamic_lease
 if TYPE_CHECKING:
     from .management import ManagementBaseline
 
+_LOGGER = logging.getLogger(__name__)
 ACTIVATION_COOLDOWN_SECONDS = 30
 LEASE_OWNER = "networkmanager"
 
@@ -81,10 +83,8 @@ class NetworkManagerIphone:
         else:
             drifted = self._drifted_fields(settings)
             if drifted:
-                print(
-                    "networkmanager: repairing profile fields: "
-                    + ",".join(drifted),
-                    flush=True,
+                _LOGGER.info(
+                    "Repairing NetworkManager profile fields: %s", ",".join(drifted)
                 )
                 self._apply_settings()
                 self._needs_reactivation = True

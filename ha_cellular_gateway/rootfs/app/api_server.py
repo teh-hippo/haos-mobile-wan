@@ -1,18 +1,21 @@
 from __future__ import annotations
 
 import json
+import logging
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .errors import GatewayError
 from .gateway import GatewayEngine
 
+_LOGGER = logging.getLogger(__name__)
+
 
 class GatewayHandler(BaseHTTPRequestHandler):
     server: "GatewayServer"
 
     def log_message(self, format: str, *args: object) -> None:
-        print(f"api: {format % args}", flush=True)
+        _LOGGER.debug("%s", format % args)
 
     def _json(self, status: int, payload: object) -> None:
         body = json.dumps(payload, separators=(",", ":")).encode()

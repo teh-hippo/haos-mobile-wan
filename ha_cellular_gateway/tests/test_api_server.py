@@ -1,8 +1,10 @@
 import http.client
 import json
+import logging
 import threading
 import unittest
 
+from rootfs.app import api_server
 from rootfs.app.api_server import GatewayServer
 
 
@@ -60,6 +62,31 @@ class ApiServerTests(unittest.TestCase):
             return response.status, body
         finally:
             connection.close()
+
+    def _get_health(self) -> int:
+        connection = http.client.HTTPConnection(self.host, self.port, timeout=5)
+        try:
+            connection.request("GET", "/health")
+            response = connection.getresponse()
+            response.read()
+            return response.status
+        finally:
+            connection.close()
+
+    def test_request_logging_uses_debug_level(self) -> None:
+        with self.assertLogs(api_server.__name__, level="DEBUG") as captured:
+            self._get_health()
+
+        self.assertTrue(
+            any("/health" in record.getMessage() for record in captured.records)
+        )
+        self.assertTrue(
+            all(record.levelno == logging.DEBUG for record in captured.records)
+        )
+
+    def test_request_logging_is_hidden_at_info_level(self) -> None:
+        with self.assertNoLogs(api_server.__name__, level="INFO"):
+            self._get_health()
 
     def test_enabled_rejects_non_boolean_values(self) -> None:
         status, body = self._post_enabled("yes")

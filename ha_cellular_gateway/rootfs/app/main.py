@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import os
 import signal
 import sys
 import threading
@@ -15,12 +17,22 @@ from app.gateway import GatewayEngine, load_or_create_token
 from app.hotspot import provision_hotspot
 from app.options_migration import prune_legacy_options
 
+_LOGGER = logging.getLogger(__name__)
+
+
+def configure_logging() -> None:
+    logging.basicConfig(
+        level=os.environ.get("LOG_LEVEL", "INFO"),
+        format="%(levelname)s %(name)s: %(message)s",
+    )
+
 
 def main() -> None:
+    configure_logging()
     runner = CommandRunner()
     migration_error = prune_legacy_options()
     if migration_error:
-        print(migration_error, flush=True)
+        _LOGGER.warning("%s", migration_error)
     config, config_error = GatewayConfig.load_path()
     hotspot_error = (
         None

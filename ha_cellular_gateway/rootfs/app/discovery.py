@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import urllib.error
 import urllib.request
 
 from .config import GatewayConfig
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def publish_discovery(config: GatewayConfig, token: str) -> None:
@@ -34,4 +37,4 @@ def publish_discovery(config: GatewayConfig, token: str) -> None:
     try:
         urllib.request.urlopen(request, timeout=10).read()
     except (OSError, urllib.error.URLError) as err:
-        print(f"discovery: {err}", flush=True)
+        _LOGGER.warning("Discovery publish failed: %s", err)

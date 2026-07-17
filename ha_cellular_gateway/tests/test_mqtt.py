@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import unittest
 from types import SimpleNamespace
@@ -25,6 +26,15 @@ except ImportError:
     _JINJA = None
 
 _HAS_JINJA = _JINJA is not None
+
+try:
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.template import Template
+except ImportError:
+    HomeAssistant = None
+    Template = None
+
+_HAS_HOME_ASSISTANT = HomeAssistant is not None and Template is not None
 
 
 def _render(template: str, value_json: dict) -> str:
@@ -284,17 +294,17 @@ class FriendlyLabelTests(unittest.TestCase):
             "{{ value_json.public_ip if value_json.public_ip else 'Offline' }}",
         )
 
-    def test_downstream_interface_none_fallback(self) -> None:
+    def test_downstream_interface_not_present_fallback(self) -> None:
         self.assertEqual(
             self.cmps["downstream_interface"]["value_template"],
             "{{ value_json.downstream_interface"
-            " if value_json.downstream_interface else 'None' }}",
+            " if value_json.downstream_interface else 'Not present' }}",
         )
 
-    def test_error_reads_error_field_with_none_fallback(self) -> None:
+    def test_error_reads_error_field_with_no_error_fallback(self) -> None:
         self.assertEqual(
             self.cmps["error"]["value_template"],
-            "{{ value_json.error if value_json.error else 'None' }}",
+            "{{ value_json.error if value_json.error else 'No error' }}",
         )
         self.assertIn("error", mqtt_discovery.STATE_FIELDS)
 
@@ -353,14 +363,42 @@ class FriendlyLabelTests(unittest.TestCase):
             _render(public_ip, {"public_ip": "203.0.113.10"}), "203.0.113.10"
         )
         interface = self.cmps["downstream_interface"]["value_template"]
-        self.assertEqual(_render(interface, {"downstream_interface": None}), "None")
+        self.assertEqual(
+            _render(interface, {"downstream_interface": None}), "Not present"
+        )
         self.assertEqual(_render(interface, {"downstream_interface": "eth1"}), "eth1")
         error = self.cmps["error"]["value_template"]
-        self.assertEqual(_render(error, {"error": None}), "None")
+        self.assertEqual(_render(error, {"error": None}), "No error")
         self.assertEqual(
             _render(error, {"error": "The upstream interface is unavailable"}),
             "The upstream interface is unavailable",
         )
+
+    @unittest.skipUnless(
+        _HAS_HOME_ASSISTANT,
+        "Home Assistant is not installed",
+    )
+    def test_text_fallbacks_remain_text_in_home_assistant(self) -> None:
+        assert HomeAssistant is not None
+        assert Template is not None
+
+        async def render() -> tuple[object, object]:
+            hass = HomeAssistant("/tmp")
+            interface = Template(
+                self.cmps["downstream_interface"]["value_template"], hass
+            ).async_render(
+                {"value_json": {"downstream_interface": None}},
+                parse_result=True,
+            )
+            error = Template(
+                self.cmps["error"]["value_template"], hass
+            ).async_render(
+                {"value_json": {"error": None}},
+                parse_result=True,
+            )
+            return interface, error
+
+        self.assertEqual(asyncio.run(render()), ("Not present", "No error"))
 
     @unittest.skipUnless(_HAS_JINJA, "jinja2 not installed")
     def test_enabled_binary_sensor_renders_on_off(self) -> None:

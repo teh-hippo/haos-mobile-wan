@@ -109,9 +109,9 @@ entities:
 | Connection method | `sensor` | Configured Wi-Fi, USB or USB-preferred strategy |
 | Connected via | `sensor` | Wi-Fi hotspot or USB (iPhone) currently carrying gateway traffic, or not connected |
 | iPhone USB pairing | `sensor` | Current iPhone trust, interface and DHCP state |
-| Downstream interface | `sensor` | Selected router-facing interface, or none |
+| Downstream interface | `sensor` | Selected router-facing interface, or not present |
 | Public IP | `sensor` | Public IPv4 address seen through the mobile connection, or offline |
-| Last error | `sensor` | Latest genuine gateway fault, or none while only transient waiting conditions apply |
+| Last error | `sensor` | Latest genuine gateway fault, or no error while only transient waiting conditions apply |
 
 ### Control reference
 

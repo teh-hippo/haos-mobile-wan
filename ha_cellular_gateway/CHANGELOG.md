@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1
+
+- Keep idle text diagnostics as explicit Home Assistant states. "Last error"
+  now reads "No error", and an absent downstream interface reads "Not present",
+  instead of Home Assistant interpreting "None" as an unknown state.
+
 ## 0.7.0
 
 - Expose the gateway over MQTT discovery as status-only monitoring entities,
@@ -18,8 +24,8 @@
 - Stop reporting normal waiting as a fault. While the add-on is enabled and
   waiting, for example for a trusted iPhone or for the Wi-Fi hotspot to
   associate, the gateway state reads "Connecting" and the "Last error" sensor
-  reads "None". The "Last error" sensor reflects genuine non-transient faults
-  only, while the safety checks sensor keeps the full raw diagnostics.
+  has no active fault. The "Last error" sensor reflects genuine non-transient
+  faults only, while the safety checks sensor keeps the full raw diagnostics.
 
 ## 0.6.1
 

@@ -18,6 +18,8 @@ PRIVATE_NETWORKS = tuple(
 
 
 def validate_config(config: GatewayConfig) -> None:
+    if not 0 <= config.auto_disable_minutes <= 1440:
+        raise GatewayError("Auto-disable must be between 0 and 1440 minutes")
     if config.mobile_connection not in MOBILE_CONNECTIONS:
         raise GatewayError(
             f"Unsupported mobile connection: {config.mobile_connection}"

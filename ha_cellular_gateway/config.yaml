@@ -31,11 +31,13 @@ backup_exclude:
   - dnsmasq.leases
 options:
   enabled: false
+  auto_disable_minutes: 30
   mobile_connection: Wi-Fi hotspot
   hotspot_ssid: ""
   hotspot_password: ""
 schema:
   enabled: bool
+  auto_disable_minutes: int(0,1440)
   mobile_connection: 'list(Wi-Fi hotspot|USB (iPhone)|USB (iPhone), Wi-Fi fallback)'
   hotspot_ssid: str
   hotspot_password: password

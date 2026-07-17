@@ -40,21 +40,19 @@ class LifecycleTransitionLoggingTests(unittest.TestCase):
 
     def test_iphone_connect_logs_once_on_edge(self) -> None:
         engine = self._engine(mobile_connection=IPHONE_USB)
-        states = [(None, ["waiting"]), (USB_UPSTREAM, []), (USB_UPSTREAM, [])]
-        engine.upstream.resolve = lambda *_a, **_k: states.pop(0)
 
         with self.assertNoLogs(lifecycle.__name__, level="INFO"):
-            engine.reconcile()
+            lifecycle.log_upstream_transitions(engine, None, None)
 
         with self.assertLogs(lifecycle.__name__, level="INFO") as captured:
-            engine.reconcile()
+            lifecycle.log_upstream_transitions(engine, USB_UPSTREAM, None)
         self.assertEqual(
             [record.getMessage() for record in captured.records],
             ["iPhone USB device connected"],
         )
 
         with self.assertNoLogs(lifecycle.__name__, level="INFO"):
-            engine.reconcile()
+            lifecycle.log_upstream_transitions(engine, USB_UPSTREAM, None)
 
     def test_wifi_connect_logs_once_on_edge(self) -> None:
         engine = self._engine(
@@ -62,47 +60,49 @@ class LifecycleTransitionLoggingTests(unittest.TestCase):
             hotspot_ssid="Phone",
             hotspot_password="supersecret",
         )
-        statuses = [
-            {"enabled": True, "connected": False},
-            {"enabled": True, "connected": True},
-            {"enabled": True, "connected": True},
-        ]
-        engine._interface_status = lambda: statuses.pop(0)
-
         with self.assertNoLogs(lifecycle.__name__, level="INFO"):
-            engine.reconcile()
+            lifecycle.log_upstream_transitions(
+                engine,
+                None,
+                {"enabled": True, "connected": False},
+            )
 
         with self.assertLogs(lifecycle.__name__, level="INFO") as captured:
-            engine.reconcile()
+            lifecycle.log_upstream_transitions(
+                engine,
+                None,
+                {"enabled": True, "connected": True},
+            )
         self.assertEqual(
             [record.getMessage() for record in captured.records],
             ["Wi-Fi hotspot connected"],
         )
 
         with self.assertNoLogs(lifecycle.__name__, level="INFO"):
-            engine.reconcile()
+            lifecycle.log_upstream_transitions(
+                engine,
+                None,
+                {"enabled": True, "connected": True},
+            )
 
     def test_disconnect_logs_once_when_iphone_upstream_lost(self) -> None:
         engine = self._engine(mobile_connection=IPHONE_USB)
-        states = [(USB_UPSTREAM, []), (None, ["waiting"]), (None, ["waiting"])]
-        engine.upstream.resolve = lambda *_a, **_k: states.pop(0)
-
         with self.assertLogs(lifecycle.__name__, level="INFO") as captured:
-            engine.reconcile()
+            lifecycle.log_upstream_transitions(engine, USB_UPSTREAM, None)
         self.assertEqual(
             [record.getMessage() for record in captured.records],
             ["iPhone USB device connected"],
         )
 
         with self.assertLogs(lifecycle.__name__, level="INFO") as captured:
-            engine.reconcile()
+            lifecycle.log_upstream_transitions(engine, None, None)
         self.assertEqual(
             [record.getMessage() for record in captured.records],
             ["Mobile upstream disconnected"],
         )
 
         with self.assertNoLogs(lifecycle.__name__, level="INFO"):
-            engine.reconcile()
+            lifecycle.log_upstream_transitions(engine, None, None)
 
     def test_disconnect_logs_once_when_wifi_disassociates(self) -> None:
         engine = self._engine(
@@ -110,29 +110,34 @@ class LifecycleTransitionLoggingTests(unittest.TestCase):
             hotspot_ssid="Phone",
             hotspot_password="supersecret",
         )
-        statuses = [
-            {"enabled": True, "connected": True},
-            {"enabled": True, "connected": False},
-            {"enabled": True, "connected": False},
-        ]
-        engine._interface_status = lambda: statuses.pop(0)
-
         with self.assertLogs(lifecycle.__name__, level="INFO") as captured:
-            engine.reconcile()
+            lifecycle.log_upstream_transitions(
+                engine,
+                None,
+                {"enabled": True, "connected": True},
+            )
         self.assertEqual(
             [record.getMessage() for record in captured.records],
             ["Wi-Fi hotspot connected"],
         )
 
         with self.assertLogs(lifecycle.__name__, level="INFO") as captured:
-            engine.reconcile()
+            lifecycle.log_upstream_transitions(
+                engine,
+                None,
+                {"enabled": True, "connected": False},
+            )
         self.assertEqual(
             [record.getMessage() for record in captured.records],
             ["Mobile upstream disconnected"],
         )
 
         with self.assertNoLogs(lifecycle.__name__, level="INFO"):
-            engine.reconcile()
+            lifecycle.log_upstream_transitions(
+                engine,
+                None,
+                {"enabled": True, "connected": False},
+            )
 
 
 if __name__ == "__main__":

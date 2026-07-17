@@ -1,6 +1,6 @@
 import unittest
 
-from rootfs.app.gateway import load_or_create_token
+from rootfs.app.api_token import load_or_create_token
 from rootfs.app.upstream import (
     MobileConnectionResolver,
     IPhoneUsbUpstream,
@@ -18,7 +18,7 @@ from rootfs.app.upstream_models import (
 
 
 class ImportCompatibilityTests(unittest.TestCase):
-    def test_gateway_re_exports_token_loader(self) -> None:
+    def test_api_token_exports_token_loader(self) -> None:
         self.assertTrue(callable(load_or_create_token))
 
     def test_upstream_module_re_exports_existing_symbols(self) -> None:

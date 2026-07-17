@@ -10,9 +10,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.api_server import GatewayServer
+from app.api_token import load_or_create_token
 from app.command import CommandRunner
 from app.config import GatewayConfig
-from app.gateway import GatewayEngine, load_or_create_token
+from app.gateway import GatewayEngine
 from app.mqtt_publisher import MqttPublisher
 from app.options_migration import prune_legacy_options
 

@@ -37,6 +37,7 @@ class AddonSecurityTests(unittest.TestCase):
             set(self.config["options"]),
             {
                 "enabled",
+                "auto_disable_minutes",
                 "mobile_connection",
                 "hotspot_ssid",
                 "hotspot_password",

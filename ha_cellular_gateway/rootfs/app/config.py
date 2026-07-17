@@ -25,6 +25,7 @@ STATE_PATH = Path(os.environ.get("CELLGW_STATE", "/data/state.json"))
 
 _OPTION_DEFAULTS: dict[str, object] = {
     "enabled": False,
+    "auto_disable_minutes": 30,
     "mobile_connection": DEFAULT_MOBILE_CONNECTION_OPTION,
     "hotspot_ssid": "",
     "hotspot_password": "",
@@ -40,6 +41,7 @@ KNOWN_OPTION_KEYS: frozenset[str] = frozenset(_OPTION_DEFAULTS)
 @dataclass(frozen=True)
 class GatewayConfig:
     enabled: bool
+    auto_disable_minutes: int
     mobile_connection: str
     upstream_interface: str
     upstream_address: str
@@ -93,8 +95,13 @@ class GatewayConfig:
             return data.get(key, _OPTION_DEFAULTS[key])
 
         mobile_connection = str(option("mobile_connection"))
+        try:
+            auto_disable_minutes = int(option("auto_disable_minutes"))
+        except (TypeError, ValueError):
+            auto_disable_minutes = -1
         return cls(
             enabled=bool(option("enabled")),
+            auto_disable_minutes=auto_disable_minutes,
             mobile_connection=MOBILE_CONNECTION_OPTIONS.get(
                 mobile_connection,
                 mobile_connection,

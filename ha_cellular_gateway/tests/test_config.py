@@ -33,6 +33,7 @@ class GatewayConfigTests(unittest.TestCase):
             self.assertEqual(config.dhcp_start, "192.168.80.2")
             self.assertEqual(config.dhcp_end, "192.168.80.2")
             self.assertFalse(config.enabled)
+            self.assertEqual(config.auto_disable_minutes, 30)
             self.assertEqual(config.mobile_connection, WIFI_HOTSPOT)
 
     def test_rejects_non_object_options(self) -> None:
@@ -66,10 +67,31 @@ class GatewayConfigTests(unittest.TestCase):
             self.assertEqual(config.downstream_address, "192.168.80.1/24")
             self.assertIn("Invalid app configuration", error)
 
+    def test_load_path_uses_safe_defaults_for_invalid_auto_disable(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "options.json"
+            path.write_text(
+                '{"enabled":true,"auto_disable_minutes":"bad"}',
+                encoding="utf-8",
+            )
+
+            config, error = GatewayConfig.load_path(path)
+
+            self.assertFalse(config.enabled)
+            self.assertEqual(config.auto_disable_minutes, 30)
+            self.assertIn("Invalid app configuration", error)
+
     def test_rejects_invalid_mobile_connection(self) -> None:
         config = make_config(mobile_connection="not-real")
         with self.assertRaisesRegex(GatewayError, "Unsupported mobile connection"):
             config.validate()
+
+    def test_rejects_auto_disable_outside_supported_range(self) -> None:
+        for minutes in (-1, 1441):
+            with self.subTest(minutes=minutes):
+                config = make_config(auto_disable_minutes=minutes)
+                with self.assertRaisesRegex(GatewayError, "Auto-disable"):
+                    config.validate()
 
     def test_maps_friendly_mobile_connection_choices(self) -> None:
         expected = {

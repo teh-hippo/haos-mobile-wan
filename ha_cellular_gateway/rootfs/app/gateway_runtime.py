@@ -109,6 +109,7 @@ def status(engine: GatewayEngine) -> dict[str, object]:
             "dnsmasq_running": engine.dhcp.running,
             "upstream_healthy": engine.upstream_healthy,
             "public_ip": engine.public_ip,
+            "auto_disable_at": engine.auto_disable.deadline_iso,
             "last_reconcile": engine.last_reconcile,
             "last_health_probe": engine.last_health_probe,
             "last_error": engine.last_error,
@@ -141,6 +142,7 @@ def run_loop(engine: GatewayEngine) -> None:
             ValueError,
         ) as err:
             engine._fail_closed(err)
+        engine.auto_disable.reconcile(engine)
         if engine.stop_event.wait(engine.config.reconcile_seconds):
             break
 

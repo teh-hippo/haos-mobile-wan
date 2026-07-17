@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import secrets
 import subprocess
 import threading
 import time
 from pathlib import Path
 from typing import Callable
 
+from .auto_disable import AutoDisable
 from .command import CommandRunner
-from .config import STATE_PATH, TOKEN_PATH, GatewayConfig
+from .config import STATE_PATH, GatewayConfig
 from .dhcp import DnsmasqService
 from .errors import GatewayError
 from .firewall import Firewall
@@ -101,8 +101,17 @@ class GatewayEngine:
         self.gateway_error = GatewayError
 
         state, state_error = self.state_store.load()
+        self.auto_disable = AutoDisable(config, state)
+        if self.auto_disable.latched:
+            self.enabled = False
         startup_errors = [
-            error for error in (config_error, state_error) if error
+            error
+            for error in (
+                config_error,
+                state_error,
+                self.auto_disable.state_error,
+            )
+            if error
         ]
         owned = state.get("owned")
         self.owned_state = owned if isinstance(owned, dict) else None
@@ -127,7 +136,10 @@ class GatewayEngine:
         return self.runner.run(list(args), check=check, timeout=timeout)
 
     def _persist_state(self) -> None:
-        self.state_store.save(owned=self.owned_state)
+        self.state_store.save(
+            owned=self.owned_state,
+            auto_disable=self.auto_disable.state(),
+        )
 
     def cleanup(
         self,
@@ -235,13 +247,3 @@ class GatewayEngine:
 
     def stop(self) -> None:
         stop(self)
-
-
-def load_or_create_token(path: Path = TOKEN_PATH) -> str:
-    if path.exists():
-        path.chmod(0o600)
-        return path.read_text(encoding="utf-8").strip()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(token := secrets.token_urlsafe(32), encoding="utf-8")
-    path.chmod(0o600)
-    return token

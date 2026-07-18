@@ -16,6 +16,7 @@ RUN apk add --no-cache \
 COPY rootfs /
 COPY integration/networkmanager/nm.conf /etc/NetworkManager/NetworkManager.conf
 COPY integration/networkmanager/entrypoint.sh /integration/entrypoint.sh
+COPY integration/networkmanager/nmcli_harness.py /integration/nmcli_harness.py
 COPY integration/networkmanager/test_live_nm.py /integration/test_live_nm.py
 
 RUN chmod 0755 /integration/entrypoint.sh

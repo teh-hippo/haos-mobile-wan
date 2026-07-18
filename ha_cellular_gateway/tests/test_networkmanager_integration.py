@@ -29,6 +29,11 @@ class NetworkManagerIntegrationTests(unittest.TestCase):
         self.assertIn("networkmanager-cli", lab)
         self.assertIn("\n    networkmanager \\", lab)
         self.assertIn("COPY rootfs /", lab)
+        self.assertIn(
+            "COPY integration/networkmanager/nmcli_harness.py "
+            "/integration/nmcli_harness.py",
+            lab,
+        )
 
     def test_compose_lab_is_single_service_and_host_isolated(self) -> None:
         compose = yaml.safe_load(
@@ -64,6 +69,13 @@ class NetworkManagerIntegrationTests(unittest.TestCase):
         self.assertNotIn("pull_request:", workflow)
         self.assertNotIn("\n  push:", workflow)
         self.assertIn("timeout-minutes: 15", workflow)
+
+    def test_veth_virtualisation_is_documented_as_read_only(self) -> None:
+        readme = (LAB_DIR / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("synthesises only an enabled radio read", readme)
+        self.assertIn("deterministic\nveth identity", readme)
+        self.assertIn("All ownership mutations and every other\nread", readme)
 
 
 if __name__ == "__main__":

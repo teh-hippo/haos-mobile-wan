@@ -19,6 +19,7 @@ from app.networkmanager_invariants import (
     rule_selects_table,
 )
 from app.wifi_custody import WifiCustodian
+from nmcli_harness import NmcliHarnessRunner
 
 
 DEVICE = "nmwan0"
@@ -31,7 +32,7 @@ FIXED_UUIDS = (USB_PROFILE_UUID, FOREIGN_UUID, CUSTODY_UUID)
 
 class TracingRun:
     def __init__(self) -> None:
-        self.runner = CommandRunner()
+        self.runner = NmcliHarnessRunner(CommandRunner())
         self.events: list[tuple[str, tuple[str, ...]]] = []
 
     def __call__(
@@ -276,7 +277,11 @@ def test_custody_dhcp_and_cleanup(run: TracingRun) -> None:
         custody_profile,
         excluded_uuids=lambda: {CUSTODY_UUID},
     )
-    require(custodian.hold(None) == [], "custodian could not hold nmwan0")
+    hold_errors = custodian.hold(None)
+    require(
+        hold_errors == [],
+        f"custodian could not hold nmwan0: {hold_errors!r}",
+    )
     marker = custodian.marker
     require(marker is not None, "custodian did not capture recovery metadata")
     require(
@@ -298,9 +303,10 @@ def test_custody_dhcp_and_cleanup(run: TracingRun) -> None:
             "profile recovery marker was absent before device mutation",
         )
 
+    gate_errors = custodian.apply_gate(persist_marker)
     require(
-        custodian.apply_gate(persist_marker) == [],
-        "custodian did not displace foreign",
+        gate_errors == [],
+        f"custodian did not displace foreign: {gate_errors!r}",
     )
     marker_index = command_index(
         run.events[events_before_gate:],

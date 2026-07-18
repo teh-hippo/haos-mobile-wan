@@ -15,7 +15,14 @@ in-container veth pair and DHCP peer, then exercises real `nmcli`, D-Bus,
 inventory, profiles and custodianship through production code. Logs are written
 to `logs/compose.log`.
 
-The veth-only test variants cover DHCP and routing control-plane behaviour.
-They do not cover Wi-Fi association, SSIDs, WPA, ipheth, iPhone trust or mobile
-carrier behaviour. Those remain HAOS hardware acceptance gates. Rootless
-Docker and Podman are not equivalent to this rootful runtime test.
+The veth has neither a Wi-Fi radio nor stable hardware `GENERAL.PATH` identity.
+The harness therefore synthesises only an enabled radio read and a deterministic
+veth identity when that path is absent. All ownership mutations and every other
+read still execute through the real NetworkManager daemon: autoconnect gating,
+foreign-profile displacement, profile `user.data`, D-Bus `GetSettings`, DHCP,
+table routing, release, recovery and cleanup remain real.
+
+The veth-only test variants do not cover Wi-Fi association, SSIDs, WPA, ipheth,
+iPhone trust or mobile carrier behaviour. Those remain HAOS hardware acceptance
+gates. Rootless Docker and Podman are not equivalent to this rootful runtime
+test.

@@ -12,10 +12,13 @@ from rootfs.app.const import (
 )
 from rootfs.app.gateway import GatewayEngine
 from rootfs.app.management import ManagementBaseline
+from rootfs.app.nm_profile import NmProfile
 from rootfs.app.nm_profile_specs import (
     USB_PROFILE_UUID,
     WIFI_PROFILE_UUID,
+    wifi_profile_spec,
 )
+from rootfs.app.state import StateStore
 from rootfs.app.upstream_lifecycle import (
     LEGACY_WIFI_MANUAL_ERROR,
     UpstreamLifecycle,
@@ -58,7 +61,10 @@ class UpstreamLifecycleTests(unittest.TestCase):
         self.assertNotIn(USB_PROFILE_UUID, engine.runner.nm_profiles)
         self.assertEqual(
             engine.upstream_lifecycle.state(),
-            {"wifi_hotspot": WIFI_PROFILE_UUID},
+            {
+                "phase": "active",
+                "owned": {"wifi_hotspot": WIFI_PROFILE_UUID},
+            },
         )
 
     def test_fallback_activation_creates_warm_standby_profiles(self) -> None:
@@ -85,6 +91,47 @@ class UpstreamLifecycleTests(unittest.TestCase):
         self.assertNotIn(USB_PROFILE_UUID, engine.runner.nm_profiles)
         self.assertIsNone(engine.upstream_lifecycle.state())
 
+    def test_missing_owned_profile_is_recreated_while_enabled(self) -> None:
+        engine = self._engine()
+        engine.upstream_lifecycle.activate(self._management())
+        del engine.runner.nm_profiles[WIFI_PROFILE_UUID]
+
+        engine.upstream_lifecycle.activate(self._management())
+
+        self.assertIsNone(engine.upstream_lifecycle.error)
+        self.assertIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
+
+    def test_disabled_restart_removes_journaled_profile(self) -> None:
+        runner = FakeRunner()
+        config = make_config(
+            enabled=False,
+            hotspot_ssid="Phone",
+            hotspot_password="supersecret",
+        )
+        NmProfile(
+            lambda *args, **kwargs: runner.run(list(args), **kwargs),
+            wifi_profile_spec(config),
+        ).create()
+        StateStore(self.state_path).save(
+            owned=None,
+            profiles={
+                "phase": "active",
+                "owned": {"wifi_hotspot": WIFI_PROFILE_UUID},
+            },
+        )
+        engine = GatewayEngine(
+            config,
+            runner=runner,
+            read_text=lambda path: sysctl_values()[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
+
+        engine.reconcile()
+
+        self.assertNotIn(WIFI_PROFILE_UUID, runner.nm_profiles)
+        self.assertIsNone(engine.upstream_lifecycle.state())
+
     def test_activation_requires_management_before_mutation(self) -> None:
         engine = self._engine()
 
@@ -98,6 +145,24 @@ class UpstreamLifecycleTests(unittest.TestCase):
 
     def test_foreign_wifi_profile_blocks_activation_without_mutation(self) -> None:
         engine = self._engine()
+        engine.runner.nm_profiles["foreign"] = {
+            "connection.uuid": "foreign",
+            "connection.id": "Personal Wi-Fi",
+            "connection.type": "802-11-wireless",
+            "connection.interface-name": "wlan0",
+        }
+
+        engine.upstream_lifecycle.activate(self._management())
+
+        self.assertIn(
+            "foreign NetworkManager profile",
+            engine.upstream_lifecycle.error or "",
+        )
+        self.assertNotIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
+
+    def test_foreign_profile_releases_existing_app_profile(self) -> None:
+        engine = self._engine()
+        engine.upstream_lifecycle.activate(self._management())
         engine.runner.nm_profiles["foreign"] = {
             "connection.uuid": "foreign",
             "connection.id": "Personal Wi-Fi",
@@ -171,6 +236,20 @@ class UpstreamLifecycleTests(unittest.TestCase):
         error = lifecycle.load_state({"wifi_hotspot": 42})
 
         self.assertIn("ownership is invalid", error or "")
+
+    def test_journal_failure_prevents_profile_creation(self) -> None:
+        engine = self._engine()
+        engine.upstream_lifecycle.set_persist(
+            lambda: (_ for _ in ()).throw(OSError("disk full"))
+        )
+
+        engine.upstream_lifecycle.activate(self._management())
+
+        self.assertIn(
+            "ownership journal failed",
+            engine.upstream_lifecycle.error or "",
+        )
+        self.assertEqual(engine.runner.nm_profiles, {})
 
 
 if __name__ == "__main__":

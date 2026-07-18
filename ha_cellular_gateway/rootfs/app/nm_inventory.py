@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .command import RunCommand
+from .errors import GatewayError
 from .nm_profile import normalise_setting
 
 
@@ -34,7 +35,7 @@ class NmInventory:
             check=False,
         )
         if result.returncode != 0:
-            return []
+            raise GatewayError("Cannot inspect NetworkManager profiles")
         records: list[ProfileRecord] = []
         for line in (result.stdout or "").splitlines():
             parts = line.split("|", 2)

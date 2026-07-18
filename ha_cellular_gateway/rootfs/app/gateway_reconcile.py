@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from .errors import GatewayError, SafetyError
 from .gateway_cleanup import cleanup
 from .gateway_dormant import reconcile_disabled
+from .gateway_management import reconcile_without_management
 from .gateway_transition import cleanup_changed_ownership
 from .lifecycle import log_upstream_transitions, wifi_interface_status
 
@@ -127,9 +128,13 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                 cleanup(
                     engine,
                     preserve_enabled=True,
-                    preserve_host_protection=not engine.config_error,
+                    preserve_host_protection=(
+                        not engine.config_error and management is not None
+                    ),
                     force=bool(owned_state),
-                    owned_only=bool(engine.config_error),
+                    owned_only=bool(
+                        engine.config_error or management is None
+                    ),
                 )
                 with engine.lock:
                     engine.startup_cleanup_pending = False
@@ -143,8 +148,11 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                     engine.last_error = engine.config_error
                 engine._record_upstream(None)
                 return
+            if management is None:
+                reconcile_without_management(engine, enabled=enabled)
+                return
             downstream = engine.safety.find_downstream(
-                management.interface if management else None
+                management.interface
             )
             if not enabled:
                 reconcile_disabled(

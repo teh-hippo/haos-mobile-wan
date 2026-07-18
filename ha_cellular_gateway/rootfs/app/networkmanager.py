@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -134,6 +135,27 @@ class NetworkManagerIphone:
         if route_state == "waiting":
             return NetworkManagerResult(None, "waiting", LEASE_MESSAGE, True)
         return NetworkManagerResult(upstream, "active", None, True)
+
+    def continuity(self, upstream: ResolvedUpstream) -> bool:
+        try:
+            if self.profile.active_uuid(upstream.interface) != self.profile.spec.uuid:
+                return False
+            if main_default_present(self.run, upstream.interface):
+                return False
+            if rule_selects_table(self.run, USB_ROUTE_TABLE):
+                return False
+            if self.profile.device_values(
+                upstream.interface,
+                "IP4.ADDRESS",
+            ) != [upstream.address]:
+                return False
+            routes = networkmanager_routes(self.run, USB_ROUTE_TABLE)
+            return (
+                table_routes_state(routes, upstream.interface, upstream)
+                == "ready"
+            )
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return False
 
     def release_profile(self) -> None:
         self.profile.deactivate()

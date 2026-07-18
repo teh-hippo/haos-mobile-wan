@@ -12,8 +12,8 @@ from rootfs.app.const import (
 )
 from rootfs.app.errors import GatewayError, SafetyError
 from rootfs.app.gateway import GatewayEngine
-from rootfs.app.hotspot import WIFI_NOT_ASSOCIATED
 from rootfs.app.management import ManagementBaseline
+from rootfs.app.networkmanager_wifi import WIFI_NOT_ASSOCIATED
 from rootfs.app.upstream_iphone import IPhoneUsbUpstream
 from rootfs.app.upstream_models import ResolvedUpstream
 
@@ -72,6 +72,7 @@ class GatewayEngineTests(unittest.TestCase):
         engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
         engine.safety.errors = lambda *args, **kwargs: []
         engine.management = ManagementBaseline("end0", "192.168.1.2/24")
+        engine.management_interface = "end0"
         engine.upstream_lifecycle.activate(engine.management)
         engine._persist_state()
         engine.firewall.installed = (
@@ -177,7 +178,11 @@ class GatewayEngineTests(unittest.TestCase):
     def test_config_error_without_owned_state_does_not_mutate_host(self) -> None:
         values = sysctl_values()
         engine = GatewayEngine(
-            make_config(enabled=True),
+            make_config(
+                enabled=True,
+                hotspot_ssid="Phone",
+                hotspot_password="supersecret",
+            ),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,
@@ -334,6 +339,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_stale_health_probe_result_is_discarded(self) -> None:
         self.engine.enabled = True
+        self.engine.applied = True
         wifi = ResolvedUpstream(
             connection=WIFI_HOTSPOT,
             interface="wlan0",
@@ -362,6 +368,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_health_probe_result_is_discarded_after_cleanup(self) -> None:
         self.engine.enabled = True
+        self.engine.applied = True
         wifi = ResolvedUpstream(
             connection=WIFI_HOTSPOT,
             interface="wlan0",
@@ -410,7 +417,11 @@ class GatewayEngineTests(unittest.TestCase):
         runner = FakeRunner()
         runner.main_default_routes = []
         engine = GatewayEngine(
-            make_config(enabled=True),
+            make_config(
+                enabled=True,
+                hotspot_ssid="Phone",
+                hotspot_password="supersecret",
+            ),
             runner=runner,
             read_text=lambda path: values[path],
             state_path=self.state_path,
@@ -450,6 +461,45 @@ class GatewayEngineTests(unittest.TestCase):
         assert engine.management is not None
         self.assertEqual(engine.management.interface, "end0")
         self.assertTrue(engine.applied)
+
+    def test_missing_management_blocks_profile_and_downstream_mutation(self) -> None:
+        values = sysctl_values()
+        runner = FakeRunner()
+        runner.main_default_routes = []
+        engine = GatewayEngine(
+            make_config(
+                enabled=True,
+                hotspot_ssid="Phone",
+                hotspot_password="supersecret",
+            ),
+            runner=runner,
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda *_a, **_k: (_ for _ in ()).throw(
+            AssertionError("downstream discovery must wait for management")
+        )
+
+        engine.reconcile()
+
+        self.assertEqual(runner.nm_profiles, {})
+        self.assertIsNone(engine.last_downstream)
+        self.assertIn("Management interface is unavailable", engine.last_error)
+
+    def test_management_interface_change_releases_profiles_and_fails_closed(self) -> None:
+        engine = self._prepare_active_engine()
+        self.assertEqual(engine.management_interface, "end0")
+        self.assertTrue(engine.runner.nm_profiles)
+        engine.runner.main_default_routes = [
+            {"dst": "default", "gateway": "192.168.2.1", "dev": "eth9"}
+        ]
+        engine.runner.interface_addresses["eth9"] = ("192.168.2.2", 24)
+
+        engine.reconcile()
+
+        self.assertFalse(engine.applied)
+        self.assertEqual(engine.runner.nm_profiles, {})
+        self.assertIn("Management interface changed", engine.last_error)
 
     def test_activation_failure_is_cleaned_and_retried(self) -> None:
         engine = self._prepare_active_engine()
@@ -629,6 +679,8 @@ class GatewayEngineTests(unittest.TestCase):
             make_config(
                 enabled=True,
                 mobile_connection=IPHONE_USB_WIFI_FALLBACK,
+                hotspot_ssid="Phone",
+                hotspot_password="supersecret",
             ),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
@@ -636,7 +688,14 @@ class GatewayEngineTests(unittest.TestCase):
         )
         engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
 
-        def safety_errors(*args, upstream=None, **kwargs):
+        def safety_errors(
+            *args,
+            upstream=None,
+            upstream_errors=None,
+            **kwargs,
+        ):
+            if upstream is None and upstream_errors:
+                return list(upstream_errors)
             if (
                 upstream is not None
                 and engine.owned_state

@@ -52,12 +52,22 @@ _EXACT_ERRORS: dict[str, tuple[str, str | None, str]] = {
     "Cannot verify upstream IPv6 state": ("upstream_ipv6_unverified", "host_configuration", "The gateway could not verify mobile upstream IPv6 state"),
     "Cannot inspect policy-routing ownership": ("policy_ownership_unavailable", "policy_configuration", "The gateway could not inspect policy-routing ownership"),
     "USB device access is unavailable; enable the app usb permission": ("upstream_usb_access_unavailable", "upstream_configuration", "USB device access is unavailable; enable the app USB permission"),
+    "Wi-Fi upstream is the management interface": ("wifi_management_overlap", "hotspot_configuration", "The Wi-Fi upstream is the management interface"),
+    "Wi-Fi upstream has a foreign NetworkManager profile": ("wifi_foreign_profile", "hotspot_configuration", "A foreign NetworkManager profile can control the Wi-Fi upstream"),
+    "iPhone USB has a foreign NetworkManager profile": ("upstream_foreign_profile", "upstream_configuration", "A foreign NetworkManager profile can control iPhone USB"),
+    "Legacy Supervisor Wi-Fi profile requires manual cleanup": ("legacy_wifi_cleanup_required", "hotspot_configuration", "The legacy Supervisor Wi-Fi profile requires manual cleanup"),
+    "Legacy Supervisor Wi-Fi profile does not match the app configuration": ("legacy_wifi_mismatch", "hotspot_configuration", "The legacy Supervisor Wi-Fi profile does not match the app configuration"),
+    "The app-owned iPhone USB profile has unexpected settings": ("upstream_profile_drift", "upstream_configuration", "The app-owned iPhone USB profile has unexpected settings"),
+    "The app-owned Wi-Fi hotspot profile has unexpected settings": ("wifi_profile_drift", "hotspot_configuration", "The app-owned Wi-Fi hotspot profile has unexpected settings"),
+    "Wi-Fi hotspot credentials are not configured": ("hotspot_credentials_missing", "hotspot_configuration", "Wi-Fi hotspot credentials are not configured"),
+    "NetworkManager Wi-Fi inspection is unavailable": ("wifi_inspection_waiting", None, "Waiting for NetworkManager Wi-Fi inspection"),
 }
 
 _TRANSIENT_EXACT = {
     "Hotspot Wi-Fi is enabled but not associated",
     "Upstream interface is unavailable",
     "Upstream interface/address is not active",
+    "NetworkManager Wi-Fi inspection is unavailable",
 }
 
 
@@ -179,6 +189,18 @@ def _issue_from_error(error: str) -> dict[str, Any] | None:
         return _issue("auto_disable_state_failed", None, error)
     if error.startswith("Hotspot Wi-Fi deactivation failed:"):
         return _issue("hotspot_deactivation_failed", None, error)
+    if error.startswith("NetworkManager profile operation failed:"):
+        return _issue("networkmanager_profile_failed", None, error)
+    if error.startswith("NetworkManager profile cleanup failed:"):
+        return _issue("networkmanager_cleanup_failed", None, error)
+    if error.startswith("NetworkManager ownership journal failed:"):
+        return _issue("networkmanager_journal_failed", None, error)
+    if error.startswith("Management interface changed from "):
+        return _issue(
+            "management_interface_changed",
+            "host_configuration",
+            error,
+        )
     if error == "Hotspot Wi-Fi interface is the management interface":
         return _issue("hotspot_management_overlap", None, error)
     return None

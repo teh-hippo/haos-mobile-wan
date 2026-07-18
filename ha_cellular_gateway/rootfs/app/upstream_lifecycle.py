@@ -4,16 +4,20 @@ import subprocess
 from typing import TYPE_CHECKING
 
 from .config import GatewayConfig
-from .const import LEGACY_WIFI_MIGRATE_MATCHING
 from .errors import GatewayError
 from .networkmanager_wifi import NetworkManagerWifi
 from .nm_inventory import NmInventory, ProfileRecord
+from .nm_journal import NmOwnershipJournal
+from .nm_migration import (
+    LEGACY_WIFI_MANUAL_ERROR,
+    migrate_legacy_usb,
+    migrate_legacy_wifi,
+)
 from .nm_preflight import inspect_nm_ownership
 from .nm_profile import NmProfile
 from .nm_profile_specs import (
     USB_PROFILE_UUID,
     WIFI_PROFILE_UUID,
-    legacy_usb_profile_spec,
 )
 from .upstream_iphone import IPhoneUsbUpstream
 
@@ -27,17 +31,8 @@ PROFILE_ERRORS = (
     ValueError,
 )
 
-LEGACY_WIFI_MANUAL_ERROR = (
-    "Legacy Supervisor Wi-Fi profile requires manual cleanup"
-)
-LEGACY_WIFI_MISMATCH_ERROR = (
-    "Legacy Supervisor Wi-Fi profile does not match the app configuration"
-)
 USB_PROFILE_DRIFT_ERROR = (
     "The app-owned iPhone USB profile has unexpected settings"
-)
-LEGACY_USB_DRIFT_ERROR = (
-    "The legacy iPhone USB profile has unexpected settings"
 )
 
 
@@ -52,46 +47,72 @@ class UpstreamLifecycle:
         self.iphone = iphone
         self.wifi = wifi
         self.inventory = NmInventory(iphone.run)
-        self.legacy_usb = NmProfile(iphone.run, legacy_usb_profile_spec())
         self.error: str | None = None
-        self.owned_profiles: dict[str, str] = {}
+        self.journal = NmOwnershipJournal()
         self.legacy_wifi_profiles: tuple[ProfileRecord, ...] = ()
         self._iphone_dormant = False
 
     def load_state(self, value: object) -> str | None:
-        if value is None:
-            return None
-        if not isinstance(value, dict) or not all(
-            isinstance(key, str) and isinstance(uuid, str)
-            for key, uuid in value.items()
-        ):
-            return "Persistent NetworkManager profile ownership is invalid"
-        self.owned_profiles = dict(value)
-        return None
+        return self.journal.load(value)
 
     def state(self) -> dict[str, object] | None:
-        return dict(self.owned_profiles) or None
+        return self.journal.state()
+
+    def set_persist(self, persist: Callable[[], None]) -> None:
+        self.journal.set_persist(persist)
 
     def activate(self, management: ManagementBaseline | None) -> None:
         self._iphone_dormant = False
-        preflight = inspect_nm_ownership(
-            self.config,
-            self.inventory,
-            management,
-        )
-        self.legacy_wifi_profiles = preflight.legacy_wifi_profiles
-        errors = list(preflight.errors)
-        errors.extend(self._migrate_legacy_usb())
-        errors.extend(self._migrate_legacy_wifi())
-        if not errors and self.config.uses_iphone:
-            errors.extend(self._ensure_usb_profile())
-        if not errors and self.config.uses_wifi:
-            errors.extend(self._ensure_wifi_profile())
+        errors: list[str] = []
+        journal_error = self.journal.transition("acquiring")
+        if journal_error:
+            errors.append(journal_error)
+        try:
+            preflight = inspect_nm_ownership(
+                self.config,
+                self.inventory,
+                management,
+            )
+            self.legacy_wifi_profiles = preflight.legacy_wifi_profiles
+            errors.extend(preflight.errors)
+            if not errors:
+                errors.extend(migrate_legacy_usb(self.iphone.run))
+                errors.extend(
+                    migrate_legacy_wifi(
+                        self.config,
+                        self.iphone.run,
+                        self.legacy_wifi_profiles,
+                    )
+                )
+                errors.extend(self._release_unselected_profiles())
+            if not errors and self.config.uses_iphone:
+                errors.extend(self._ensure_usb_profile())
+            if not errors and self.config.uses_wifi:
+                if not self.config.hotspot_credentials_configured:
+                    errors.append(
+                        "Wi-Fi hotspot credentials are not configured"
+                    )
+                else:
+                    errors.extend(self._ensure_wifi_profile())
+            if errors and management is not None:
+                errors.extend(self._release_all_profiles())
+        except PROFILE_ERRORS as err:
+            errors.append(f"NetworkManager profile operation failed: {err}")
         self.error = "; ".join(dict.fromkeys(errors)) or None
+        journal_error = self.journal.transition(
+            "active" if self.error is None else "blocked"
+        )
+        if journal_error:
+            self.error = "; ".join(
+                dict.fromkeys(filter(None, (self.error, journal_error)))
+            )
 
     def deactivate(self, management: ManagementBaseline | None) -> None:
         del management
         errors: list[str] = []
+        journal_error = self.journal.transition("releasing")
+        if journal_error:
+            errors.append(journal_error)
         if not self._iphone_dormant:
             try:
                 self.iphone.cleanup()
@@ -99,37 +120,93 @@ class UpstreamLifecycle:
                 errors.append(f"iPhone USB cleanup failed: {err}")
             else:
                 self._iphone_dormant = True
-        errors.extend(
-            self._release_profile(
-                self.iphone.nm.profile,
-                "iphone_usb",
-                USB_PROFILE_DRIFT_ERROR,
+        try:
+            errors.extend(
+                self._release_profile(
+                    self.iphone.nm.profile,
+                    "iphone_usb",
+                    USB_PROFILE_DRIFT_ERROR,
+                )
             )
-        )
-        errors.extend(
-            self._release_profile(
-                self.wifi.profile,
-                "wifi_hotspot",
-                "The app-owned Wi-Fi hotspot profile has unexpected settings",
+            errors.extend(
+                self._release_profile(
+                    self.wifi.profile,
+                    "wifi_hotspot",
+                    "The app-owned Wi-Fi hotspot profile has unexpected settings",
+                )
             )
-        )
-        errors.extend(self._migrate_legacy_usb())
+            errors.extend(migrate_legacy_usb(self.iphone.run))
+        except PROFILE_ERRORS as err:
+            errors.append(f"NetworkManager profile cleanup failed: {err}")
         self.error = "; ".join(dict.fromkeys(errors)) or None
+        journal_error = self.journal.transition(
+            "disabled" if self.error is None else "blocked"
+        )
+        if journal_error:
+            self.error = "; ".join(
+                dict.fromkeys(filter(None, (self.error, journal_error)))
+            )
 
     def _ensure_usb_profile(self) -> list[str]:
         inspection = self.iphone.nm.profile.inspect()
         if inspection.state == "drifted":
             return [USB_PROFILE_DRIFT_ERROR]
         if inspection.state == "missing":
+            journal_error = self.journal.claim("iphone_usb", USB_PROFILE_UUID)
+            if journal_error:
+                return [journal_error]
             self.iphone.nm.profile.create()
-        self.owned_profiles["iphone_usb"] = USB_PROFILE_UUID
+        else:
+            journal_error = self.journal.claim("iphone_usb", USB_PROFILE_UUID)
+            if journal_error:
+                return [journal_error]
         return []
 
+    def _release_unselected_profiles(self) -> list[str]:
+        errors: list[str] = []
+        if not self.config.uses_iphone:
+            errors.extend(
+                self._release_profile(
+                    self.iphone.nm.profile,
+                    "iphone_usb",
+                    USB_PROFILE_DRIFT_ERROR,
+                )
+            )
+        if not self.config.uses_wifi:
+            errors.extend(
+                self._release_profile(
+                    self.wifi.profile,
+                    "wifi_hotspot",
+                    "The app-owned Wi-Fi hotspot profile has unexpected settings",
+                )
+            )
+        return errors
+
+    def _release_all_profiles(self) -> list[str]:
+        return [
+            *self._release_profile(
+                self.iphone.nm.profile,
+                "iphone_usb",
+                USB_PROFILE_DRIFT_ERROR,
+            ),
+            *self._release_profile(
+                self.wifi.profile,
+                "wifi_hotspot",
+                "The app-owned Wi-Fi hotspot profile has unexpected settings",
+            ),
+        ]
+
     def _ensure_wifi_profile(self) -> list[str]:
-        error = self.wifi.ensure_profile()
-        if error:
-            return [error]
-        self.owned_profiles["wifi_hotspot"] = WIFI_PROFILE_UUID
+        inspection = self.wifi.profile.inspect()
+        if inspection.state == "drifted":
+            return [
+                "The app-owned Wi-Fi hotspot profile has unexpected settings"
+            ]
+        journal_error = self.journal.claim("wifi_hotspot", WIFI_PROFILE_UUID)
+        if journal_error:
+            return [journal_error]
+        if inspection.state == "missing":
+            self.wifi.profile.create()
         return []
 
     def _release_profile(
@@ -140,44 +217,15 @@ class UpstreamLifecycle:
     ) -> list[str]:
         inspection = profile.inspect()
         if inspection.state == "missing":
-            self.owned_profiles.pop(key, None)
+            journal_error = self.journal.release(key)
+            if journal_error:
+                return [journal_error]
             return []
         if inspection.state == "drifted":
             return [drift_error]
         profile.deactivate()
         profile.delete()
-        self.owned_profiles.pop(key, None)
+        journal_error = self.journal.release(key)
+        if journal_error:
+            return [journal_error]
         return []
-
-    def _migrate_legacy_usb(self) -> list[str]:
-        inspection = self.legacy_usb.inspect()
-        if inspection.state == "missing":
-            return []
-        if inspection.state == "drifted":
-            return [LEGACY_USB_DRIFT_ERROR]
-        self.legacy_usb.deactivate()
-        self.legacy_usb.delete()
-        return []
-
-    def _migrate_legacy_wifi(self) -> list[str]:
-        if not self.legacy_wifi_profiles:
-            return []
-        if self.config.legacy_wifi_migration != LEGACY_WIFI_MIGRATE_MATCHING:
-            return [LEGACY_WIFI_MANUAL_ERROR]
-        errors: list[str] = []
-        for profile in self.legacy_wifi_profiles:
-            if not (
-                profile.ssid == self.config.hotspot_ssid
-                and self.config.upstream_address in profile.ipv4_addresses
-            ):
-                errors.append(LEGACY_WIFI_MISMATCH_ERROR)
-                continue
-            self.iphone.run(
-                "nmcli",
-                "connection",
-                "delete",
-                "uuid",
-                profile.uuid,
-                check=False,
-            )
-        return errors

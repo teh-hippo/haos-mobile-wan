@@ -406,6 +406,8 @@ class FakeNetworkManager:
         self.profile_calls = 0
         self.inspect_calls: list[str] = []
         self.default = NetworkManagerResult(None, "waiting", "waiting", True)
+        self.continuous = True
+        self.inspect_error: Exception | None = None
 
     def ensure_profile(self) -> None:
         self.profile_calls += 1
@@ -418,9 +420,14 @@ class FakeNetworkManager:
         management: object = None,
     ) -> NetworkManagerResult:
         self.inspect_calls.append(interface)
+        if self.inspect_error is not None:
+            raise self.inspect_error
         if self.results:
             return self.results.pop(0)
         return self.default
+
+    def continuity(self, upstream: ResolvedUpstream) -> bool:
+        return self.continuous
 
 
 def usb_upstream(interface: str = "eth0") -> ResolvedUpstream:
@@ -741,6 +748,42 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
             IPhoneUsbUpstream.LEASE_GRACE_SECONDS,
             DHCP_TIMEOUT_SECONDS,
         )
+
+    def test_grace_is_rejected_when_profile_continuity_is_lost(self) -> None:
+        runner = self._paired_runner()
+        self._add_apple_usb_device()
+        self._add_ipheth_interface("eth0")
+        network_manager = FakeNetworkManager(
+            [
+                NetworkManagerResult(usb_upstream(), "active", None, True),
+                NetworkManagerResult(None, "waiting", "renewing", True),
+            ]
+        )
+        manager = self._manager(runner, network_manager)
+        manager.resolve()
+        network_manager.continuous = False
+
+        upstream, errors = manager.resolve()
+
+        self.assertIsNone(upstream)
+        self.assertEqual(errors, ["renewing"])
+
+    def test_networkmanager_inspection_failure_uses_continuous_grace(self) -> None:
+        runner = self._paired_runner()
+        self._add_apple_usb_device()
+        self._add_ipheth_interface("eth0")
+        network_manager = FakeNetworkManager(
+            [NetworkManagerResult(usb_upstream(), "active", None, True)]
+        )
+        manager = self._manager(runner, network_manager)
+        first, _ = manager.resolve()
+        assert first is not None
+        network_manager.inspect_error = OSError("NetworkManager restarting")
+
+        grace, errors = manager.resolve()
+
+        self.assertEqual(grace, first)
+        self.assertEqual(errors, [])
 
     def test_cleanup_does_not_mutate_networkmanager_state(self) -> None:
         runner = self._paired_runner()

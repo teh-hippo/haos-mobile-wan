@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from .command import RunCommand
+from .errors import GatewayError
 
 ACTIVATION_COOLDOWN_SECONDS = 30
 
@@ -73,8 +75,13 @@ class NmProfile:
             self.spec.uuid,
             check=False,
         )
-        if result.returncode != 0:
+        if result.returncode == 10 or (
+            result.returncode != 0
+            and "no such connection" in (result.stderr or "").lower()
+        ):
             return None
+        if result.returncode != 0:
+            raise GatewayError("Cannot inspect NetworkManager profile")
         values = (result.stdout or "").splitlines()
         return {
             field: values[index].strip() if index < len(values) else ""
@@ -84,6 +91,8 @@ class NmProfile:
     def create(self) -> None:
         self.run("nmcli", "connection", "add", *self.spec.create_args)
         self.apply_settings()
+        if self.inspect().state != "exact":
+            raise GatewayError("NetworkManager profile creation did not converge")
 
     def apply_settings(self) -> None:
         arguments: list[str] = ["connection", "modify", self.spec.uuid]
@@ -138,6 +147,8 @@ class NmProfile:
             self.spec.uuid,
             check=False,
         )
+        if self.settings() is not None:
+            raise GatewayError("NetworkManager profile deletion did not converge")
 
     def active_uuid(self, interface: str) -> str:
         result = self.run(
@@ -150,7 +161,7 @@ class NmProfile:
             check=False,
         )
         if result.returncode != 0:
-            return ""
+            raise GatewayError("Cannot inspect NetworkManager device")
         value = (result.stdout or "").strip()
         return "" if value == "--" else value
 
@@ -165,7 +176,7 @@ class NmProfile:
             check=False,
         )
         if result.returncode != 0:
-            return []
+            raise GatewayError("Cannot inspect NetworkManager device addresses")
         return [
             stripped
             for line in (result.stdout or "").splitlines()
@@ -184,6 +195,7 @@ def normalise_setting(value: str) -> str:
     stripped = value.strip()
     if stripped in {"--", "*"}:
         return ""
-    if stripped.startswith(("0 (", "1 (", "2 (")) and stripped.endswith(")"):
-        return stripped.partition("(")[2][:-1]
+    match = re.match(r"^\d+\s*\((.+)\)$", stripped)
+    if match:
+        return match.group(1)
     return stripped

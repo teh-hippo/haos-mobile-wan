@@ -35,6 +35,35 @@ class StateStoreTests(unittest.TestCase):
 
             self.assertFalse(path.exists())
 
+    def test_profile_journal_persists_without_gateway_ownership(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            store = StateStore(path)
+            profiles = {
+                "phase": "acquiring",
+                "owned": {"wifi_hotspot": "profile-uuid"},
+            }
+
+            store.save(owned=None, profiles=profiles)
+            state, error = store.load()
+
+        self.assertIsNone(error)
+        self.assertEqual(state["profiles"], profiles)
+
+    def test_management_identity_persists(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            store = StateStore(path)
+
+            store.save(
+                owned=None,
+                management_interface="end0",
+            )
+            state, error = store.load()
+
+        self.assertIsNone(error)
+        self.assertEqual(state["management_interface"], "end0")
+
 
 if __name__ == "__main__":
     unittest.main()

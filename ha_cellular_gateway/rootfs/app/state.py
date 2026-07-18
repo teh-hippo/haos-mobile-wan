@@ -26,6 +26,7 @@ class StateStore:
         owned: dict[str, object] | None,
         auto_disable: dict[str, object] | None = None,
         profiles: dict[str, object] | None = None,
+        management_interface: str | None = None,
     ) -> None:
         payload: dict[str, object] = {}
         if owned:
@@ -34,6 +35,8 @@ class StateStore:
             payload["auto_disable"] = auto_disable
         if profiles:
             payload["profiles"] = profiles
+        if management_interface:
+            payload["management_interface"] = management_interface
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if not payload:

@@ -158,7 +158,22 @@ class IPhoneUsbUpstream:
                 "waiting_for_hotspot",
                 "Enable Personal Hotspot and Allow Others to Join on the iPhone",
             )
-        return self._consume(self.nm.inspect(self.interface, management))
+        try:
+            result = self.nm.inspect(self.interface, management)
+        except (
+            GatewayError,
+            OSError,
+            subprocess.SubprocessError,
+            ValueError,
+        ) as err:
+            grace = self._grace_lease()
+            if grace is not None:
+                return grace, []
+            return self._fail(
+                "waiting_for_profile",
+                f"NetworkManager iPhone USB inspection is unavailable: {err}",
+            )
+        return self._consume(result)
 
     def fallback_allowed(self) -> bool:
         return self.fallback_safe
@@ -207,7 +222,10 @@ class IPhoneUsbUpstream:
         if self._last_lease is None:
             return None
         upstream, seen = self._last_lease
-        if self._monotonic() - seen < self.LEASE_GRACE_SECONDS:
+        if (
+            self._monotonic() - seen < self.LEASE_GRACE_SECONDS
+            and self.nm.continuity(upstream)
+        ):
             return upstream
         self._last_lease = None
         return None

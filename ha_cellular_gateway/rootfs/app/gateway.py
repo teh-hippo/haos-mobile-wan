@@ -24,7 +24,11 @@ from .gateway_runtime import (
     stop,
 )
 from .downstream import DownstreamInterface
-from .management import ManagementBaseline, resolve_management
+from .management import ManagementBaseline
+from .management_state import (
+    resolve_pinned_management,
+    restore_management_identity,
+)
 from .mobile_connection import MobileConnectionResolver
 from .networkmanager_wifi import NetworkManagerWifi
 from .policy import PolicyRouting
@@ -81,7 +85,6 @@ class GatewayEngine:
             self.upstream,
             self.wifi,
         )
-
         self.config_error = config_error
         self.enabled = config.enabled and not config_error
         self.last_error: str | None = None
@@ -105,8 +108,12 @@ class GatewayEngine:
         self.started_at = time.time()
         self.startup_cleanup_pending = True
         self.gateway_error = GatewayError
-
         state, state_error = self.state_store.load()
+        (
+            self.management_interface,
+            management_state_error,
+        ) = restore_management_identity(state)
+        self.management_error: str | None = None
         self.auto_disable = AutoDisable(config, state)
         if self.auto_disable.latched:
             self.enabled = False
@@ -117,6 +124,7 @@ class GatewayEngine:
                 state_error,
                 self.auto_disable.state_error,
                 self.upstream_lifecycle.load_state(state.get("profiles")),
+                management_state_error,
             )
             if error
         ]
@@ -133,7 +141,7 @@ class GatewayEngine:
         self.state_load_error = "; ".join(startup_errors) or None
         if self.state_load_error:
             self.last_error = self.state_load_error
-
+        self.upstream_lifecycle.set_persist(self._persist_state)
     def _run(
         self,
         *args: str,
@@ -141,14 +149,13 @@ class GatewayEngine:
         timeout: int = 20,
     ) -> subprocess.CompletedProcess[str]:
         return self.runner.run(list(args), check=check, timeout=timeout)
-
     def _persist_state(self) -> None:
         self.state_store.save(
             owned=self.owned_state,
             auto_disable=self.auto_disable.state(),
             profiles=self.upstream_lifecycle.state(),
+            management_interface=self.management_interface,
         )
-
     def cleanup(
         self,
         *,
@@ -164,7 +171,6 @@ class GatewayEngine:
             force=force,
             owned_only=owned_only,
         )
-
     def _protectable_downstream(self, downstream: str | None) -> bool:
         upstream_interface = (
             self.last_upstream.interface
@@ -180,10 +186,7 @@ class GatewayEngine:
         }
 
     def _resolve_management(self) -> ManagementBaseline | None:
-        baseline = resolve_management(self._run)
-        with self.lock:
-            self.management = baseline
-        return baseline
+        return resolve_pinned_management(self)
 
     def _resolve_upstream(self) -> tuple[ResolvedUpstream | None, list[str]]:
         resolution = self.connection.resolve(self.management)

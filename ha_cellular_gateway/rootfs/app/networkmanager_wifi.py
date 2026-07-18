@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 import time
 from collections.abc import Callable
 
 from .command import RunCommand
 from .config import GatewayConfig
-from .hotspot import WIFI_NOT_ASSOCIATED
+from .errors import GatewayError
 from .networkmanager import NetworkManagerResult
 from .networkmanager_invariants import (
     main_default_present,
@@ -20,6 +21,7 @@ from .upstream_models import configured_upstream
 
 _LOGGER = logging.getLogger(__name__)
 
+WIFI_NOT_ASSOCIATED = "Hotspot Wi-Fi is enabled but not associated"
 WIFI_FOREIGN_MESSAGE = (
     "A different NetworkManager profile controls the Wi-Fi hotspot adapter"
 )
@@ -67,6 +69,22 @@ class NetworkManagerWifi:
         return None
 
     def inspect(self) -> NetworkManagerResult:
+        try:
+            return self._inspect()
+        except (
+            GatewayError,
+            OSError,
+            subprocess.SubprocessError,
+            ValueError,
+        ):
+            return NetworkManagerResult(
+                None,
+                "waiting",
+                "NetworkManager Wi-Fi inspection is unavailable",
+                True,
+            )
+
+    def _inspect(self) -> NetworkManagerResult:
         state = self.profile.activate(self.config.upstream_interface)
         if state == "foreign":
             return NetworkManagerResult(

@@ -34,6 +34,7 @@ class DistributionMetadataTests(unittest.TestCase):
             "### Limitations",
             "### Diagnostics",
             "### Troubleshooting",
+            "## Pre-1.0 live acceptance",
         ):
             self.assertIn(heading, text)
         self.assertNotIn("## Optional Home Assistant integration", text)

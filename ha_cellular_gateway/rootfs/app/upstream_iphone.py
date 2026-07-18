@@ -68,6 +68,7 @@ class IPhoneUsbUpstream:
         self.pairing_message: str | None = None
         self.device_udid: str | None = None
         self.interface: str | None = None
+        self.carrier: bool | None = None
         self.lease_owner: str | None = None
         self.fallback_safe = True
         self._last_lease: tuple[ResolvedUpstream, float] | None = None
@@ -78,6 +79,7 @@ class IPhoneUsbUpstream:
             "upstream_pairing_message": self.pairing_message,
             "upstream_device_udid": self.device_udid,
             "upstream_runtime_interface": self.interface,
+            "upstream_carrier": self.carrier,
             "upstream_lockdown_path": str(self.runtime.lockdown_dir),
             "upstream_lease_owner": self.lease_owner,
         }
@@ -152,7 +154,8 @@ class IPhoneUsbUpstream:
             return self._fail("waiting_for_interface", message)
 
         self.interface = interfaces[0]
-        if self.runtime.interface_carrier(self.interface) is False:
+        self.carrier = self.runtime.interface_carrier(self.interface)
+        if self.carrier is False:
             self._forget_lease()
             return self._fail(
                 "waiting_for_hotspot",
@@ -238,5 +241,6 @@ class IPhoneUsbUpstream:
         self.pairing_message = None
         self.device_udid = None
         self.interface = None
+        self.carrier = None
         self.lease_owner = None
         self.fallback_safe = True

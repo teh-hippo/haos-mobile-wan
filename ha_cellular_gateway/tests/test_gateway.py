@@ -1013,6 +1013,7 @@ class GatewayEngineTests(unittest.TestCase):
         status_text = json.dumps(engine.status(), sort_keys=True)
         self.assertNotIn("hotspot_password", status_text)
         self.assertNotIn("supersecret", status_text)
+        self.assertIn("networkmanager", engine.status())
         self.assertNotIn("supersecret", self.state_path.read_text(encoding="utf-8"))
 
     def test_unexpected_reconcile_error_fails_closed(self) -> None:

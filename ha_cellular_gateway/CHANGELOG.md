@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.1
+
+- Add secret-safe acceptance diagnostics for iPhone carrier, app-owned
+  NetworkManager profile UUIDs, profile states, ownership phase and legacy
+  Wi-Fi profile count.
+- Document the required pre-1.0 live acceptance matrix. A deployment is not
+  accepted until USB, Wi-Fi, failover, stability, upgrade and cleanup pass
+  end to end.
+
 ## 0.9.0
 
 - Make Enabled the NetworkManager ownership boundary. The app now creates

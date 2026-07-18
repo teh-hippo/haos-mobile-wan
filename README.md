@@ -205,6 +205,14 @@ addressing, interface names and iPhone identifiers.
 | Home Assistant becomes unreachable | Disable the app and verify the management Ethernet remains the only main default route |
 | The entities do not appear | Confirm the MQTT integration and broker are running, then restart the add-on |
 
+## Pre-1.0 live acceptance
+
+Pre-1.0 deployments are candidates until USB, Wi-Fi, failover, stability,
+upgrade and cleanup pass end to end. MQTT entities or a router DHCP lease alone
+do not prove success. Use the full
+[live acceptance checklist](ha_cellular_gateway/DOCS.md#pre-10-live-acceptance)
+and leave failed candidates disabled.
+
 ## Safety and security
 
 The app uses `host_network`, `host_dbus`, `NET_ADMIN`, `NET_RAW`, Supervisor

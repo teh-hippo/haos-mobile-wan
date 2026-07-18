@@ -49,10 +49,12 @@ class UpstreamLifecycle:
 
     def load_state(self, value: object) -> str | None:
         return self.journal.load(value)
-
     def state(self) -> dict[str, object] | None:
         return self.journal.state()
-
+    def diagnostics(self) -> dict[str, object]:
+        return self.journal.diagnostics(
+            legacy_wifi_profiles=len(self.legacy_wifi_profiles)
+        )
     def set_persist(self, persist: Callable[[], None]) -> None:
         self.journal.set_persist(persist)
 
@@ -101,7 +103,6 @@ class UpstreamLifecycle:
             self.error = "; ".join(
                 dict.fromkeys(filter(None, (self.error, journal_error)))
             )
-
     def deactivate(self, management: ManagementBaseline | None) -> None:
         del management
         errors: list[str] = []
@@ -141,9 +142,9 @@ class UpstreamLifecycle:
             self.error = "; ".join(
                 dict.fromkeys(filter(None, (self.error, journal_error)))
             )
-
     def _ensure_usb_profile(self) -> list[str]:
         inspection = self.iphone.nm.profile.inspect()
+        self.journal.set_profile_state("iphone_usb", inspection.state)
         if inspection.state == "drifted":
             return [USB_PROFILE_DRIFT_ERROR]
         journal_error = self.journal.claim(
@@ -154,8 +155,8 @@ class UpstreamLifecycle:
             return [journal_error]
         if inspection.state == "missing":
             self.iphone.nm.profile.create()
+            self.journal.set_profile_state("iphone_usb", "exact")
         return []
-
     def _release_unselected_profiles(self) -> list[str]:
         errors: list[str] = []
         if not self.config.uses_iphone:
@@ -192,6 +193,7 @@ class UpstreamLifecycle:
 
     def _ensure_wifi_profile(self) -> list[str]:
         inspection = self.wifi.profile.inspect()
+        self.journal.set_profile_state("wifi_hotspot", inspection.state)
         if inspection.state == "drifted":
             return [WIFI_PROFILE_DRIFT_MESSAGE]
         journal_error = self.journal.claim(
@@ -202,6 +204,7 @@ class UpstreamLifecycle:
             return [journal_error]
         if inspection.state == "missing":
             self.wifi.profile.create()
+            self.journal.set_profile_state("wifi_hotspot", "exact")
         return []
 
     def _release_profile(
@@ -211,6 +214,7 @@ class UpstreamLifecycle:
         drift_error: str,
     ) -> list[str]:
         inspection = profile.inspect()
+        self.journal.set_profile_state(key, inspection.state)
         if inspection.state == "missing":
             journal_error = self.journal.release(key)
             if journal_error:
@@ -233,11 +237,13 @@ class UpstreamLifecycle:
             ):
                 profile.deactivate()
                 profile.delete()
+                self.journal.set_profile_state(key, "missing")
                 journal_error = self.journal.release(key)
                 return [journal_error] if journal_error else []
             return [drift_error]
         profile.deactivate()
         profile.delete()
+        self.journal.set_profile_state(key, "missing")
         journal_error = self.journal.release(key)
         if journal_error:
             return [journal_error]

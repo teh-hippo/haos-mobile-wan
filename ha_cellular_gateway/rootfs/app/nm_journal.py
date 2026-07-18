@@ -9,6 +9,10 @@ class NmOwnershipJournal:
     def __init__(self) -> None:
         self.phase = "disabled"
         self.owned: dict[str, dict[str, object]] = {}
+        self.profile_states = {
+            "iphone_usb": "unknown",
+            "wifi_hotspot": "unknown",
+        }
         self.persist: Callable[[], None] | None = None
 
     def load(self, value: object) -> str | None:
@@ -70,6 +74,21 @@ class NmOwnershipJournal:
 
     def entry(self, key: str) -> dict[str, object] | None:
         return self.owned.get(key)
+
+    def set_profile_state(self, key: str, state: str) -> None:
+        self.profile_states[key] = state
+
+    def diagnostics(self, *, legacy_wifi_profiles: int) -> dict[str, object]:
+        owned = {
+            key: entry.get("uuid")
+            for key, entry in self.owned.items()
+        }
+        return {
+            "phase": self.phase,
+            "owned_profiles": owned,
+            "profile_states": dict(self.profile_states),
+            "legacy_wifi_profiles": legacy_wifi_profiles,
+        }
 
     def _write(self) -> str | None:
         if self.persist is None:

@@ -132,6 +132,7 @@ def status(engine: GatewayEngine) -> dict[str, object]:
             "last_error": engine.last_error,
             "safety_errors": list(engine.last_safety_errors),
             "issues": issues,
+            "networkmanager": engine.upstream_lifecycle.diagnostics(),
             **upstream_status,
             "config": _status_config(engine),
         }

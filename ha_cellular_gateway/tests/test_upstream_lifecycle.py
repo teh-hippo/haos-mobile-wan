@@ -72,6 +72,16 @@ class UpstreamLifecycleTests(unittest.TestCase):
             owned["wifi_hotspot"]["uuid"],
             WIFI_PROFILE_UUID,
         )
+        diagnostics = engine.upstream_lifecycle.diagnostics()
+        self.assertEqual(diagnostics["phase"], "active")
+        self.assertEqual(
+            diagnostics["profile_states"]["wifi_hotspot"],
+            "exact",
+        )
+        self.assertEqual(
+            diagnostics["owned_profiles"]["wifi_hotspot"],
+            WIFI_PROFILE_UUID,
+        )
 
     def test_fallback_activation_creates_warm_standby_profiles(self) -> None:
         engine = self._engine(

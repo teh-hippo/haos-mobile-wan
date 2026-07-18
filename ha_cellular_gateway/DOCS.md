@@ -331,6 +331,41 @@ entities:
 The add-on still serves `GET /v2/status` and `/health` on the Supervisor-side
 API for manual diagnostics.
 
+## Pre-1.0 live acceptance
+
+A pre-1.0 deployment remains a candidate until every applicable live gate
+passes. Keep the gateway disabled before, between and after scenarios.
+
+1. **Upgrade and baseline:** verify legacy migration, no active app profiles,
+   no gateway data plane, the downstream host guard, and an unchanged
+   management default route.
+2. **iPhone USB:** require trust, `ipheth` carrier, the app profile,
+   NetworkManager lease/table 202, Connected, Healthy, Internet available,
+   public IP, router WAN lease and LAN DNS/HTTPS.
+3. **USB stability:** sustain the path, then lock/unlock the phone, toggle
+   Personal Hotspot and reconnect the cable. Recovery must not require an app
+   restart.
+4. **Wi-Fi:** require the dedicated app profile, table 203, Connected, Healthy,
+   Internet available, router WAN lease and LAN HTTPS. Disable and confirm the
+   profile is deleted.
+5. **Failover:** with USB-preferred fallback, remove USB and require Wi-Fi;
+   restore USB and require a clean return without stale routing or NAT.
+6. **Cleanup:** verify disable, auto-disable, restart while Connected/Waiting,
+   interrupted-stop recovery and exact journal cleanup.
+
+For each gate record timestamps, Gateway state, Health issues, profile UUID and
+state, carrier, address, selected source, route tables, router lease, LAN
+traffic and final cleanup.
+
+Stop immediately if the management route changes, a foreign profile is
+modified, table 201 selects an unverified source, the router receives a lease
+without proven upstream Internet, or cleanup cannot restore the disabled
+baseline.
+
+The `networkmanager` object in `/v2/status` reports the secret-safe ownership
+phase, app profile UUIDs and profile states. `upstream_carrier` reports the
+latest iPhone carrier observation. These fields contain no passwords.
+
 ## Security
 
 The app uses `host_network`, `host_dbus`, `NET_ADMIN`, `NET_RAW`, `hassio_api`,

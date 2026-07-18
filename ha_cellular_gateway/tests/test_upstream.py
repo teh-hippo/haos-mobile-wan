@@ -500,6 +500,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         assert upstream is not None
         self.assertEqual(upstream.interface, "eth0")
         self.assertEqual(manager.pairing_state, "paired")
+        self.assertTrue(manager.runtime_status()["upstream_carrier"])
         self.assertEqual(network_manager.inspect_calls, ["eth0"])
         self.assertEqual(
             manager.runtime_status()["upstream_lease_owner"],
@@ -529,6 +530,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
 
         self.assertIsNone(upstream)
         self.assertEqual(manager.pairing_state, "waiting_for_hotspot")
+        self.assertFalse(manager.runtime_status()["upstream_carrier"])
         self.assertIn("Allow Others to Join", errors[0])
         self.assertEqual(network_manager.inspect_calls, [])
 

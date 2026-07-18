@@ -59,17 +59,17 @@ class FakeNetworkManagerCli:
     def _nmcli(self, argv: list[str]) -> Result:
         if argv[:1] == ["--wait"]:
             argv = argv[2:]
+        if argv[:1] == ["--show-secrets"]:
+            argv = argv[1:]
         if argv[:1] == ["-g"]:
             return self._nmcli_get(argv[1], argv[2], argv[-1])
         if argv[:2] == ["connection", "add"]:
             self.profile = {
                 "connection.type": "802-3-ethernet",
                 "connection.uuid": PROFILE_UUID,
+                "connection.id": PROFILE_NAME,
                 "connection.interface-name": "",
             }
-            for field in EXPECTED_SETTINGS:
-                if field in argv:
-                    self.profile[field] = argv[argv.index(field) + 1]
             return Result()
         if argv[:2] == ["connection", "modify"]:
             pairs = argv[3:]
@@ -83,6 +83,15 @@ class FakeNetworkManagerCli:
             if self.activate_on_up is not None:
                 interface, connection = self.activate_on_up
                 self.active[interface] = connection
+            return Result()
+        if argv[:2] == ["connection", "down"]:
+            uuid = argv[-1]
+            for interface, active_uuid in list(self.active.items()):
+                if active_uuid == uuid:
+                    del self.active[interface]
+            return Result()
+        if argv[:2] == ["connection", "delete"]:
+            self.profile = None
             return Result()
         return Result()
 
@@ -141,9 +150,7 @@ class NetworkManagerProfileTests(unittest.TestCase):
         add = [c for c in cli.commands if c[:3] == ["nmcli", "connection", "add"]]
         modify = [c for c in cli.commands if c[:3] == ["nmcli", "connection", "modify"]]
         self.assertEqual(len(add), 1)
-        self.assertEqual(modify, [])
-        self.assertIn("match.driver", add[0])
-        self.assertIn("ipv4.route-table", add[0])
+        self.assertEqual(len(modify), 1)
         assert cli.profile is not None
         for field, expected in EXPECTED_SETTINGS.items():
             self.assertEqual(cli.profile[field], expected)
@@ -184,7 +191,7 @@ class NetworkManagerProfileTests(unittest.TestCase):
         cli.profile["ipv4.route-table"] = "254"
         manager.ensure_profile()
         modify = [c for c in cli.commands if c[1:3] == ["connection", "modify"]]
-        self.assertEqual(len(modify), 1)
+        self.assertEqual(len(modify), 2)
 
     def test_drifted_active_profile_is_reactivated_once(self) -> None:
         cli = healthy_cli()
@@ -231,7 +238,7 @@ class NetworkManagerInspectTests(unittest.TestCase):
             [],
         )
 
-    def test_foreign_profile_is_brought_up_once_then_fails_closed(self) -> None:
+    def test_foreign_profile_fails_closed_without_takeover(self) -> None:
         cli = healthy_cli()
         cli.active = {"eth0": "foreign-profile-uuid"}
 
@@ -239,28 +246,11 @@ class NetworkManagerInspectTests(unittest.TestCase):
 
         self.assertEqual(result.state, "foreign")
         self.assertFalse(result.safe)
-        self.assertEqual(cli.up_calls, 1)
-        self.assertIn(
-            [
-                "nmcli", "--wait", "8", "connection", "up",
-                "uuid", PROFILE_UUID, "ifname", "eth0",
-            ],
-            cli.commands,
-        )
-
-    def test_foreign_profile_takeover_that_succeeds_is_active(self) -> None:
-        cli = healthy_cli()
-        cli.active = {"eth0": "foreign-profile-uuid"}
-        cli.activate_on_up = ("eth0", PROFILE_UUID)
-
-        result = self._manager(cli).inspect("eth0")
-
-        self.assertEqual(result.state, "active")
-        self.assertEqual(cli.up_calls, 1)
+        self.assertEqual(cli.up_calls, 0)
 
     def test_activation_attempt_is_rate_limited(self) -> None:
         cli = healthy_cli()
-        cli.active = {"eth0": "foreign-profile-uuid"}
+        cli.active = {}
         manager = self._manager(cli)
 
         manager.inspect("eth0")

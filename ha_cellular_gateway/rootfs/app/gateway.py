@@ -31,6 +31,7 @@ from .management_state import (
 )
 from .mobile_connection import MobileConnectionResolver
 from .networkmanager_wifi import NetworkManagerWifi
+from .nm_metadata import WifiProfileMetadata
 from .policy import PolicyRouting
 from .safety import SafetyInspector
 from .state import StateStore
@@ -50,6 +51,7 @@ class GatewayEngine:
         read_text: Callable[[Path], str] | None = None,
         state_path: Path | None = None,
         config_error: str | None = None,
+        wifi_metadata: WifiProfileMetadata | None = None,
     ) -> None:
         self.config = config
         self.management: ManagementBaseline | None = None
@@ -74,7 +76,7 @@ class GatewayEngine:
         )
         self.state_store = StateStore(state_path or STATE_PATH)
         self.upstream = IPhoneUsbUpstream(config, self._run)
-        self.wifi = NetworkManagerWifi(config, self._run)
+        self.wifi = NetworkManagerWifi(config, self._run, metadata=wifi_metadata)
         self.connection = MobileConnectionResolver(
             config,
             self.upstream,
@@ -109,10 +111,8 @@ class GatewayEngine:
         self.startup_cleanup_pending = True
         self.gateway_error = GatewayError
         state, state_error = self.state_store.load()
-        (
-            self.management_interface,
-            management_state_error,
-        ) = restore_management_identity(state)
+        management = restore_management_identity(state)
+        self.management_interface, management_state_error = management
         self.management_error: str | None = None
         self.auto_disable = AutoDisable(config, state)
         if self.auto_disable.latched:

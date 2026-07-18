@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import time
@@ -11,6 +10,7 @@ import dbus
 
 from app.command import CommandRunner
 from app.nm_inventory import NmInventory
+from app.nm_metadata import DbusWifiProfileMetadata
 from app.nm_profile import NmProfile, ProfileSpec
 from app.nm_profile_specs import USB_PROFILE_UUID, usb_profile_spec
 from app.networkmanager_invariants import (
@@ -18,7 +18,7 @@ from app.networkmanager_invariants import (
     networkmanager_routes,
     rule_selects_table,
 )
-from app.wifi_custody import WifiCustodian
+from app.wifi_custody import MARKER_KEY, WifiCustodian
 from nmcli_harness import NmcliHarnessRunner
 
 
@@ -27,7 +27,12 @@ PHONE = "phone0"
 ROUTE_TABLE = 202
 FOREIGN_UUID = "4a229445-9e75-45a6-9a0a-8d9ea2a75a01"
 CUSTODY_UUID = "4a229445-9e75-45a6-9a0a-8d9ea2a75a02"
-FIXED_UUIDS = (USB_PROFILE_UUID, FOREIGN_UUID, CUSTODY_UUID)
+WIFI_UUID = "4a229445-9e75-45a6-9a0a-8d9ea2a75a03"
+FIXED_UUIDS = (USB_PROFILE_UUID, FOREIGN_UUID, CUSTODY_UUID, WIFI_UUID)
+
+# Synthetic lab-only secret. It is never printed and is not a real user's PSK.
+SYNTHETIC_PSK = "lab-synthetic-psk-01"
+LAB_MARKER_VALUE = "02:00:00:00:00:aa|1|"
 
 
 class TracingRun:
@@ -45,9 +50,38 @@ class TracingRun:
         return self.runner.run(list(args), check=check, timeout=timeout)
 
 
+class TracingMetadata:
+    """Production D-Bus metadata store that records mutation order in the trace."""
+
+    def __init__(self, uuid: str, events: list[tuple[str, tuple[str, ...]]]) -> None:
+        self.store = DbusWifiProfileMetadata(uuid)
+        self.events = events
+
+    def read(self, key: str) -> str | None:
+        return self.store.read(key)
+
+    def write(self, key: str, value: str) -> None:
+        self.events.append(("metadata-write", (key,)))
+        self.store.write(key, value)
+
+    def clear(self, key: str) -> None:
+        self.events.append(("metadata-clear", (key,)))
+        self.store.clear(key)
+
+
 def require(condition: object, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def event_index(
+    events: list[tuple[str, tuple[str, ...]]],
+    predicate: Callable[[tuple[str, tuple[str, ...]]], bool],
+) -> int:
+    for index, event in enumerate(events):
+        if predicate(event):
+            return index
+    raise AssertionError("Expected event was not recorded")
 
 
 def wait_for(predicate: Callable[[], bool], message: str, seconds: float = 15) -> None:
@@ -135,6 +169,24 @@ def get_settings(uuid: str) -> dict[str, Any]:
         if str(settings["connection"]["uuid"]) == uuid:
             return stable_settings(settings)
     raise AssertionError(f"NetworkManager cannot find connection {uuid} over D-Bus")
+
+
+def read_psk(run: TracingRun, uuid: str) -> str:
+    """Read the stored WPA PSK the same way production does, and never log it."""
+    result = run(
+        "nmcli",
+        "--show-secrets",
+        "-g",
+        "802-11-wireless-security.psk",
+        "connection",
+        "show",
+        uuid,
+    )
+    return (result.stdout or "").strip()
+
+
+def without_user_setting(settings: dict[str, Any]) -> dict[str, Any]:
+    return {group: value for group, value in settings.items() if group != "user"}
 
 
 def profile_exists(run: TracingRun, uuid: str) -> bool:
@@ -271,10 +323,12 @@ def test_custody_dhcp_and_cleanup(run: TracingRun) -> None:
         veth_spec(CUSTODY_UUID, "nm-lab-custody", autoconnect="no"),
     )
     custody_profile.create()
+    metadata = TracingMetadata(CUSTODY_UUID, run.events)
     custodian = WifiCustodian(
         DEVICE,
         run,
         custody_profile,
+        metadata=metadata,
         excluded_uuids=lambda: {CUSTODY_UUID},
     )
     hold_errors = custodian.hold(None)
@@ -308,17 +362,14 @@ def test_custody_dhcp_and_cleanup(run: TracingRun) -> None:
         gate_errors == [],
         f"custodian did not displace foreign: {gate_errors!r}",
     )
-    marker_index = command_index(
+    marker_index = event_index(
         run.events[events_before_gate:],
-        lambda args: args[:3] == ("nmcli", "connection", "modify")
-        and args[3] == CUSTODY_UUID
-        and "user.data" in args,
+        lambda event: event[0] == "metadata-write" and event[1] == (MARKER_KEY,),
     ) + events_before_gate
-    persist_index = next(
-        index
-        for index, event in enumerate(run.events)
-        if index >= events_before_gate and event[0] == "persist-marker"
-    )
+    persist_index = event_index(
+        run.events[events_before_gate:],
+        lambda event: event[0] == "persist-marker",
+    ) + events_before_gate
     gate_index = command_index(
         run.events[events_before_gate:],
         lambda args: args[:5]
@@ -344,6 +395,7 @@ def test_custody_dhcp_and_cleanup(run: TracingRun) -> None:
         DEVICE,
         run,
         custody_profile,
+        metadata=DbusWifiProfileMetadata(CUSTODY_UUID),
         excluded_uuids=lambda: {CUSTODY_UUID},
     )
     require(
@@ -389,11 +441,96 @@ def test_custody_dhcp_and_cleanup(run: TracingRun) -> None:
     )
 
 
+def test_wifi_marker_preserves_secret(run: TracingRun) -> None:
+    """A Wi-Fi profile's PSK and every other setting survive marker changes."""
+    try:
+        created = run(
+            "nmcli",
+            "connection",
+            "add",
+            "type",
+            "wifi",
+            "con-name",
+            "nm-lab-psk",
+            "connection.uuid",
+            WIFI_UUID,
+            "ifname",
+            "*",
+            "ssid",
+            "LabHotspot",
+            "connection.autoconnect",
+            "no",
+            "wifi-sec.key-mgmt",
+            "wpa-psk",
+            "wifi-sec.psk",
+            SYNTHETIC_PSK,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        raise AssertionError("synthetic Wi-Fi profile creation failed") from None
+    require(
+        created.returncode == 0,
+        "synthetic Wi-Fi profile creation failed",
+    )
+    secret_before = read_psk(run, WIFI_UUID)
+    # Compare exactly, but never put either value in the failure message.
+    require(secret_before == SYNTHETIC_PSK, "synthetic PSK was not stored")
+    settings_before = get_settings(WIFI_UUID)
+    require(
+        "user" not in settings_before,
+        "synthetic profile unexpectedly carried user metadata",
+    )
+
+    metadata = DbusWifiProfileMetadata(WIFI_UUID)
+    metadata.write(MARKER_KEY, LAB_MARKER_VALUE)
+    require(
+        metadata.read(MARKER_KEY) == LAB_MARKER_VALUE,
+        "marker did not persist through the production D-Bus helper",
+    )
+    require(
+        read_psk(run, WIFI_UUID) == secret_before,
+        "writing the marker altered the Wi-Fi PSK",
+    )
+    settings_marked = get_settings(WIFI_UUID)
+    require(
+        settings_marked.get("user", {}).get("data", {}).get(MARKER_KEY)
+        == LAB_MARKER_VALUE,
+        "marker is missing from user.data after a D-Bus write",
+    )
+    require(
+        without_user_setting(settings_marked) == without_user_setting(settings_before),
+        "writing the marker altered other profile settings",
+    )
+
+    metadata.clear(MARKER_KEY)
+    require(metadata.read(MARKER_KEY) is None, "marker was not cleared")
+    require(
+        read_psk(run, WIFI_UUID) == secret_before,
+        "clearing the marker altered the Wi-Fi PSK",
+    )
+    settings_cleared = get_settings(WIFI_UUID)
+    require(
+        MARKER_KEY not in settings_cleared.get("user", {}).get("data", {}),
+        "marker remained in user.data after being cleared",
+    )
+    require(
+        without_user_setting(settings_cleared) == without_user_setting(settings_before),
+        "clearing the marker altered other profile settings",
+    )
+
+    run("nmcli", "connection", "delete", "uuid", WIFI_UUID, check=False)
+    require(
+        not profile_exists(run, WIFI_UUID),
+        "synthetic Wi-Fi profile remains after cleanup",
+    )
+
+
 def main() -> None:
     run = TracingRun()
     delete_fixed_profiles(run)
     test_production_profile_and_inventory(run)
     test_custody_dhcp_and_cleanup(run)
+    test_wifi_marker_preserves_secret(run)
     print("NetworkManager integration lab passed")
 
 

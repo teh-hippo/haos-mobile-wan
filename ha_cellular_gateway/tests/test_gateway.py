@@ -18,6 +18,7 @@ from rootfs.app.upstream_iphone import IPhoneUsbUpstream
 from rootfs.app.upstream_models import ResolvedUpstream
 
 from helpers import (
+    build_engine,
     FakeProcess,
     FakeRunner,
     install_realistic_firewall_state,
@@ -34,7 +35,7 @@ class GatewayEngineTests(unittest.TestCase):
         self.state_path = Path(self.directory.name) / "state.json"
         self.runner = FakeRunner()
         values = sysctl_values()
-        self.engine = GatewayEngine(
+        self.engine = build_engine(
             make_config(),
             runner=self.runner,
             read_text=lambda path: values[path],
@@ -47,7 +48,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def _restart_disabled_engine(self) -> GatewayEngine:
         values = sysctl_values()
-        restarted = GatewayEngine(
+        restarted = build_engine(
             make_config(enabled=False),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
@@ -59,7 +60,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def _prepare_active_engine(self, enabled: bool = True) -> GatewayEngine:
         values = sysctl_values()
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(
                 enabled=enabled,
                 hotspot_ssid="Phone",
@@ -147,7 +148,7 @@ class GatewayEngineTests(unittest.TestCase):
         active = self._prepare_active_engine()
         active.apply()
         values = sysctl_values()
-        degraded = GatewayEngine(
+        degraded = build_engine(
             make_config(enabled=True),
             runner=active.runner,
             read_text=lambda path: values[path],
@@ -178,7 +179,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_config_error_without_owned_state_does_not_mutate_host(self) -> None:
         values = sysctl_values()
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(
                 enabled=True,
                 hotspot_ssid="Phone",
@@ -205,7 +206,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_config_error_rejects_direct_enable_without_mutation(self) -> None:
         values = sysctl_values()
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(enabled=True),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
@@ -230,7 +231,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_config_error_forces_owned_only_direct_cleanup(self) -> None:
         values = sysctl_values()
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
@@ -417,7 +418,7 @@ class GatewayEngineTests(unittest.TestCase):
         values = sysctl_values()
         runner = FakeRunner()
         runner.main_default_routes = []
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(
                 enabled=True,
                 hotspot_ssid="Phone",
@@ -468,7 +469,7 @@ class GatewayEngineTests(unittest.TestCase):
         values = sysctl_values()
         runner = FakeRunner()
         runner.main_default_routes = []
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(
                 enabled=True,
                 hotspot_ssid="Phone",
@@ -604,7 +605,7 @@ class GatewayEngineTests(unittest.TestCase):
         self,
     ) -> None:
         values = sysctl_values()
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(enabled=True, mobile_connection=IPHONE_USB),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
@@ -677,7 +678,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_combined_connection_fails_over_and_returns_to_usb(self) -> None:
         values = sysctl_values()
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(
                 enabled=True,
                 mobile_connection=IPHONE_USB_WIFI_FALLBACK,
@@ -746,7 +747,7 @@ class GatewayEngineTests(unittest.TestCase):
         new: ResolvedUpstream,
     ) -> list[list[str]]:
         values = sysctl_values()
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(
                 enabled=True,
                 mobile_connection=IPHONE_USB_WIFI_FALLBACK,
@@ -915,7 +916,7 @@ class GatewayEngineTests(unittest.TestCase):
             upstream_gateway="not-a-gateway",
         )
         config.validate()
-        engine = GatewayEngine(
+        engine = build_engine(
             config,
             runner=FakeRunner(),
             read_text=lambda path: values[path],
@@ -930,7 +931,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_disabled_mode_reconcile_preserves_host_guard(self) -> None:
         values = sysctl_values()
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(enabled=False),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
@@ -1010,7 +1011,7 @@ class GatewayEngineTests(unittest.TestCase):
     def test_management_loss_preserves_existing_downstream_host_guard(self) -> None:
         values = sysctl_values()
         runner = FakeRunner()
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(enabled=False),
             runner=runner,
             read_text=lambda path: values[path],
@@ -1066,7 +1067,7 @@ class GatewayEngineTests(unittest.TestCase):
         self,
     ) -> None:
         values = sysctl_values()
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(enabled=False),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
@@ -1123,7 +1124,7 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertNotIn("unused", self.state_path.read_text(encoding="utf-8"))
 
     def test_status_and_state_do_not_disclose_hotspot_password(self) -> None:
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",
@@ -1155,7 +1156,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_status_remains_responsive_during_blocking_upstream_resolution(self) -> None:
         values = sysctl_values()
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(enabled=True, mobile_connection=IPHONE_USB),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
@@ -1186,7 +1187,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_disabled_reconcile_skips_upstream_and_health_probes(self) -> None:
         values = sysctl_values()
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(enabled=False, mobile_connection=IPHONE_USB),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
@@ -1229,7 +1230,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def test_stop_deletes_app_owned_wifi_profile(self) -> None:
         values = sysctl_values()
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(
                 enabled=False,
                 hotspot_ssid="Phone",
@@ -1255,7 +1256,7 @@ class GatewayEngineTests(unittest.TestCase):
         runner.main_default_routes.append(
             {"dst": "default", "gateway": "172.20.10.1", "dev": "eth0"}
         )
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(mobile_connection=IPHONE_USB),
             runner=runner,
             read_text=lambda path: values[path],
@@ -1308,7 +1309,7 @@ class GatewayEngineTests(unittest.TestCase):
 
     def _wifi_hotspot_engine(self) -> GatewayEngine:
         values = sysctl_values()
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(
                 enabled=True,
                 mobile_connection=WIFI_HOTSPOT,

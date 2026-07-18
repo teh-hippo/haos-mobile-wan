@@ -8,7 +8,7 @@ from rootfs.app.gateway import GatewayEngine
 from rootfs.app.errors import GatewayError
 from rootfs.app.upstream_models import ResolvedUpstream
 
-from helpers import FakeRunner, make_config, sysctl_values
+from helpers import FakeRunner, build_engine, make_config, sysctl_values
 
 USB_UPSTREAM = ResolvedUpstream(
     connection=IPHONE_USB,
@@ -28,7 +28,7 @@ class LifecycleTransitionLoggingTests(unittest.TestCase):
 
     def _engine(self, **overrides: object) -> GatewayEngine:
         values = sysctl_values()
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(enabled=False, **overrides),
             runner=FakeRunner(),
             read_text=lambda path: values[path],

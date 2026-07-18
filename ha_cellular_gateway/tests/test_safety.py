@@ -2,10 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from rootfs.app.gateway import GatewayEngine
 from rootfs.app.management import ManagementBaseline
 
-from helpers import FakeRunner, make_config, sysctl_values
+from helpers import FakeRunner, build_engine, make_config, sysctl_values
 
 
 class SafetyManagementTests(unittest.TestCase):
@@ -13,7 +12,7 @@ class SafetyManagementTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.runner = FakeRunner()
         values = sysctl_values()
-        self.engine = GatewayEngine(
+        self.engine = build_engine(
             make_config(),
             runner=self.runner,
             read_text=lambda path: values[path],

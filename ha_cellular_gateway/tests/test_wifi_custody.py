@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import unittest
 
-from helpers import FakeRunner, make_config
+from helpers import FakeRunner, FakeWifiProfileMetadata, make_config
 from rootfs.app.networkmanager_wifi import NetworkManagerWifi
 from rootfs.app.nm_profile_specs import WIFI_PROFILE_UUID
-from rootfs.app.wifi_custody import parse_marker
+from rootfs.app.wifi_custody import MARKER_KEY, parse_marker
 
 
 def _up_commands(runner: FakeRunner) -> list[list[str]]:
@@ -24,9 +24,26 @@ def _device_set_commands(commands: list[list[str]]) -> list[list[str]]:
     ]
 
 
+class RecordingMetadata(FakeWifiProfileMetadata):
+    def __init__(self, events: list[tuple[str, str]]) -> None:
+        super().__init__()
+        self.events = events
+
+    def write(self, key: str, value: str) -> None:
+        self.events.append(("metadata-write", key))
+        super().write(key, value)
+
+    def clear(self, key: str) -> None:
+        self.events.append(("metadata-clear", key))
+        super().clear(key)
+
+
 class WifiCustodianTests(unittest.TestCase):
     def _controller(
-        self, runner: FakeRunner, clock: list[float]
+        self,
+        runner: FakeRunner,
+        clock: list[float],
+        metadata: FakeWifiProfileMetadata | None = None,
     ) -> NetworkManagerWifi:
         config = make_config(
             hotspot_ssid="Phone",
@@ -36,21 +53,43 @@ class WifiCustodianTests(unittest.TestCase):
             config,
             lambda *args, **kwargs: runner.run(list(args), **kwargs),
             monotonic=lambda: clock[0],
+            metadata=metadata or FakeWifiProfileMetadata(),
         )
         controller.set_persist(lambda: None)
         return controller
 
-    def test_marker_written_to_data_and_profile_before_device_change(self) -> None:
+    def test_marker_persisted_to_metadata_before_device_change(self) -> None:
         runner = FakeRunner()
-        controller = self._controller(runner, [1000.0])
+        events: list[tuple[str, str]] = []
+        metadata = RecordingMetadata(events)
+
+        def run(*args: object, **kwargs: object) -> object:
+            argv = [str(arg) for arg in args]
+            result = runner.run(argv, **kwargs)  # type: ignore[arg-type]
+            if argv[:3] == ["nmcli", "device", "set"] and "autoconnect" in argv:
+                events.append(("device-autoconnect", argv[-1]))
+            return result
+
+        config = make_config(hotspot_ssid="Phone", hotspot_password="supersecret")
+        controller = NetworkManagerWifi(
+            config, run, monotonic=lambda: 1000.0, metadata=metadata
+        )
+        controller.set_persist(lambda: events.append(("persist", "")))
 
         controller.claim("end0")
 
         self.assertTrue(controller.held)
         self.assertIsNotNone(controller.state())
-        profile_marker = controller.custodian.read_profile_marker()
-        self.assertIsNotNone(profile_marker)
+        self.assertIsNotNone(controller.custodian.read_profile_marker())
         self.assertFalse(runner.nm_device_autoconnect["wlan0"])
+        write_index = events.index(("metadata-write", MARKER_KEY))
+        persist_index = events.index(("persist", ""))
+        device_index = next(
+            index for index, event in enumerate(events)
+            if event[0] == "device-autoconnect"
+        )
+        self.assertLess(write_index, persist_index)
+        self.assertLess(persist_index, device_index)
 
     def test_marker_schema_rejects_extra_keys_and_has_no_secrets(self) -> None:
         valid = {
@@ -298,6 +337,32 @@ class WifiCustodianTests(unittest.TestCase):
         self.assertNotIn(WIFI_PROFILE_UUID, runner.nm_profiles)
         self.assertTrue(runner.nm_device_autoconnect["wlan0"])
         self.assertEqual(runner.nm_active.get("wlan0"), "A-D074")
+
+    def test_marker_recovers_from_metadata_in_a_fresh_custodian(self) -> None:
+        runner = FakeRunner()
+        metadata = FakeWifiProfileMetadata()
+        controller = self._controller(runner, [1000.0], metadata=metadata)
+        self.assertEqual(controller.claim("end0"), [])
+        self.assertIn(MARKER_KEY, metadata.data)
+
+        recovered = self._controller(runner, [1000.0], metadata=metadata)
+        marker = recovered.custodian.read_profile_marker()
+
+        self.assertIsNotNone(marker)
+        assert marker is not None
+        self.assertEqual(marker.stable_device_identity, "platform-fe300000.mmcnr")
+
+    def test_release_clears_metadata_marker(self) -> None:
+        runner = FakeRunner()
+        metadata = FakeWifiProfileMetadata()
+        controller = self._controller(runner, [1000.0], metadata=metadata)
+        self.assertEqual(controller.claim("end0"), [])
+        self.assertIn(MARKER_KEY, metadata.data)
+
+        self.assertEqual(controller.release("end0"), [])
+
+        self.assertNotIn(MARKER_KEY, metadata.data)
+        self.assertIsNone(controller.custodian.read_profile_marker())
 
 
 if __name__ == "__main__":

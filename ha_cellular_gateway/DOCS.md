@@ -385,7 +385,9 @@ The app uses `host_network`, `host_dbus`, `NET_ADMIN`, `NET_RAW`, `hassio_api`,
 - Supervisor access is required for MQTT service details and persistent
   auto-disable option updates.
 - Host D-Bus is required so `nmcli` can manage the app-owned iPhone USB and
-  Wi-Fi profiles. The AppArmor profile scopes D-Bus to NetworkManager.
+  Wi-Fi profiles, and so the app can read and write the Wi-Fi profile's
+  recovery marker directly over the NetworkManager `Settings.Connection` API.
+  The AppArmor profile scopes D-Bus to NetworkManager.
 - USB access is required by the iPhone path and is static for the app package.
 
 The app does not use `full_access` or `udev`.

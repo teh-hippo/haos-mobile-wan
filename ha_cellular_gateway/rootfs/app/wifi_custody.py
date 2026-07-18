@@ -14,8 +14,9 @@ from .nm_device import (
     resolve_interface,
     set_device_autoconnect,
 )
-from .nm_profile import NmProfile, normalise_setting
+from .nm_profile import NmProfile
 from .networkmanager_invariants import main_default_present
+from .nm_metadata import WifiProfileMetadata
 
 CUSTODY_ERRORS = (GatewayError, OSError, subprocess.SubprocessError, ValueError)
 MARKER_KEY = "cellgw.custody"
@@ -80,11 +81,13 @@ class WifiCustodian:
         run: RunCommand,
         profile: NmProfile,
         *,
+        metadata: WifiProfileMetadata,
         excluded_uuids: Callable[[], set[str]],
     ) -> None:
         self.configured_interface = config_interface
         self.run = run
         self.profile = profile
+        self.metadata = metadata
         self.excluded_uuids = excluded_uuids
         self.interface: str | None = None
         self.marker: CustodyMarker | None = None
@@ -224,26 +227,13 @@ class WifiCustodian:
 
     def _write_profile_marker(self) -> None:
         assert self.marker is not None
-        self.run(
-            "nmcli", "connection", "modify", self.profile.spec.uuid,
-            "user.data", f"{MARKER_KEY}={self.marker.serialise()}",
-        )
+        self.metadata.write(MARKER_KEY, self.marker.serialise())
 
     def _clear_profile_marker(self) -> None:
-        self.run(
-            "nmcli", "connection", "modify", self.profile.spec.uuid,
-            "-user.data", MARKER_KEY, check=False,
-        )
+        self.metadata.clear(MARKER_KEY)
 
     def read_profile_marker(self) -> CustodyMarker | None:
-        result = self.run(
-            "nmcli", "--escape", "no", "-g", "user.data",
-            "connection", "show", self.profile.spec.uuid, check=False,
-        )
-        if result.returncode != 0:
+        value = self.metadata.read(MARKER_KEY)
+        if value is None:
             return None
-        for line in (result.stdout or "").splitlines():
-            key, sep, value = line.partition("=")
-            if sep and key.strip() == MARKER_KEY:
-                return parse_marker(normalise_setting(value))
-        return None
+        return parse_marker(value)

@@ -15,6 +15,7 @@ from .networkmanager_invariants import (
     table_routes_state,
 )
 from .nm_device import read_device_state
+from .nm_metadata import DbusWifiProfileMetadata, WifiProfileMetadata
 from .nm_profile import NmProfile
 from .nm_profile_specs import WIFI_ROUTE_TABLE, wifi_profile_spec
 from .upstream_models import configured_upstream
@@ -64,6 +65,7 @@ class NetworkManagerWifi:
         run: RunCommand,
         *,
         monotonic: Callable[[], float] = time.monotonic,
+        metadata: WifiProfileMetadata | None = None,
     ) -> None:
         self.config = config
         self.run = run
@@ -72,6 +74,7 @@ class NetworkManagerWifi:
             config.upstream_interface,
             run,
             self.profile,
+            metadata=metadata or DbusWifiProfileMetadata(self.profile.spec.uuid),
             excluded_uuids=lambda: {self.profile.spec.uuid},
         )
         self.activator = WifiActivator(

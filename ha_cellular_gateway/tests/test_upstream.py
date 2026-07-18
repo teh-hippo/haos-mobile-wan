@@ -11,18 +11,28 @@ from rootfs.app.errors import GatewayError
 from rootfs.app.management import ManagementBaseline
 from rootfs.app.networkmanager import (
     ACTIVATION_COOLDOWN_SECONDS,
-    EXPECTED_SETTINGS,
     LEASE_OWNER,
     MULTIPLE_ADDRESS_MESSAGE,
-    PROFILE_NAME,
-    PROFILE_UUID,
-    ROUTE_TABLE,
     NetworkManagerIphone,
     NetworkManagerResult,
 )
-from rootfs.app.networkmanager_profile import DHCP_TIMEOUT_SECONDS
+from rootfs.app.nm_profile_specs import (
+    USB_DHCP_TIMEOUT_SECONDS as DHCP_TIMEOUT_SECONDS,
+)
+from rootfs.app.nm_profile_specs import (
+    USB_PROFILE_NAME as PROFILE_NAME,
+)
+from rootfs.app.nm_profile_specs import (
+    USB_PROFILE_UUID as PROFILE_UUID,
+)
+from rootfs.app.nm_profile_specs import (
+    USB_ROUTE_TABLE as ROUTE_TABLE,
+)
+from rootfs.app.nm_profile_specs import usb_profile_spec
 from rootfs.app.upstream_iphone import IPhoneUsbUpstream
 from rootfs.app.upstream_models import ResolvedUpstream
+
+EXPECTED_SETTINGS = usb_profile_spec().expected
 
 
 def converged_profile() -> dict[str, str]:

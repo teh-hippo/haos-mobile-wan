@@ -124,6 +124,7 @@ class GatewayEngine:
                 state_error,
                 self.auto_disable.state_error,
                 self.upstream_lifecycle.load_state(state.get("profiles")),
+                self.wifi.load_state(state.get("wifi_custody")),
                 management_state_error,
             )
             if error
@@ -142,11 +143,9 @@ class GatewayEngine:
         if self.state_load_error:
             self.last_error = self.state_load_error
         self.upstream_lifecycle.set_persist(self._persist_state)
+        self.wifi.set_persist(self._persist_state)
     def _run(
-        self,
-        *args: str,
-        check: bool = True,
-        timeout: int = 20,
+        self, *args: str, check: bool = True, timeout: int = 20
     ) -> subprocess.CompletedProcess[str]:
         return self.runner.run(list(args), check=check, timeout=timeout)
     def _persist_state(self) -> None:
@@ -154,6 +153,7 @@ class GatewayEngine:
             owned=self.owned_state,
             auto_disable=self.auto_disable.state(),
             profiles=self.upstream_lifecycle.state(),
+            wifi_custody=self.wifi.state(),
             management_interface=self.management_interface,
         )
     def cleanup(

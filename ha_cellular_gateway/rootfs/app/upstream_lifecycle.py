@@ -6,16 +6,11 @@ from typing import TYPE_CHECKING
 
 from .config import GatewayConfig
 from .errors import GatewayError
-from .networkmanager_wifi import WIFI_PROFILE_DRIFT_MESSAGE, NetworkManagerWifi
+from .networkmanager_wifi import NetworkManagerWifi, safe_wifi_unavailable
 from .nm_inventory import NmInventory, ProfileRecord
 from .nm_journal import NmOwnershipJournal
-from .nm_migration import (
-    LEGACY_WIFI_MANUAL_ERROR,
-    migrate_legacy_usb,
-    migrate_legacy_wifi,
-)
-from .nm_preflight import inspect_nm_ownership
-from .nm_profile import NmProfile
+from .nm_migration import clean_lineage_wifi, migrate_legacy_usb
+from .nm_preflight import WIFI_MANAGEMENT_CONFLICT, inspect_nm_ownership
 from .upstream_iphone import IPhoneUsbUpstream
 
 if TYPE_CHECKING:
@@ -44,19 +39,28 @@ class UpstreamLifecycle:
         self.inventory = NmInventory(iphone.run)
         self.error: str | None = None
         self.journal = NmOwnershipJournal()
-        self.legacy_wifi_profiles: tuple[ProfileRecord, ...] = ()
+        self.lineage_wifi_profiles: tuple[ProfileRecord, ...] = ()
         self._iphone_dormant = False
 
     def load_state(self, value: object) -> str | None:
         return self.journal.load(value)
+
     def state(self) -> dict[str, object] | None:
         return self.journal.state()
+
     def diagnostics(self) -> dict[str, object]:
-        return self.journal.diagnostics(
-            legacy_wifi_profiles=len(self.legacy_wifi_profiles)
+        diagnostics = self.journal.diagnostics(
+            legacy_wifi_profiles=len(self.lineage_wifi_profiles)
         )
+        diagnostics["wifi_phase"] = self.wifi.phase()
+        diagnostics["wifi_restore_pending"] = self.wifi.restore_pending
+        return diagnostics
+
     def set_persist(self, persist: Callable[[], None]) -> None:
         self.journal.set_persist(persist)
+
+    def _manage_iface(self, management: ManagementBaseline | None) -> str | None:
+        return management.interface if management is not None else None
 
     def activate(self, management: ManagementBaseline | None) -> None:
         self._iphone_dormant = False
@@ -66,33 +70,25 @@ class UpstreamLifecycle:
             errors.append(journal_error)
         try:
             preflight = inspect_nm_ownership(
-                self.config,
-                self.inventory,
-                management,
+                self.config, self.inventory, management
             )
-            self.legacy_wifi_profiles = preflight.legacy_wifi_profiles
+            self.lineage_wifi_profiles = preflight.lineage_wifi_profiles
             errors.extend(preflight.errors)
-            if not errors:
+            if management is not None and WIFI_MANAGEMENT_CONFLICT not in errors:
                 errors.extend(migrate_legacy_usb(self.iphone.run))
                 errors.extend(
-                    migrate_legacy_wifi(
-                        self.config,
-                        self.iphone.run,
-                        self.legacy_wifi_profiles,
+                    clean_lineage_wifi(
+                        self.config, self.iphone.run, self.lineage_wifi_profiles
                     )
                 )
-                errors.extend(self._release_unselected_profiles())
-            if not errors and self.config.uses_iphone:
-                errors.extend(self._ensure_usb_profile())
-            if not errors and self.config.uses_wifi:
-                if not self.config.hotspot_credentials_configured:
-                    errors.append(
-                        "Wi-Fi hotspot credentials are not configured"
-                    )
-                else:
-                    errors.extend(self._ensure_wifi_profile())
+            if not errors:
+                errors.extend(self._release_unselected(management))
+                if self.config.uses_iphone:
+                    errors.extend(self._ensure_usb_profile())
+                if self.config.uses_wifi:
+                    errors.extend(self._claim_wifi(management))
             if errors and management is not None:
-                errors.extend(self._release_all_profiles())
+                errors.extend(self._release_all(management))
         except PROFILE_ERRORS as err:
             errors.append(f"NetworkManager profile operation failed: {err}")
         self.error = "; ".join(dict.fromkeys(errors)) or None
@@ -103,8 +99,8 @@ class UpstreamLifecycle:
             self.error = "; ".join(
                 dict.fromkeys(filter(None, (self.error, journal_error)))
             )
+
     def deactivate(self, management: ManagementBaseline | None) -> None:
-        del management
         errors: list[str] = []
         journal_error = self.journal.transition("releasing")
         if journal_error:
@@ -117,20 +113,8 @@ class UpstreamLifecycle:
             else:
                 self._iphone_dormant = True
         try:
-            errors.extend(
-                self._release_profile(
-                    self.iphone.nm.profile,
-                    "iphone_usb",
-                    USB_PROFILE_DRIFT_ERROR,
-                )
-            )
-            errors.extend(
-                self._release_profile(
-                    self.wifi.profile,
-                    "wifi_hotspot",
-                    WIFI_PROFILE_DRIFT_MESSAGE,
-                )
-            )
+            errors.extend(self._release_usb_profile())
+            errors.extend(self.wifi.release(self._manage_iface(management)))
             errors.extend(migrate_legacy_usb(self.iphone.run))
         except PROFILE_ERRORS as err:
             errors.append(f"NetworkManager profile cleanup failed: {err}")
@@ -142,91 +126,63 @@ class UpstreamLifecycle:
             self.error = "; ".join(
                 dict.fromkeys(filter(None, (self.error, journal_error)))
             )
+
+    def recover(self, management: ManagementBaseline | None) -> list[str]:
+        return self.wifi.recover(self._manage_iface(management))
+
+    def _claim_wifi(self, management: ManagementBaseline | None) -> list[str]:
+        if not self.config.hotspot_credentials_configured:
+            return ["Wi-Fi hotspot credentials are not configured"]
+        errors = self.wifi.claim(self._manage_iface(management))
+        if self.config.uses_iphone:
+            # Combined/fallback mode: a safely unavailable Wi-Fi adapter must not
+            # fail closed or churn the healthy USB source. The blocker is still
+            # recorded on the Wi-Fi controller for diagnostics.
+            errors = [
+                error for error in errors if not safe_wifi_unavailable(error)
+            ]
+        return errors
+
     def _ensure_usb_profile(self) -> list[str]:
         inspection = self.iphone.nm.profile.inspect()
         self.journal.set_profile_state("iphone_usb", inspection.state)
         if inspection.state == "drifted":
             return [USB_PROFILE_DRIFT_ERROR]
-        journal_error = self.journal.claim(
-            "iphone_usb",
-            self.iphone.nm.profile.spec,
-        )
+        journal_error = self.journal.claim("iphone_usb", self.iphone.nm.profile.spec)
         if journal_error:
             return [journal_error]
         if inspection.state == "missing":
             self.iphone.nm.profile.create()
             self.journal.set_profile_state("iphone_usb", "exact")
         return []
-    def _release_unselected_profiles(self) -> list[str]:
+
+    def _release_unselected(
+        self, management: ManagementBaseline | None
+    ) -> list[str]:
         errors: list[str] = []
         if not self.config.uses_iphone:
-            errors.extend(
-                self._release_profile(
-                    self.iphone.nm.profile,
-                    "iphone_usb",
-                    USB_PROFILE_DRIFT_ERROR,
-                )
-            )
+            errors.extend(self._release_usb_profile())
         if not self.config.uses_wifi:
-            errors.extend(
-                self._release_profile(
-                    self.wifi.profile,
-                    "wifi_hotspot",
-                    WIFI_PROFILE_DRIFT_MESSAGE,
-                )
-            )
+            errors.extend(self.wifi.release(self._manage_iface(management)))
         return errors
 
-    def _release_all_profiles(self) -> list[str]:
+    def _release_all(self, management: ManagementBaseline | None) -> list[str]:
         return [
-            *self._release_profile(
-                self.iphone.nm.profile,
-                "iphone_usb",
-                USB_PROFILE_DRIFT_ERROR,
-            ),
-            *self._release_profile(
-                self.wifi.profile,
-                "wifi_hotspot",
-                WIFI_PROFILE_DRIFT_MESSAGE,
-            ),
+            *self._release_usb_profile(),
+            *self.wifi.release(self._manage_iface(management)),
         ]
 
-    def _ensure_wifi_profile(self) -> list[str]:
-        inspection = self.wifi.profile.inspect()
-        self.journal.set_profile_state("wifi_hotspot", inspection.state)
-        if inspection.state == "drifted":
-            return [WIFI_PROFILE_DRIFT_MESSAGE]
-        journal_error = self.journal.claim(
-            "wifi_hotspot",
-            self.wifi.profile.spec,
-        )
-        if journal_error:
-            return [journal_error]
-        if inspection.state == "missing":
-            self.wifi.profile.create()
-            self.journal.set_profile_state("wifi_hotspot", "exact")
-        return []
-
-    def _release_profile(
-        self,
-        profile: NmProfile,
-        key: str,
-        drift_error: str,
-    ) -> list[str]:
+    def _release_usb_profile(self) -> list[str]:
+        profile = self.iphone.nm.profile
+        key = "iphone_usb"
         inspection = profile.inspect()
         self.journal.set_profile_state(key, inspection.state)
         if inspection.state == "missing":
             journal_error = self.journal.release(key)
-            if journal_error:
-                return [journal_error]
-            return []
+            return [journal_error] if journal_error else []
         if inspection.state == "drifted":
             entry = self.journal.entry(key)
-            fingerprint = (
-                entry.get("fingerprint")
-                if isinstance(entry, dict)
-                else None
-            )
+            fingerprint = entry.get("fingerprint") if isinstance(entry, dict) else None
             if (
                 isinstance(fingerprint, dict)
                 and profile.matches_fingerprint(fingerprint)
@@ -240,11 +196,9 @@ class UpstreamLifecycle:
                 self.journal.set_profile_state(key, "missing")
                 journal_error = self.journal.release(key)
                 return [journal_error] if journal_error else []
-            return [drift_error]
+            return [USB_PROFILE_DRIFT_ERROR]
         profile.deactivate()
         profile.delete()
         self.journal.set_profile_state(key, "missing")
         journal_error = self.journal.release(key)
-        if journal_error:
-            return [journal_error]
-        return []
+        return [journal_error] if journal_error else []

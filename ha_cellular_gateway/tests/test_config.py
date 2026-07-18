@@ -109,19 +109,6 @@ class GatewayConfigTests(unittest.TestCase):
                 )
                 self.assertEqual(config.mobile_connection, connection)
 
-    def test_maps_legacy_wifi_migration_choice(self) -> None:
-        config = GatewayConfig._from_data(
-            {
-                "legacy_wifi_migration": (
-                    "Migrate matching Supervisor profile"
-                )
-            }
-        )
-        self.assertEqual(
-            config.legacy_wifi_migration,
-            "migrate_matching",
-        )
-
     def test_rejects_overlapping_networks(self) -> None:
         config = make_config(downstream_address="172.20.10.9/28")
         with self.assertRaisesRegex(GatewayError, "must not overlap"):

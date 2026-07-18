@@ -26,6 +26,7 @@ class StateStore:
         owned: dict[str, object] | None,
         auto_disable: dict[str, object] | None = None,
         profiles: dict[str, object] | None = None,
+        wifi_custody: dict[str, object] | None = None,
         management_interface: str | None = None,
     ) -> None:
         payload: dict[str, object] = {}
@@ -35,6 +36,8 @@ class StateStore:
             payload["auto_disable"] = auto_disable
         if profiles:
             payload["profiles"] = profiles
+        if wifi_custody:
+            payload["wifi_custody"] = wifi_custody
         if management_interface:
             payload["management_interface"] = management_interface
 

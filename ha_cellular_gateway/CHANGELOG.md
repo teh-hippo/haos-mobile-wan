@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.5
+
+- Temporarily reserve the selected dedicated Wi-Fi adapter while Enabled,
+  displacing active foreign connections without modifying their definitions
+  and restoring the prior runtime state when released.
+- Clean up only fully matching legacy app Wi-Fi profiles automatically, while
+  preserving genuine NetworkManager profiles.
+- Replace blind Wi-Fi activation retries with state-aware waiting, bounded
+  scans and warm USB-to-Wi-Fi failover.
+- Add secret-safe custodianship and fallback diagnostics, plus an on-demand
+  real NetworkManager integration lab for profile, DHCP, routing and recovery
+  validation.
+
 ## 0.9.4
 
 - Migrate matching legacy Supervisor Wi-Fi profiles when NetworkManager omits

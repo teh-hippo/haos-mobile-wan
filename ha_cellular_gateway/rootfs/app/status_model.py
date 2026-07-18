@@ -4,6 +4,9 @@ from typing import Any
 
 WAITING_ISSUE_IDS = {
     "hotspot_not_associated",
+    "hotspot_target_absent",
+    "hotspot_connecting",
+    "wifi_restoration_pending",
     "upstream_interface_inactive",
     "upstream_interface_unavailable",
     "upstream_not_ready",

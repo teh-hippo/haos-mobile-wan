@@ -18,12 +18,6 @@ from .networkmanager_invariants import (
     table_gateway,
     table_routes_state,
 )
-from .networkmanager_profile import (
-    EXPECTED_SETTINGS,
-    PROFILE_NAME,
-    PROFILE_UUID,
-    ROUTE_TABLE,
-)
 from .upstream_models import ResolvedUpstream, validate_dynamic_lease
 
 if TYPE_CHECKING:

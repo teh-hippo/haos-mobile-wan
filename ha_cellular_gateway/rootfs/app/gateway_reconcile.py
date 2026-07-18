@@ -136,6 +136,12 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                         engine.config_error or management is None
                     ),
                 )
+                if not engine.config_error:
+                    recovery = engine.upstream_lifecycle.recover(management)
+                    engine._persist_state()
+                    if recovery:
+                        with engine.lock:
+                            engine.last_error = "; ".join(recovery)
                 with engine.lock:
                     engine.startup_cleanup_pending = False
                     if not engine.config_error:

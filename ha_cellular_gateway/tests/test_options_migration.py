@@ -15,7 +15,6 @@ from rootfs.app.options_migration import prune_legacy_options
 KNOWN_OPTIONS = {
     "enabled": True,
     "auto_disable_minutes": 30,
-    "legacy_wifi_migration": "Manual cleanup",
     "mobile_connection": "Wi-Fi hotspot",
     "hotspot_ssid": "Phone",
     "hotspot_password": "supersecret",
@@ -28,6 +27,7 @@ KNOWN_OPTIONS = {
 
 LEGACY_OPTIONS = {
     **KNOWN_OPTIONS,
+    "legacy_wifi_migration": "Manual cleanup",
     "mode": "gateway",
     "dry_run": False,
     "management_interface": "end0",
@@ -59,7 +59,6 @@ class PruneLegacyOptionsTests(unittest.TestCase):
                 {
                     "enabled",
                     "auto_disable_minutes",
-                    "legacy_wifi_migration",
                     "mobile_connection",
                     "hotspot_ssid",
                     "hotspot_password",

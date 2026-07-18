@@ -12,8 +12,8 @@ from rootfs.app.const import (
 )
 from rootfs.app.errors import GatewayError, SafetyError
 from rootfs.app.gateway import GatewayEngine
+from rootfs.app.gateway_reconcile import apply as apply_gateway
 from rootfs.app.management import ManagementBaseline
-from rootfs.app.networkmanager_wifi import WIFI_NOT_ASSOCIATED
 from rootfs.app.upstream_iphone import IPhoneUsbUpstream
 from rootfs.app.upstream_models import ResolvedUpstream
 
@@ -73,6 +73,7 @@ class GatewayEngineTests(unittest.TestCase):
         engine.safety.errors = lambda *args, **kwargs: []
         engine.management = ManagementBaseline("end0", "192.168.1.2/24")
         engine.management_interface = "end0"
+        engine.runner.nm_wifi_cache["wlan0"] = {"Phone"}
         engine.upstream_lifecycle.activate(engine.management)
         engine._persist_state()
         engine.firewall.installed = (
@@ -430,6 +431,7 @@ class GatewayEngineTests(unittest.TestCase):
         engine.safety.errors = lambda *args, management=None, **kwargs: (
             [] if management is not None else ["Management interface is unavailable"]
         )
+        runner.nm_wifi_cache["wlan0"] = {"Phone"}
         engine.firewall.installed = (
             lambda downstream=None, upstream_interface=None: engine.applied
         )
@@ -705,6 +707,7 @@ class GatewayEngineTests(unittest.TestCase):
             return []
 
         engine.safety.errors = safety_errors
+        engine.runner.nm_wifi_cache["wlan0"] = {"Phone"}
         engine.dhcp.start = lambda downstream: setattr(
             engine.dhcp,
             "process",
@@ -736,6 +739,128 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertEqual(engine.active_connection, IPHONE_USB)
         self.assertFalse(engine.status()["fallback_active"])
         self.assertIsNone(engine.fallback_reason)
+
+    def _switch_upstream_commands(
+        self,
+        old: ResolvedUpstream,
+        new: ResolvedUpstream,
+    ) -> list[list[str]]:
+        values = sysctl_values()
+        engine = GatewayEngine(
+            make_config(
+                enabled=True,
+                mobile_connection=IPHONE_USB_WIFI_FALLBACK,
+                hotspot_ssid="Phone",
+                hotspot_password="supersecret",
+            ),
+            runner=FakeRunner(),
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        downstream = "enx001122334455"
+        engine.management = ManagementBaseline("end0", "192.168.1.2/24")
+        engine._resolve_management = lambda: engine.management
+        engine.safety.find_downstream = lambda *_a, **_k: downstream
+        engine.safety.errors = lambda *args, **kwargs: []
+        engine.dhcp.start = lambda _downstream: setattr(
+            engine.dhcp,
+            "process",
+            FakeProcess(),
+        )
+        engine.firewall.protect_host(downstream)
+        engine.firewall.apply(downstream, old.interface)
+        engine.policy.apply(downstream, old)
+        engine.owned_state = engine.policy.ownership(downstream, old)
+        engine.owned_state["downstream_address_owned"] = True
+        engine.last_upstream = old
+        engine.active_connection = old.connection
+        engine.applied = True
+        engine.startup_cleanup_pending = False
+        before = len(engine.runner.commands)
+
+        apply_gateway(engine, recovering=True, upstream=new, upstream_errors=[])
+
+        self.assertEqual(engine.owned_state["upstream_interface"], new.interface)
+        return engine.runner.commands[before:]
+
+    @staticmethod
+    def _first_index(commands, predicate):
+        for index, command in enumerate(commands):
+            if predicate(command):
+                return index
+        return None
+
+    def _assert_old_removed_before_new_installed(
+        self,
+        old: ResolvedUpstream,
+        new: ResolvedUpstream,
+    ) -> None:
+        commands = self._switch_upstream_commands(old, new)
+
+        old_nat_del = self._first_index(
+            commands,
+            lambda c: c[:5] == ["iptables", "-t", "nat", "-D", "POSTROUTING"]
+            and old.interface in c,
+        )
+        new_nat_add = self._first_index(
+            commands,
+            lambda c: c[:5] == ["iptables", "-t", "nat", "-A", "POSTROUTING"]
+            and new.interface in c,
+        )
+        old_policy_del = self._first_index(
+            commands,
+            lambda c: c[:3] in (["ip", "rule", "del"], ["ip", "route", "del"])
+            and old.interface in c,
+        )
+        new_policy_install = self._first_index(
+            commands,
+            lambda c: c[:3] in (["ip", "rule", "add"], ["ip", "route", "replace"]),
+        )
+
+        for label, index in (
+            ("old NAT delete", old_nat_del),
+            ("new NAT add", new_nat_add),
+            ("old policy delete", old_policy_del),
+            ("new policy install", new_policy_install),
+        ):
+            self.assertIsNotNone(index, f"missing {label} command")
+        self.assertLess(old_nat_del, new_nat_add)
+        self.assertLess(old_nat_del, new_policy_install)
+        self.assertLess(old_policy_del, new_policy_install)
+
+    def test_usb_to_wifi_promotion_removes_old_ownership_before_installing(
+        self,
+    ) -> None:
+        usb = ResolvedUpstream(
+            connection=IPHONE_USB,
+            interface="eth0",
+            address="172.20.10.2/28",
+            gateway="172.20.10.1",
+        )
+        wifi = ResolvedUpstream(
+            connection=WIFI_HOTSPOT,
+            interface="wlan0",
+            address="172.20.10.4/28",
+            gateway="172.20.10.1",
+        )
+        self._assert_old_removed_before_new_installed(usb, wifi)
+
+    def test_wifi_to_usb_promotion_removes_old_ownership_before_installing(
+        self,
+    ) -> None:
+        wifi = ResolvedUpstream(
+            connection=WIFI_HOTSPOT,
+            interface="wlan0",
+            address="172.20.10.4/28",
+            gateway="172.20.10.1",
+        )
+        usb = ResolvedUpstream(
+            connection=IPHONE_USB,
+            interface="eth0",
+            address="172.20.10.2/28",
+            gateway="172.20.10.1",
+        )
+        self._assert_old_removed_before_new_installed(wifi, usb)
 
     def test_cleanup_removes_host_protection_when_adapter_probe_fails(self) -> None:
         engine = self._prepare_active_engine()
@@ -1208,9 +1333,13 @@ class GatewayEngineTests(unittest.TestCase):
 
         engine.reconcile()
 
-        self.assertIn(WIFI_NOT_ASSOCIATED, engine.last_safety_errors)
+        self.assertIn(
+            "The hotspot network is not currently visible",
+            engine.last_safety_errors,
+        )
         issue_ids = {issue["id"] for issue in engine.status()["issues"]}
-        self.assertIn("hotspot_not_associated", issue_ids)
+        self.assertIn("hotspot_target_absent", issue_ids)
+        self.assertEqual(engine.status()["state"], "waiting")
 
 
 if __name__ == "__main__":

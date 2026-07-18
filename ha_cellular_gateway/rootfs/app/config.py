@@ -11,7 +11,6 @@ from .const import (
     DEFAULT_MOBILE_CONNECTION_OPTION,
     IPHONE_USB,
     IPHONE_USB_WIFI_FALLBACK,
-    LEGACY_WIFI_MIGRATION_OPTIONS,
     MOBILE_CONNECTION_OPTIONS,
     WIFI_HOTSPOT,
 )
@@ -28,7 +27,6 @@ STATE_PATH = Path(os.environ.get("CELLGW_STATE", "/data/state.json"))
 _OPTION_DEFAULTS: dict[str, object] = {
     "enabled": False,
     "auto_disable_minutes": 30,
-    "legacy_wifi_migration": "Manual cleanup",
     "mobile_connection": DEFAULT_MOBILE_CONNECTION_OPTION,
     "hotspot_ssid": "",
     "hotspot_password": "",
@@ -45,7 +43,6 @@ KNOWN_OPTION_KEYS: frozenset[str] = frozenset(_OPTION_DEFAULTS)
 class GatewayConfig:
     enabled: bool
     auto_disable_minutes: int
-    legacy_wifi_migration: str
     mobile_connection: str
     upstream_interface: str
     upstream_address: str
@@ -99,7 +96,6 @@ class GatewayConfig:
             return data.get(key, _OPTION_DEFAULTS[key])
 
         mobile_connection = str(option("mobile_connection"))
-        legacy_wifi_migration = str(option("legacy_wifi_migration"))
         try:
             auto_disable_minutes = int(option("auto_disable_minutes"))
         except (TypeError, ValueError):
@@ -107,10 +103,6 @@ class GatewayConfig:
         return cls(
             enabled=bool(option("enabled")),
             auto_disable_minutes=auto_disable_minutes,
-            legacy_wifi_migration=LEGACY_WIFI_MIGRATION_OPTIONS.get(
-                legacy_wifi_migration,
-                legacy_wifi_migration,
-            ),
             mobile_connection=MOBILE_CONNECTION_OPTIONS.get(
                 mobile_connection,
                 mobile_connection,

@@ -75,6 +75,15 @@ def wifi_waiting() -> NetworkManagerResult:
     )
 
 
+def wifi_safely_unavailable() -> NetworkManagerResult:
+    return NetworkManagerResult(
+        None,
+        "blocked",
+        "The Wi-Fi radio is hardware-blocked",
+        True,
+    )
+
+
 class MobileConnectionResolverTests(unittest.TestCase):
     def test_wifi_connection_does_not_resolve_usb(self) -> None:
         iphone = StubIPhone([(None, ["not connected"])])
@@ -124,6 +133,18 @@ class MobileConnectionResolverTests(unittest.TestCase):
         self.assertEqual(resolution.errors, ())
         self.assertTrue(resolution.fallback_active)
         self.assertEqual(resolution.fallback_reason, "waiting for device")
+
+    def test_safely_unavailable_wifi_does_not_block_ready_usb(self) -> None:
+        wifi = StubWifi([wifi_safely_unavailable()])
+        resolution = MobileConnectionResolver(
+            make_config(mobile_connection=IPHONE_USB_WIFI_FALLBACK),
+            StubIPhone([(usb_upstream(), [])]),
+            wifi,
+        ).resolve()
+
+        self.assertEqual(resolution.upstream, usb_upstream())
+        self.assertEqual(resolution.errors, ())
+        self.assertFalse(resolution.fallback_active)
 
     def test_combined_connection_blocks_unsafe_usb_state(self) -> None:
         iphone = StubIPhone([(None, ["USB ownership conflict"])])

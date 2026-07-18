@@ -103,15 +103,6 @@ class IPhoneUsbUpstream:
             )
 
         try:
-            self.nm.ensure_profile()
-        except (GatewayError, OSError, subprocess.SubprocessError) as err:
-            self._forget_lease()
-            return self._fail(
-                "profile_failed",
-                f"NetworkManager iPhone USB profile setup failed: {err}",
-            )
-
-        try:
             self.runtime.ensure_usbmuxd()
         except GatewayError as err:
             self._forget_lease()

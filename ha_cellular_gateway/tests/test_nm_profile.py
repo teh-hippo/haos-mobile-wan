@@ -4,6 +4,14 @@ import json
 import unittest
 
 from helpers import Result, make_config
+from rootfs.app.management import ManagementBaseline
+from rootfs.app.nm_inventory import NmInventory
+from rootfs.app.nm_preflight import (
+    MANAGEMENT_REQUIRED,
+    USB_FOREIGN_PROFILE,
+    WIFI_FOREIGN_PROFILE,
+    inspect_nm_ownership,
+)
 from rootfs.app.networkmanager_wifi import (
     WIFI_FOREIGN_MESSAGE,
     WIFI_PROFILE_DRIFT_MESSAGE,
@@ -59,10 +67,30 @@ class FakeNmcli:
         if argv[0] != "nmcli":
             return Result()
         command = argv[1:]
+        if command[:4] == ["-t", "--separator", "|", "-f"]:
+            lines = [
+                "|".join(
+                    (
+                        uuid,
+                        profile.get("connection.type", ""),
+                        profile.get("connection.id", ""),
+                    )
+                )
+                for uuid, profile in self.profiles.items()
+            ]
+            return Result(stdout="\n".join(lines) + ("\n" if lines else ""))
         if command[:2] == ["--show-secrets", "-g"]:
             fields = command[2].split(",")
             uuid = command[-1]
             profile = self.profiles.get(uuid)
+            if profile is None:
+                return Result(returncode=10)
+            return Result(
+                stdout="\n".join(profile.get(field, "") for field in fields) + "\n"
+            )
+        if command[:1] == ["-g"] and command[2:4] == ["connection", "show"]:
+            fields = command[1].split(",")
+            profile = self.profiles.get(command[-1])
             if profile is None:
                 return Result(returncode=10)
             return Result(
@@ -276,6 +304,89 @@ class NmProfileTests(unittest.TestCase):
         error = manager.ensure_profile()
 
         self.assertEqual(error, WIFI_PROFILE_DRIFT_MESSAGE)
+
+    def test_inventory_finds_foreign_wifi_and_ipheth_profiles(self) -> None:
+        cli = FakeNmcli()
+        cli.profiles["wifi-foreign"] = {
+            "connection.uuid": "wifi-foreign",
+            "connection.id": "Personal Wi-Fi",
+            "connection.type": "802-11-wireless",
+            "connection.interface-name": "wlan0",
+        }
+        cli.profiles["usb-foreign"] = {
+            "connection.uuid": "usb-foreign",
+            "connection.id": "Other iPhone",
+            "connection.type": "802-3-ethernet",
+            "match.driver": "ipheth",
+        }
+        inventory = NmInventory(cli.run)
+
+        wifi = inventory.foreign_wifi_profiles(
+            "wlan0",
+            allowed_uuid=WIFI_PROFILE_UUID,
+        )
+        usb = inventory.foreign_ipheth_profiles(allowed_uuids=set())
+
+        self.assertEqual([profile.uuid for profile in wifi], ["wifi-foreign"])
+        self.assertEqual([profile.uuid for profile in usb], ["usb-foreign"])
+
+    def test_preflight_requires_management_and_refuses_foreign_profiles(self) -> None:
+        cli = FakeNmcli()
+        config = make_config(
+            mobile_connection="iphone_usb_wifi_fallback",
+            hotspot_ssid="Phone",
+            hotspot_password="supersecret",
+        )
+        self.assertEqual(
+            inspect_nm_ownership(config, NmInventory(cli.run), None).errors,
+            (MANAGEMENT_REQUIRED,),
+        )
+        cli.profiles["wifi-foreign"] = {
+            "connection.uuid": "wifi-foreign",
+            "connection.id": "Personal Wi-Fi",
+            "connection.type": "802-11-wireless",
+            "connection.interface-name": "wlan0",
+        }
+        cli.profiles["usb-foreign"] = {
+            "connection.uuid": "usb-foreign",
+            "connection.id": "Other iPhone",
+            "connection.type": "802-3-ethernet",
+            "match.driver": "ipheth",
+        }
+
+        result = inspect_nm_ownership(
+            config,
+            NmInventory(cli.run),
+            ManagementBaseline("end0", "192.168.1.2/24"),
+        )
+
+        self.assertIn(WIFI_FOREIGN_PROFILE, result.errors)
+        self.assertIn(USB_FOREIGN_PROFILE, result.errors)
+
+    def test_preflight_classifies_matching_supervisor_profile_as_legacy(self) -> None:
+        cli = FakeNmcli()
+        config = make_config(
+            hotspot_ssid="Phone",
+            hotspot_password="supersecret",
+        )
+        cli.profiles["legacy"] = {
+            "connection.uuid": "legacy",
+            "connection.id": "Supervisor wlan0",
+            "connection.type": "802-11-wireless",
+            "connection.interface-name": "wlan0",
+        }
+
+        result = inspect_nm_ownership(
+            config,
+            NmInventory(cli.run),
+            ManagementBaseline("end0", "192.168.1.2/24"),
+        )
+
+        self.assertEqual(result.errors, ())
+        self.assertEqual(
+            [profile.uuid for profile in result.legacy_wifi_profiles],
+            ["legacy"],
+        )
 
 
 if __name__ == "__main__":

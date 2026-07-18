@@ -7,6 +7,7 @@ from rootfs.app.const import (
     WIFI_HOTSPOT,
 )
 from rootfs.app.mobile_connection import MobileConnectionResolver
+from rootfs.app.networkmanager import NetworkManagerResult
 from rootfs.app.upstream_models import ResolvedUpstream
 
 
@@ -32,6 +33,17 @@ class StubIPhone:
         return self.fallback_safe
 
 
+class StubWifi:
+    def __init__(self, results: list[NetworkManagerResult]) -> None:
+        self.results = results
+        self.calls = 0
+
+    def inspect(self) -> NetworkManagerResult:
+        result = self.results[min(self.calls, len(self.results) - 1)]
+        self.calls += 1
+        return result
+
+
 def usb_upstream() -> ResolvedUpstream:
     return ResolvedUpstream(
         connection=IPHONE_USB,
@@ -41,12 +53,35 @@ def usb_upstream() -> ResolvedUpstream:
     )
 
 
+def wifi_upstream() -> ResolvedUpstream:
+    return ResolvedUpstream(
+        connection=WIFI_HOTSPOT,
+        interface="wlan0",
+        address="172.20.10.4/28",
+        gateway="172.20.10.1",
+    )
+
+
+def wifi_active() -> NetworkManagerResult:
+    return NetworkManagerResult(wifi_upstream(), "active", None, True)
+
+
+def wifi_waiting() -> NetworkManagerResult:
+    return NetworkManagerResult(
+        None,
+        "waiting",
+        "Hotspot Wi-Fi is enabled but not associated",
+        True,
+    )
+
+
 class MobileConnectionResolverTests(unittest.TestCase):
     def test_wifi_connection_does_not_resolve_usb(self) -> None:
         iphone = StubIPhone([(None, ["not connected"])])
         resolution = MobileConnectionResolver(
             make_config(mobile_connection=WIFI_HOTSPOT),
             iphone,
+            StubWifi([wifi_active()]),
         ).resolve()
 
         assert resolution.upstream is not None
@@ -57,6 +92,7 @@ class MobileConnectionResolverTests(unittest.TestCase):
         resolution = MobileConnectionResolver(
             make_config(mobile_connection=IPHONE_USB),
             StubIPhone([(None, ["waiting for trust"])]),
+            StubWifi([wifi_waiting()]),
         ).resolve()
 
         self.assertIsNone(resolution.upstream)
@@ -64,19 +100,23 @@ class MobileConnectionResolverTests(unittest.TestCase):
         self.assertFalse(resolution.fallback_active)
 
     def test_combined_connection_prefers_ready_usb(self) -> None:
+        wifi = StubWifi([wifi_active()])
         resolution = MobileConnectionResolver(
             make_config(mobile_connection=IPHONE_USB_WIFI_FALLBACK),
             StubIPhone([(usb_upstream(), [])]),
+            wifi,
         ).resolve()
 
         self.assertEqual(resolution.upstream, usb_upstream())
         self.assertFalse(resolution.fallback_active)
         self.assertIsNone(resolution.fallback_reason)
+        self.assertEqual(wifi.calls, 1)
 
     def test_combined_connection_falls_back_to_wifi(self) -> None:
         resolution = MobileConnectionResolver(
             make_config(mobile_connection=IPHONE_USB_WIFI_FALLBACK),
             StubIPhone([(None, ["waiting for device"])]),
+            StubWifi([wifi_active()]),
         ).resolve()
 
         assert resolution.upstream is not None
@@ -92,27 +132,29 @@ class MobileConnectionResolverTests(unittest.TestCase):
         resolution = MobileConnectionResolver(
             make_config(mobile_connection=IPHONE_USB_WIFI_FALLBACK),
             iphone,
+            StubWifi([wifi_active()]),
         ).resolve()
 
         self.assertIsNone(resolution.upstream)
         self.assertEqual(resolution.errors, ("USB ownership conflict",))
         self.assertFalse(resolution.fallback_active)
 
-    def test_wifi_provisioning_error_only_blocks_fallback(self) -> None:
+    def test_wifi_ownership_error_blocks_both_paths(self) -> None:
         ready = MobileConnectionResolver(
             make_config(mobile_connection=IPHONE_USB_WIFI_FALLBACK),
             StubIPhone([(usb_upstream(), [])]),
+            StubWifi([wifi_active()]),
             wifi_error="Hotspot Wi-Fi provisioning failed: rejected",
         ).resolve()
         fallback = MobileConnectionResolver(
             make_config(mobile_connection=IPHONE_USB_WIFI_FALLBACK),
             StubIPhone([(None, ["waiting for device"])]),
+            StubWifi([wifi_waiting()]),
             wifi_error="Hotspot Wi-Fi provisioning failed: rejected",
         ).resolve()
 
-        self.assertEqual(ready.errors, ())
         self.assertEqual(
-            ready.warnings,
+            ready.errors,
             ("Hotspot Wi-Fi provisioning failed: rejected",),
         )
         self.assertEqual(
@@ -130,6 +172,7 @@ class MobileConnectionResolverTests(unittest.TestCase):
         resolver = MobileConnectionResolver(
             make_config(mobile_connection=IPHONE_USB_WIFI_FALLBACK),
             iphone,
+            StubWifi([wifi_active(), wifi_active()]),
         )
 
         fallback = resolver.resolve()

@@ -23,10 +23,10 @@ from .gateway_runtime import (
     status,
     stop,
 )
-from .hotspot import interface_status
 from .downstream import DownstreamInterface
 from .management import ManagementBaseline, resolve_management
 from .mobile_connection import MobileConnectionResolver
+from .networkmanager_wifi import NetworkManagerWifi
 from .policy import PolicyRouting
 from .safety import SafetyInspector
 from .state import StateStore
@@ -70,11 +70,17 @@ class GatewayEngine:
         )
         self.state_store = StateStore(state_path or STATE_PATH)
         self.upstream = IPhoneUsbUpstream(config, self._run)
+        self.wifi = NetworkManagerWifi(config, self._run)
         self.connection = MobileConnectionResolver(
             config,
             self.upstream,
+            self.wifi,
         )
-        self.upstream_lifecycle = UpstreamLifecycle(config, self.upstream)
+        self.upstream_lifecycle = UpstreamLifecycle(
+            config,
+            self.upstream,
+            self.wifi,
+        )
 
         self.config_error = config_error
         self.enabled = config.enabled and not config_error
@@ -110,6 +116,7 @@ class GatewayEngine:
                 config_error,
                 state_error,
                 self.auto_disable.state_error,
+                self.upstream_lifecycle.load_state(state.get("profiles")),
             )
             if error
         ]
@@ -139,6 +146,7 @@ class GatewayEngine:
         self.state_store.save(
             owned=self.owned_state,
             auto_disable=self.auto_disable.state(),
+            profiles=self.upstream_lifecycle.state(),
         )
 
     def cleanup(
@@ -194,9 +202,6 @@ class GatewayEngine:
                 self.last_health_probe = None
             self.last_upstream = upstream
 
-    def _interface_status(self) -> dict[str, object] | None:
-        return interface_status(self.config)
-
     def _health_probe(self, upstream: ResolvedUpstream | None) -> tuple[bool, str | None]:
         if upstream is None:
             return False, None
@@ -226,24 +231,17 @@ class GatewayEngine:
 
     def _refresh_health_if_due(self) -> None:
         refresh_health_if_due(self)
-
     def apply(self, *, recovering: bool = False) -> None:
         apply_gateway(self, recovering=recovering)
-
     def reconcile(self, *, refresh_health: bool = False) -> None:
         reconcile_gateway(self, refresh_health=refresh_health)
-
     def _fail_closed(self, error: Exception) -> None:
         fail_closed(self, error)
-
     def status(self) -> dict[str, object]:
         return status(self)
-
     def health(self) -> dict[str, object]:
         return health(self)
-
     def run_loop(self) -> None:
         run_loop(self)
-
     def stop(self) -> None:
         stop(self)

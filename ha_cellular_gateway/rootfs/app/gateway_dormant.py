@@ -6,14 +6,16 @@ from .gateway_cleanup import cleanup
 
 if TYPE_CHECKING:
     from .gateway import GatewayEngine
+    from .management import ManagementBaseline
 
 
 def reconcile_disabled(
     engine: GatewayEngine,
     downstream: str | None,
-    management_interface: str | None,
+    management: ManagementBaseline | None,
 ) -> None:
-    engine.upstream_lifecycle.deactivate(management_interface)
+    engine.upstream_lifecycle.deactivate(management)
+    engine._persist_state()
     engine.connection.wifi_error = None
     with engine.lock:
         engine.last_downstream = downstream

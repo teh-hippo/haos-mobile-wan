@@ -4,7 +4,10 @@ import ipaddress
 import re
 from typing import TYPE_CHECKING
 
-from .const import MOBILE_CONNECTIONS
+from .const import (
+    LEGACY_WIFI_MIGRATION_OPTIONS,
+    MOBILE_CONNECTIONS,
+)
 from .errors import GatewayError
 
 if TYPE_CHECKING:
@@ -24,6 +27,8 @@ def validate_config(config: GatewayConfig) -> None:
         raise GatewayError(
             f"Unsupported mobile connection: {config.mobile_connection}"
         )
+    if config.legacy_wifi_migration not in LEGACY_WIFI_MIGRATION_OPTIONS.values():
+        raise GatewayError("Unsupported legacy Wi-Fi migration option")
     if config.uses_wifi and not config.upstream_interface:
         raise GatewayError("Network interface names must not be empty")
     validate_hotspot_credentials(config.hotspot_ssid, config.hotspot_password)

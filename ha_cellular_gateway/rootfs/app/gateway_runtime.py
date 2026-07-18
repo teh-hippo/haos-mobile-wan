@@ -53,10 +53,8 @@ def fail_closed(engine: GatewayEngine, error: Exception) -> None:
             ValueError,
         ) as err:
             cleanup_error = err
-        management_interface = (
-            engine.management.interface if engine.management else None
-        )
-        engine.upstream_lifecycle.deactivate(management_interface)
+        engine.upstream_lifecycle.deactivate(engine.management)
+        engine._persist_state()
         lifecycle_error = engine.upstream_lifecycle.error
         with engine.lock:
             engine.applied = False
@@ -182,10 +180,8 @@ def stop(engine: GatewayEngine) -> None:
             ValueError,
         ) as err:
             cleanup_error = err
-        management_interface = (
-            engine.management.interface if engine.management else None
-        )
-        engine.upstream_lifecycle.deactivate(management_interface)
+        engine.upstream_lifecycle.deactivate(engine.management)
+        engine._persist_state()
         lifecycle_error = engine.upstream_lifecycle.error
         if lifecycle_error:
             if cleanup_error:

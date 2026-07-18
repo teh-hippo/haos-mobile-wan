@@ -48,6 +48,22 @@ def usb_profile_spec() -> ProfileSpec:
     )
 
 
+def legacy_usb_profile_spec() -> ProfileSpec:
+    current = usb_profile_spec()
+    settings = tuple(
+        (field, "yes" if field == "connection.autoconnect" else value)
+        for field, value in current.settings
+    )
+    return ProfileSpec(
+        key="legacy_iphone_usb",
+        uuid=LEGACY_USB_PROFILE_UUID,
+        name=USB_PROFILE_NAME,
+        connection_type=current.connection_type,
+        create_args=(),
+        settings=settings,
+    )
+
+
 def wifi_profile_spec(config: GatewayConfig) -> ProfileSpec:
     settings = (
         ("connection.interface-name", config.upstream_interface),

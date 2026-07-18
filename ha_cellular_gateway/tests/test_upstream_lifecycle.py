@@ -1,136 +1,176 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
-from helpers import make_config
-from rootfs.app.upstream_lifecycle import RETRY_SECONDS, UpstreamLifecycle
-
-
-class FakeIPhone:
-    def __init__(self) -> None:
-        self.cleanup_calls = 0
-        self.cleanup_error: OSError | None = None
-
-    def cleanup(self) -> None:
-        self.cleanup_calls += 1
-        if self.cleanup_error is not None:
-            raise self.cleanup_error
+from helpers import FakeRunner, make_config, sysctl_values
+from rootfs.app.const import (
+    IPHONE_USB,
+    IPHONE_USB_WIFI_FALLBACK,
+    LEGACY_WIFI_MIGRATE_MATCHING,
+)
+from rootfs.app.gateway import GatewayEngine
+from rootfs.app.management import ManagementBaseline
+from rootfs.app.nm_profile_specs import (
+    USB_PROFILE_UUID,
+    WIFI_PROFILE_UUID,
+)
+from rootfs.app.upstream_lifecycle import (
+    LEGACY_WIFI_MANUAL_ERROR,
+    UpstreamLifecycle,
+)
 
 
 class UpstreamLifecycleTests(unittest.TestCase):
-    def _lifecycle(
-        self,
-        configure,
-        clock=lambda: 100.0,
-        config=None,
-    ):
-        iphone = FakeIPhone()
-        lifecycle = UpstreamLifecycle(
-            config or make_config(
-                hotspot_ssid="Phone",
-                hotspot_password="supersecret",
-            ),
-            iphone,
-            configure=configure,
-            clock=clock,
-        )
-        return lifecycle, iphone
+    def setUp(self) -> None:
+        self.directory = tempfile.TemporaryDirectory()
+        self.state_path = Path(self.directory.name) / "state.json"
 
-    def test_usb_only_activation_disables_wifi_upstream(self) -> None:
-        calls: list[bool] = []
-        lifecycle, _ = self._lifecycle(
-            lambda config, *, enabled: calls.append(enabled) or None,
-            config=make_config(mobile_connection="iphone_usb"),
+    def tearDown(self) -> None:
+        self.directory.cleanup()
+
+    def _engine(self, **overrides: object) -> GatewayEngine:
+        runner = FakeRunner()
+        config = make_config(
+            hotspot_ssid="Phone",
+            hotspot_password="supersecret",
+            **overrides,
+        )
+        return GatewayEngine(
+            config,
+            runner=runner,
+            read_text=lambda path: sysctl_values()[path],
+            state_path=self.state_path,
         )
 
-        lifecycle.activate("eth0")
+    @staticmethod
+    def _management() -> ManagementBaseline:
+        return ManagementBaseline("end0", "192.168.1.2/24")
 
-        self.assertEqual(calls, [False])
+    def test_wifi_activation_creates_only_app_profile(self) -> None:
+        engine = self._engine()
 
-    def test_deactivate_stops_usb_and_disables_hotspot_once(self) -> None:
-        calls: list[bool] = []
-        lifecycle, iphone = self._lifecycle(
-            lambda config, *, enabled: calls.append(enabled) or None
+        engine.upstream_lifecycle.activate(self._management())
+
+        self.assertIsNone(engine.upstream_lifecycle.error)
+        self.assertIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertNotIn(USB_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertEqual(
+            engine.upstream_lifecycle.state(),
+            {"wifi_hotspot": WIFI_PROFILE_UUID},
         )
 
-        lifecycle.deactivate("eth0")
-        lifecycle.deactivate("eth0")
-
-        self.assertEqual(iphone.cleanup_calls, 1)
-        self.assertEqual(calls, [False])
-        self.assertIsNone(lifecycle.error)
-
-    def test_activate_reenables_hotspot_after_dormancy(self) -> None:
-        calls: list[bool] = []
-        lifecycle, _ = self._lifecycle(
-            lambda config, *, enabled: calls.append(enabled) or None
+    def test_fallback_activation_creates_warm_standby_profiles(self) -> None:
+        engine = self._engine(
+            mobile_connection=IPHONE_USB_WIFI_FALLBACK,
         )
 
-        lifecycle.deactivate("eth0")
-        lifecycle.activate("eth0")
-        lifecycle.activate("eth0")
+        engine.upstream_lifecycle.activate(self._management())
 
-        self.assertEqual(calls, [False, True])
+        self.assertIsNone(engine.upstream_lifecycle.error)
+        self.assertIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertIn(USB_PROFILE_UUID, engine.runner.nm_profiles)
 
-    def test_management_interface_is_never_reconfigured(self) -> None:
-        calls: list[bool] = []
-        lifecycle, _ = self._lifecycle(
-            lambda config, *, enabled: calls.append(enabled) or None
+    def test_deactivate_removes_exact_app_profiles(self) -> None:
+        engine = self._engine(
+            mobile_connection=IPHONE_USB_WIFI_FALLBACK,
         )
+        engine.upstream_lifecycle.activate(self._management())
 
-        lifecycle.activate("wlan0")
+        engine.upstream_lifecycle.deactivate(self._management())
 
-        self.assertEqual(calls, [])
-        self.assertIn("management interface", lifecycle.error or "")
+        self.assertIsNone(engine.upstream_lifecycle.error)
+        self.assertNotIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertNotIn(USB_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertIsNone(engine.upstream_lifecycle.state())
 
-    def test_deactivation_with_unknown_management_is_a_soft_noop(self) -> None:
-        calls: list[bool] = []
-        lifecycle, _ = self._lifecycle(
-            lambda config, *, enabled: calls.append(enabled) or None
+    def test_activation_requires_management_before_mutation(self) -> None:
+        engine = self._engine()
+
+        engine.upstream_lifecycle.activate(None)
+
+        self.assertIn(
+            "Management interface is unavailable",
+            engine.upstream_lifecycle.error or "",
         )
+        self.assertEqual(engine.runner.nm_profiles, {})
 
-        lifecycle.deactivate(None)
+    def test_foreign_wifi_profile_blocks_activation_without_mutation(self) -> None:
+        engine = self._engine()
+        engine.runner.nm_profiles["foreign"] = {
+            "connection.uuid": "foreign",
+            "connection.id": "Personal Wi-Fi",
+            "connection.type": "802-11-wireless",
+            "connection.interface-name": "wlan0",
+        }
 
-        self.assertEqual(calls, [])
-        self.assertIsNone(lifecycle.error)
+        engine.upstream_lifecycle.activate(self._management())
 
-    def test_activation_with_unknown_management_is_blocked(self) -> None:
-        calls: list[bool] = []
-        lifecycle, _ = self._lifecycle(
-            lambda config, *, enabled: calls.append(enabled) or None
+        self.assertIn(
+            "foreign NetworkManager profile",
+            engine.upstream_lifecycle.error or "",
         )
+        self.assertNotIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
 
-        lifecycle.activate(None)
+    def test_legacy_wifi_defaults_to_manual_cleanup(self) -> None:
+        engine = self._engine()
+        engine.runner.nm_profiles["legacy"] = {
+            "connection.uuid": "legacy",
+            "connection.id": "Supervisor wlan0",
+            "connection.type": "802-11-wireless",
+            "connection.interface-name": "wlan0",
+            "802-11-wireless.ssid": "Phone",
+            "ipv4.addresses": "172.20.10.4/28",
+        }
 
-        self.assertEqual(calls, [])
-        self.assertIn("Management interface is unavailable", lifecycle.error or "")
+        engine.upstream_lifecycle.activate(self._management())
+
+        self.assertEqual(
+            engine.upstream_lifecycle.error,
+            LEGACY_WIFI_MANUAL_ERROR,
+        )
+        self.assertIn("legacy", engine.runner.nm_profiles)
+
+    def test_matching_legacy_wifi_can_be_migrated_explicitly(self) -> None:
+        engine = self._engine(
+            legacy_wifi_migration=LEGACY_WIFI_MIGRATE_MATCHING,
+        )
+        engine.runner.nm_profiles["legacy"] = {
+            "connection.uuid": "legacy",
+            "connection.id": "Supervisor wlan0",
+            "connection.type": "802-11-wireless",
+            "connection.interface-name": "wlan0",
+            "802-11-wireless.ssid": "Phone",
+            "ipv4.addresses": "172.20.10.4/28",
+        }
+
+        engine.upstream_lifecycle.activate(self._management())
+
+        self.assertIsNone(engine.upstream_lifecycle.error)
+        self.assertNotIn("legacy", engine.runner.nm_profiles)
+        self.assertIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
 
     def test_usb_cleanup_failure_is_reported_without_escaping(self) -> None:
-        lifecycle, iphone = self._lifecycle(
-            lambda config, *, enabled: None
-        )
-        iphone.cleanup_error = ProcessLookupError("already stopped")
-
-        lifecycle.deactivate("eth0")
-
-        self.assertIn("iPhone USB cleanup failed", lifecycle.error or "")
-        self.assertEqual(iphone.cleanup_calls, 1)
-
-    def test_failed_hotspot_change_is_rate_limited(self) -> None:
-        now = [100.0]
-        calls: list[bool] = []
-        lifecycle, _ = self._lifecycle(
-            lambda config, *, enabled: calls.append(enabled) or "failed",
-            clock=lambda: now[0],
+        engine = self._engine(mobile_connection=IPHONE_USB)
+        engine.upstream.cleanup = lambda: (_ for _ in ()).throw(
+            ProcessLookupError("already stopped")
         )
 
-        lifecycle.activate("eth0")
-        lifecycle.activate("eth0")
-        now[0] += RETRY_SECONDS
-        lifecycle.activate("eth0")
+        engine.upstream_lifecycle.deactivate(self._management())
 
-        self.assertEqual(calls, [True, True])
-        self.assertEqual(lifecycle.error, "failed")
+        self.assertIn(
+            "iPhone USB cleanup failed",
+            engine.upstream_lifecycle.error or "",
+        )
+
+    def test_invalid_persistent_profile_state_is_rejected(self) -> None:
+        engine = self._engine()
+        lifecycle: UpstreamLifecycle = engine.upstream_lifecycle
+
+        error = lifecycle.load_state({"wifi_hotspot": 42})
+
+        self.assertIn("ownership is invalid", error or "")
 
 
 if __name__ == "__main__":

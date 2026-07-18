@@ -25,12 +25,15 @@ class StateStore:
         *,
         owned: dict[str, object] | None,
         auto_disable: dict[str, object] | None = None,
+        profiles: dict[str, object] | None = None,
     ) -> None:
         payload: dict[str, object] = {}
         if owned:
             payload["owned"] = owned
         if auto_disable:
             payload["auto_disable"] = auto_disable
+        if profiles:
+            payload["profiles"] = profiles
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if not payload:

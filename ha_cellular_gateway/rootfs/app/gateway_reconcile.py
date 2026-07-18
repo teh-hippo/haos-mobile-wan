@@ -8,7 +8,6 @@ from .errors import GatewayError, SafetyError
 from .gateway_cleanup import cleanup
 from .gateway_dormant import reconcile_disabled
 from .gateway_transition import cleanup_changed_ownership
-from .hotspot import classify_wifi_upstream
 from .lifecycle import log_upstream_transitions, wifi_interface_status
 
 if TYPE_CHECKING:
@@ -60,9 +59,6 @@ def apply(
             upstream_errors=upstream_errors,
             state_error=engine.state_load_error,
             downstream_address_owned=address_owned,
-        )
-        errors = classify_wifi_upstream(
-            engine.config, errors, engine._interface_status
         )
         with engine.lock:
             engine.last_downstream = downstream
@@ -154,13 +150,12 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                 reconcile_disabled(
                     engine,
                     downstream,
-                    management.interface if management else None,
+                    management,
                 )
                 return
 
-            engine.upstream_lifecycle.activate(
-                management.interface if management else None
-            )
+            engine.upstream_lifecycle.activate(management)
+            engine._persist_state()
             engine.connection.wifi_error = engine.upstream_lifecycle.error
             upstream, upstream_errors = engine._resolve_upstream()
             cleanup_changed_ownership(
@@ -183,7 +178,6 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
             except OPERATION_ERRORS as err:
                 errors = [f"Safety inspection failed: {err}"]
             wifi_status = wifi_interface_status(engine)
-            errors = classify_wifi_upstream(engine.config, errors, lambda: wifi_status)
             with engine.lock:
                 engine.last_downstream = downstream
                 engine.last_safety_errors = errors

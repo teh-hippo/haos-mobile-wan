@@ -551,20 +551,6 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         self.assertEqual(processes, [])
         self.assertEqual(manager.pairing_state, "waiting_for_device")
 
-    def test_profile_setup_failure_allows_fallback(self) -> None:
-        runner = self._paired_runner()
-        from rootfs.app.errors import GatewayError
-
-        self._add_apple_usb_device()
-        network_manager = FakeNetworkManager(profile_error=GatewayError("nm down"))
-        manager = self._manager(runner, network_manager)
-
-        upstream, errors = manager.resolve()
-
-        self.assertIsNone(upstream)
-        self.assertEqual(manager.pairing_state, "profile_failed")
-        self.assertTrue(manager.fallback_allowed())
-
     def test_active_profile_resolves_upstream(self) -> None:
         runner = self._paired_runner()
         self._add_apple_usb_device()
@@ -776,7 +762,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
                 for command in runner.commands
             )
         )
-        self.assertEqual(network_manager.profile_calls, 1)
+        self.assertEqual(network_manager.profile_calls, 0)
 
     def test_driver_inactive_message_when_no_interface(self) -> None:
         runner = self._paired_runner()

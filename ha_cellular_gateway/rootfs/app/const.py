@@ -16,3 +16,10 @@ MOBILE_CONNECTION_OPTIONS = {
     "USB (iPhone)": IPHONE_USB,
     "USB (iPhone), Wi-Fi fallback": IPHONE_USB_WIFI_FALLBACK,
 }
+
+LEGACY_WIFI_MANUAL = "manual"
+LEGACY_WIFI_MIGRATE_MATCHING = "migrate_matching"
+LEGACY_WIFI_MIGRATION_OPTIONS = {
+    "Manual cleanup": LEGACY_WIFI_MANUAL,
+    "Migrate matching Supervisor profile": LEGACY_WIFI_MIGRATE_MATCHING,
+}

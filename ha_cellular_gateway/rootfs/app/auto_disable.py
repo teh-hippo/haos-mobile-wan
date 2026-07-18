@@ -165,10 +165,8 @@ class AutoDisable:
             self.runtime_error = f"Auto-disable cleanup failed: {err}"
         else:
             self.runtime_error = None
-        management_interface = (
-            engine.management.interface if engine.management else None
-        )
-        engine.upstream_lifecycle.deactivate(management_interface)
+        engine.upstream_lifecycle.deactivate(engine.management)
+        self._persist(engine)
         if engine.upstream_lifecycle.error:
             self.runtime_error = engine.upstream_lifecycle.error
 

@@ -14,9 +14,13 @@ _LOGGER = logging.getLogger(__name__)
 
 def wifi_interface_status(engine: GatewayEngine) -> dict[str, object] | None:
     config = engine.config
-    if not (config.uses_wifi and config.hotspot_credentials_configured):
+    if not config.uses_wifi:
         return None
-    return engine._interface_status()
+    active = engine.wifi.profile.active_uuid(config.upstream_interface)
+    return {
+        "enabled": engine.wifi.profile.inspect().state == "exact",
+        "connected": active == engine.wifi.profile.spec.uuid,
+    }
 
 
 def log_upstream_transitions(

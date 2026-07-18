@@ -25,6 +25,8 @@ through the management network.
 The app connects HAOS to the selected mobile connection and offers one DHCP
 lease to the router WAN. When enabled, it adds the router-facing address,
 policy routing, forwarding, NAT and DHCP needed to carry traffic to the phone.
+Enabled also grants temporary, exclusive control of the selected dedicated
+mobile adapters.
 
 The gateway fails closed. If the mobile connection, router adapter, firewall or
 routing state becomes unsafe, it removes forwarding and waits for the problem
@@ -36,9 +38,9 @@ With **USB (iPhone), Wi-Fi fallback** selected, the app:
 2. switches to the configured Wi-Fi hotspot when USB is unavailable;
 3. returns to USB when it becomes ready again.
 
-Host NetworkManager owns the iPhone USB connection through a persistent profile
-matched to the `ipheth` driver. The app reads that lease and keeps its policy
-routing separate from the NetworkManager route table.
+The app creates temporary NetworkManager profiles for the selected iPhone USB
+and Wi-Fi paths. NetworkManager owns their addresses and leases; the app owns
+the profiles only while Enabled and removes them when Disabled.
 
 Internet health checks are reported for diagnostics. This release switches
 sources based on connection readiness, not an external connectivity probe.
@@ -54,9 +56,10 @@ The app starts disabled and uses manual boot. Before enabling it:
 
 1. choose a **Mobile connection**;
 2. set the automatic disable delay, or use `0` to keep the gateway enabled;
-3. optionally enter the Wi-Fi hotspot name and password;
-4. prepare one USB Ethernet adapter for the router WAN;
-5. follow the [commissioning guide](ha_cellular_gateway/DOCS.md).
+3. enter the Wi-Fi hotspot name and password when Wi-Fi is selected;
+4. reserve a dedicated, non-management Wi-Fi adapter when Wi-Fi is selected;
+5. prepare one USB Ethernet adapter for the router WAN;
+6. follow the [commissioning guide](ha_cellular_gateway/DOCS.md).
 
 The normal form contains only the settings needed for everyday use. Interface,
 address and adapter overrides remain available under unused optional settings.
@@ -161,7 +164,7 @@ automation:
 | Hardware | Status |
 |---|---|
 | Home Assistant OS on `aarch64` | Supported |
-| Phone Wi-Fi hotspot on `wlan0` | Supported |
+| Phone Wi-Fi hotspot on a dedicated adapter such as `wlan0` | Supported |
 | One USB Ethernet adapter for the router WAN | Supported |
 | iPhone USB tethering through `ipheth` | Experimental |
 | USB-preferred Wi-Fi fallback | Supported with the current iPhone USB path |
@@ -196,7 +199,7 @@ addressing, interface names and iPhone identifiers.
 |---|---|
 | The gateway remains inactive while Enabled is on | Review **Gateway state** and **Health** |
 | USB is not selected | Unlock the iPhone, enable **Allow Others to Join** under Personal Hotspot, accept Trust, check `ipheth`, and confirm no other `ipheth` profile is configured in HAOS |
-| Wi-Fi fallback is unavailable | Check the Wi-Fi hotspot profile and app credentials, then restart the app |
+| Wi-Fi fallback is unavailable | Confirm the selected adapter is dedicated, has no foreign NetworkManager profile, and the app credentials are correct |
 | The router receives no WAN lease | Confirm the router-facing USB adapter has HAOS IPv4 and IPv6 disabled |
 | More than one USB Ethernet adapter is attached | Set the optional router adapter MAC address |
 | Home Assistant becomes unreachable | Disable the app and verify the management Ethernet remains the only main default route |
@@ -207,8 +210,8 @@ addressing, interface names and iPhone identifiers.
 The app uses `host_network`, `host_dbus`, `NET_ADMIN`, `NET_RAW`, Supervisor
 manager access and USB access because it manages real HAOS interfaces, policy
 routing, firewall rules, DHCP and optional iPhone pairing. Host D-Bus lets
-`nmcli` drive the host NetworkManager iPhone USB profile. It does not use
-`full_access` or `udev`.
+`nmcli` manage only the app's temporary NetworkManager profiles. It does not
+use `full_access` or `udev`.
 
 An enforced AppArmor profile limits access to the required networking tools,
 the NetworkManager D-Bus service, USB paths, sysfs entries and app-owned

@@ -57,6 +57,7 @@ _EXACT_ERRORS: dict[str, tuple[str, str | None, str]] = {
     "iPhone USB has a foreign NetworkManager profile": ("upstream_foreign_profile", "upstream_configuration", "A foreign NetworkManager profile can control iPhone USB"),
     "Legacy Supervisor Wi-Fi profile requires manual cleanup": ("legacy_wifi_cleanup_required", "hotspot_configuration", "The legacy Supervisor Wi-Fi profile requires manual cleanup"),
     "Legacy Supervisor Wi-Fi profile does not match the app configuration": ("legacy_wifi_mismatch", "hotspot_configuration", "The legacy Supervisor Wi-Fi profile does not match the app configuration"),
+    "Legacy Supervisor Wi-Fi profile could not be deleted": ("legacy_wifi_delete_failed", "hotspot_configuration", "The legacy Supervisor Wi-Fi profile could not be deleted"),
     "The app-owned iPhone USB profile has unexpected settings": ("upstream_profile_drift", "upstream_configuration", "The app-owned iPhone USB profile has unexpected settings"),
     "The app-owned Wi-Fi hotspot profile has unexpected settings": ("wifi_profile_drift", "hotspot_configuration", "The app-owned Wi-Fi hotspot profile has unexpected settings"),
     "Wi-Fi hotspot credentials are not configured": ("hotspot_credentials_missing", "hotspot_configuration", "Wi-Fi hotspot credentials are not configured"),

@@ -49,6 +49,12 @@ def cleanup(
                 pass
         protected_downstream = downstream
         if (
+            preserve_host_protection
+            and not engine._protectable_downstream(protected_downstream)
+            and engine._protectable_downstream(engine.last_downstream)
+        ):
+            protected_downstream = engine.last_downstream
+        if (
             not engine._protectable_downstream(protected_downstream)
             and isinstance(owned_state, dict)
         ):

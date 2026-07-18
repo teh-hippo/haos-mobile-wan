@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import subprocess
 import time
 from collections.abc import Callable
@@ -18,8 +17,6 @@ from .networkmanager_invariants import (
 from .nm_profile import NmProfile
 from .nm_profile_specs import WIFI_ROUTE_TABLE, wifi_profile_spec
 from .upstream_models import configured_upstream
-
-_LOGGER = logging.getLogger(__name__)
 
 WIFI_NOT_ASSOCIATED = "Hotspot Wi-Fi is enabled but not associated"
 WIFI_FOREIGN_MESSAGE = (
@@ -54,19 +51,6 @@ class NetworkManagerWifi:
             wifi_profile_spec(config),
             monotonic=monotonic,
         )
-
-    def ensure_profile(self) -> str | None:
-        inspection = self.profile.inspect()
-        if inspection.state == "missing":
-            self.profile.create()
-            return None
-        if inspection.state == "drifted":
-            _LOGGER.warning(
-                "Wi-Fi profile drift detected: %s",
-                ",".join(inspection.drifted_fields),
-            )
-            return WIFI_PROFILE_DRIFT_MESSAGE
-        return None
 
     def inspect(self) -> NetworkManagerResult:
         try:

@@ -33,6 +33,14 @@ class ProfileSpec:
     def read_fields(self) -> tuple[str, ...]:
         return tuple(self.expected)
 
+    @property
+    def fingerprint(self) -> dict[str, str]:
+        return {
+            field: value
+            for field, value in self.expected.items()
+            if field != "802-11-wireless-security.psk"
+        }
+
 
 @dataclass(frozen=True)
 class ProfileInspection:
@@ -63,6 +71,24 @@ class NmProfile:
             if normalise_setting(settings.get(field, "")) != expected
         )
         return ProfileInspection("exact" if not drifted else "drifted", drifted)
+
+    def matches_fingerprint(self, fingerprint: dict[str, str]) -> bool:
+        settings = self.settings()
+        if settings is None:
+            return False
+        return all(
+            normalise_setting(settings.get(field, "")) == expected
+            for field, expected in fingerprint.items()
+        )
+
+    def matches_identity(self) -> bool:
+        return self.matches_fingerprint(
+            {
+                "connection.uuid": self.spec.uuid,
+                "connection.id": self.spec.name,
+                "connection.type": self.spec.connection_type,
+            }
+        )
 
     def settings(self) -> dict[str, str] | None:
         result = self.run(

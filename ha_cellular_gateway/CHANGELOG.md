@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.9.0
+
+- Make Enabled the NetworkManager ownership boundary. The app now creates
+  temporary, app-owned USB and Wi-Fi profiles with autoconnect disabled, and
+  removes them when the gateway is disabled or stopped.
+- Require a dedicated Wi-Fi adapter. Foreign USB or Wi-Fi profiles are never
+  adopted, modified, deactivated or deleted; they block enablement with an
+  actionable Health issue.
+- Keep Wi-Fi active as warm standby for USB-preferred fallback while table-201
+  policy routing selects only one mobile source.
+- Pin the commissioned management interface before any profile or downstream
+  mutation, and release app profiles if that identity changes.
+- Add write-ahead profile ownership journalling, exact restart cleanup,
+  continuous profile reconciliation and continuity-proven USB lease grace.
+- Remove the destructive Supervisor Wi-Fi write path. A legacy Supervisor
+  profile defaults to manual cleanup, with an explicit option to migrate only
+  a matching legacy profile.
+- Gate Internet probes on a fully applied gateway and surface transient
+  NetworkManager inspection failure as waiting rather than an actionable fault.
+
 ## 0.8.2
 
 - Detect the iPhone USB carrier before asking NetworkManager to activate the

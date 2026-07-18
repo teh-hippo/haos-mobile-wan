@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import subprocess
 import time
 from collections.abc import Callable
@@ -9,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from .command import RunCommand
 from .config import GatewayConfig
+from .errors import GatewayError
 from .nm_profile import ACTIVATION_COOLDOWN_SECONDS, NmProfile
 from .nm_profile_specs import USB_ROUTE_TABLE, usb_profile_spec
 from .networkmanager_invariants import (
@@ -29,7 +29,6 @@ from .upstream_models import ResolvedUpstream, validate_dynamic_lease
 if TYPE_CHECKING:
     from .management import ManagementBaseline
 
-_LOGGER = logging.getLogger(__name__)
 LEASE_OWNER = "networkmanager"
 
 FOREIGN_MESSAGE = (
@@ -73,26 +72,6 @@ class NetworkManagerIphone:
             usb_profile_spec(),
             monotonic=monotonic,
         )
-
-    def ensure_profile(self) -> None:
-        inspection = self.profile.inspect()
-        if inspection.state == "missing":
-            self.profile.create()
-            return
-        if inspection.state == "drifted":
-            _LOGGER.info(
-                "Repairing NetworkManager profile fields: %s",
-                ",".join(inspection.drifted_fields),
-            )
-            if any(
-                field in {"connection.id", "connection.type"}
-                for field in inspection.drifted_fields
-            ):
-                self.profile.delete()
-                self.profile.create()
-            else:
-                self.profile.apply_settings()
-            self.profile.deactivate()
 
     def inspect(
         self, interface: str, management: ManagementBaseline | None = None
@@ -154,7 +133,12 @@ class NetworkManagerIphone:
                 table_routes_state(routes, upstream.interface, upstream)
                 == "ready"
             )
-        except (OSError, subprocess.SubprocessError, ValueError):
+        except (
+            GatewayError,
+            OSError,
+            subprocess.SubprocessError,
+            ValueError,
+        ):
             return False
 
     def release_profile(self) -> None:

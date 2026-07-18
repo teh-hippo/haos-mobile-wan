@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import re
+
 from .command import RunCommand
 from .config import GatewayConfig
 from .const import LEGACY_WIFI_MIGRATE_MATCHING
-from .nm_inventory import ProfileRecord
+from .nm_inventory import NmInventory, ProfileRecord
 from .nm_profile import NmProfile
 from .nm_profile_specs import legacy_usb_profile_spec
 
@@ -15,6 +17,9 @@ LEGACY_WIFI_MISMATCH_ERROR = (
 )
 LEGACY_USB_DRIFT_ERROR = (
     "The legacy iPhone USB profile has unexpected settings"
+)
+LEGACY_WIFI_DELETE_ERROR = (
+    "Legacy Supervisor Wi-Fi profile could not be deleted"
 )
 
 
@@ -39,15 +44,10 @@ def migrate_legacy_wifi(
         return []
     if config.legacy_wifi_migration != LEGACY_WIFI_MIGRATE_MATCHING:
         return [LEGACY_WIFI_MANUAL_ERROR]
-    errors: list[str] = []
+    if not all(_matches_legacy_wifi(config, profile) for profile in profiles):
+        return [LEGACY_WIFI_MISMATCH_ERROR]
     for profile in profiles:
-        if not (
-            profile.ssid == config.hotspot_ssid
-            and config.upstream_address in profile.ipv4_addresses
-        ):
-            errors.append(LEGACY_WIFI_MISMATCH_ERROR)
-            continue
-        run(
+        result = run(
             "nmcli",
             "connection",
             "delete",
@@ -55,4 +55,29 @@ def migrate_legacy_wifi(
             profile.uuid,
             check=False,
         )
-    return errors
+        if result.returncode != 0:
+            return [LEGACY_WIFI_DELETE_ERROR]
+    remaining = {
+        profile.uuid
+        for profile in NmInventory(run).profiles()
+    }
+    if any(profile.uuid in remaining for profile in profiles):
+        return [LEGACY_WIFI_DELETE_ERROR]
+    return []
+
+
+def _matches_legacy_wifi(
+    config: GatewayConfig,
+    profile: ProfileRecord,
+) -> bool:
+    addresses = {
+        value.strip()
+        for value in re.split(r"[,;]", profile.ipv4_addresses)
+        if value.strip()
+    }
+    return (
+        profile.interface_name == config.upstream_interface
+        and profile.name == f"Supervisor {config.upstream_interface}"
+        and profile.ssid == config.hotspot_ssid
+        and addresses == {config.upstream_address}
+    )

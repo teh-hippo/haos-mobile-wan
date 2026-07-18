@@ -20,7 +20,7 @@ def reconcile_without_management(
     cleanup(
         engine,
         preserve_enabled=enabled,
-        preserve_host_protection=False,
+        preserve_host_protection=True,
         force=bool(engine.owned_state or engine.applied),
         owned_only=True,
     )

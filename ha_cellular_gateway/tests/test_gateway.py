@@ -882,6 +882,33 @@ class GatewayEngineTests(unittest.TestCase):
             )
         )
 
+    def test_management_loss_preserves_existing_downstream_host_guard(self) -> None:
+        values = sysctl_values()
+        runner = FakeRunner()
+        engine = GatewayEngine(
+            make_config(enabled=False),
+            runner=runner,
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
+        engine.startup_cleanup_pending = False
+        install_realistic_firewall_state(
+            runner,
+            engine.firewall,
+            "enx001122334455",
+        )
+        engine.last_downstream = "enx001122334455"
+        runner.main_default_routes = []
+
+        engine.reconcile()
+
+        self.assertTrue(
+            engine.firewall.host_protection_installed(
+                "enx001122334455"
+            )
+        )
+
     def test_disabled_restart_repairs_duplicate_host_guard(
         self,
     ) -> None:

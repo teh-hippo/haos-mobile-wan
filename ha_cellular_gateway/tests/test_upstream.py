@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 
 from helpers import FakeProcess, FakeRunner, Result, make_config
 from rootfs.app.const import IPHONE_USB
+from rootfs.app.errors import GatewayError
 from rootfs.app.management import ManagementBaseline
 from rootfs.app.networkmanager import (
     ACTIVATION_COOLDOWN_SECONDS,
@@ -134,79 +135,6 @@ def healthy_cli(interface: str = "eth0") -> FakeNetworkManagerCli:
     return cli
 
 
-class NetworkManagerProfileTests(unittest.TestCase):
-    def _manager(self, cli: FakeNetworkManagerCli) -> NetworkManagerIphone:
-        return NetworkManagerIphone(
-            make_config(mobile_connection=IPHONE_USB),
-            cli.run,
-            monotonic=cli.monotonic,
-        )
-
-    def test_missing_profile_is_created_with_exact_settings(self) -> None:
-        cli = FakeNetworkManagerCli()
-
-        self._manager(cli).ensure_profile()
-
-        add = [c for c in cli.commands if c[:3] == ["nmcli", "connection", "add"]]
-        modify = [c for c in cli.commands if c[:3] == ["nmcli", "connection", "modify"]]
-        self.assertEqual(len(add), 1)
-        self.assertEqual(len(modify), 1)
-        assert cli.profile is not None
-        for field, expected in EXPECTED_SETTINGS.items():
-            self.assertEqual(cli.profile[field], expected)
-        self.assertEqual(cli.profile["match.driver"], "ipheth")
-        self.assertEqual(cli.profile["ipv4.route-table"], str(ROUTE_TABLE))
-        self.assertEqual(cli.profile["ipv4.method"], "auto")
-        self.assertEqual(cli.profile["ipv6.method"], "disabled")
-        self.assertEqual(cli.profile["connection.interface-name"], "")
-
-    def test_converged_profile_is_not_modified(self) -> None:
-        cli = FakeNetworkManagerCli()
-        cli.profile = converged_profile()
-
-        self._manager(cli).ensure_profile()
-
-        self.assertEqual(
-            [c for c in cli.commands if c[1:3] == ["connection", "add"]],
-            [],
-        )
-        self.assertEqual(
-            [c for c in cli.commands if c[1:3] == ["connection", "modify"]],
-            [],
-        )
-
-    def test_drifted_profile_is_repaired_without_recreating(self) -> None:
-        cli = FakeNetworkManagerCli()
-        cli.profile = converged_profile()
-        cli.profile["ipv4.route-table"] = "254"
-
-        manager = self._manager(cli)
-        manager.ensure_profile()
-
-        self.assertEqual(
-            [c for c in cli.commands if c[1:3] == ["connection", "add"]],
-            [],
-        )
-        self.assertEqual(cli.profile["ipv4.route-table"], str(ROUTE_TABLE))
-        cli.profile["ipv4.route-table"] = "254"
-        manager.ensure_profile()
-        modify = [c for c in cli.commands if c[1:3] == ["connection", "modify"]]
-        self.assertEqual(len(modify), 2)
-
-    def test_drifted_active_profile_is_reactivated_once(self) -> None:
-        cli = healthy_cli()
-        cli.profile = converged_profile()
-        cli.profile["ipv4.route-table"] = "254"
-        cli.activate_on_up = ("eth0", PROFILE_UUID)
-        manager = self._manager(cli)
-
-        manager.ensure_profile()
-        result = manager.inspect("eth0")
-
-        self.assertEqual(result.state, "active")
-        self.assertEqual(cli.up_calls, 1)
-
-
 class NetworkManagerInspectTests(unittest.TestCase):
     def _manager(self, cli: FakeNetworkManagerCli) -> NetworkManagerIphone:
         return NetworkManagerIphone(
@@ -226,6 +154,15 @@ class NetworkManagerInspectTests(unittest.TestCase):
         self.assertEqual(result.upstream.connection, IPHONE_USB)
         self.assertEqual(result.upstream.address, "172.20.10.2/28")
         self.assertEqual(result.upstream.gateway, "172.20.10.1")
+
+    def test_continuity_failure_is_non_throwing(self) -> None:
+        cli = healthy_cli()
+        manager = self._manager(cli)
+        manager.profile.active_uuid = lambda interface: (
+            _ for _ in ()
+        ).throw(GatewayError("NetworkManager unavailable"))
+
+        self.assertFalse(manager.continuity(usb_upstream()))
 
     def test_no_mutation_while_converged_and_active(self) -> None:
         cli = healthy_cli()
@@ -398,21 +335,12 @@ class FakeNetworkManager:
     def __init__(
         self,
         results: list[NetworkManagerResult] | None = None,
-        *,
-        profile_error: Exception | None = None,
     ) -> None:
         self.results = list(results or [])
-        self.profile_error = profile_error
-        self.profile_calls = 0
         self.inspect_calls: list[str] = []
         self.default = NetworkManagerResult(None, "waiting", "waiting", True)
         self.continuous = True
         self.inspect_error: Exception | None = None
-
-    def ensure_profile(self) -> None:
-        self.profile_calls += 1
-        if self.profile_error is not None:
-            raise self.profile_error
 
     def inspect(
         self,
@@ -553,7 +481,6 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         upstream, errors = manager.resolve()
 
         self.assertIsNone(upstream)
-        self.assertEqual(network_manager.profile_calls, 0)
         self.assertEqual(network_manager.inspect_calls, [])
         self.assertEqual(processes, [])
         self.assertEqual(manager.pairing_state, "waiting_for_device")
@@ -805,7 +732,6 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
                 for command in runner.commands
             )
         )
-        self.assertEqual(network_manager.profile_calls, 0)
 
     def test_driver_inactive_message_when_no_interface(self) -> None:
         runner = self._paired_runner()

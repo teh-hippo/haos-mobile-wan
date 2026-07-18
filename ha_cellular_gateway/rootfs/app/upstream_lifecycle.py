@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from .config import GatewayConfig
 from .errors import GatewayError
-from .networkmanager_wifi import NetworkManagerWifi
+from .networkmanager_wifi import WIFI_PROFILE_DRIFT_MESSAGE, NetworkManagerWifi
 from .nm_inventory import NmInventory, ProfileRecord
 from .nm_journal import NmOwnershipJournal
 from .nm_migration import (
@@ -15,10 +16,6 @@ from .nm_migration import (
 )
 from .nm_preflight import inspect_nm_ownership
 from .nm_profile import NmProfile
-from .nm_profile_specs import (
-    USB_PROFILE_UUID,
-    WIFI_PROFILE_UUID,
-)
 from .upstream_iphone import IPhoneUsbUpstream
 
 if TYPE_CHECKING:
@@ -31,9 +28,7 @@ PROFILE_ERRORS = (
     ValueError,
 )
 
-USB_PROFILE_DRIFT_ERROR = (
-    "The app-owned iPhone USB profile has unexpected settings"
-)
+USB_PROFILE_DRIFT_ERROR = "The app-owned iPhone USB profile has unexpected settings"
 
 
 class UpstreamLifecycle:
@@ -132,7 +127,7 @@ class UpstreamLifecycle:
                 self._release_profile(
                     self.wifi.profile,
                     "wifi_hotspot",
-                    "The app-owned Wi-Fi hotspot profile has unexpected settings",
+                    WIFI_PROFILE_DRIFT_MESSAGE,
                 )
             )
             errors.extend(migrate_legacy_usb(self.iphone.run))
@@ -151,15 +146,14 @@ class UpstreamLifecycle:
         inspection = self.iphone.nm.profile.inspect()
         if inspection.state == "drifted":
             return [USB_PROFILE_DRIFT_ERROR]
+        journal_error = self.journal.claim(
+            "iphone_usb",
+            self.iphone.nm.profile.spec,
+        )
+        if journal_error:
+            return [journal_error]
         if inspection.state == "missing":
-            journal_error = self.journal.claim("iphone_usb", USB_PROFILE_UUID)
-            if journal_error:
-                return [journal_error]
             self.iphone.nm.profile.create()
-        else:
-            journal_error = self.journal.claim("iphone_usb", USB_PROFILE_UUID)
-            if journal_error:
-                return [journal_error]
         return []
 
     def _release_unselected_profiles(self) -> list[str]:
@@ -177,7 +171,7 @@ class UpstreamLifecycle:
                 self._release_profile(
                     self.wifi.profile,
                     "wifi_hotspot",
-                    "The app-owned Wi-Fi hotspot profile has unexpected settings",
+                    WIFI_PROFILE_DRIFT_MESSAGE,
                 )
             )
         return errors
@@ -192,17 +186,18 @@ class UpstreamLifecycle:
             *self._release_profile(
                 self.wifi.profile,
                 "wifi_hotspot",
-                "The app-owned Wi-Fi hotspot profile has unexpected settings",
+                WIFI_PROFILE_DRIFT_MESSAGE,
             ),
         ]
 
     def _ensure_wifi_profile(self) -> list[str]:
         inspection = self.wifi.profile.inspect()
         if inspection.state == "drifted":
-            return [
-                "The app-owned Wi-Fi hotspot profile has unexpected settings"
-            ]
-        journal_error = self.journal.claim("wifi_hotspot", WIFI_PROFILE_UUID)
+            return [WIFI_PROFILE_DRIFT_MESSAGE]
+        journal_error = self.journal.claim(
+            "wifi_hotspot",
+            self.wifi.profile.spec,
+        )
         if journal_error:
             return [journal_error]
         if inspection.state == "missing":
@@ -222,6 +217,24 @@ class UpstreamLifecycle:
                 return [journal_error]
             return []
         if inspection.state == "drifted":
+            entry = self.journal.entry(key)
+            fingerprint = (
+                entry.get("fingerprint")
+                if isinstance(entry, dict)
+                else None
+            )
+            if (
+                isinstance(fingerprint, dict)
+                and profile.matches_fingerprint(fingerprint)
+            ) or (
+                entry is not None
+                and self.journal.phase in {"acquiring", "releasing"}
+                and profile.matches_identity()
+            ):
+                profile.deactivate()
+                profile.delete()
+                journal_error = self.journal.release(key)
+                return [journal_error] if journal_error else []
             return [drift_error]
         profile.deactivate()
         profile.delete()

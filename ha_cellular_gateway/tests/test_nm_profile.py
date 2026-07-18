@@ -14,7 +14,6 @@ from rootfs.app.nm_preflight import (
 )
 from rootfs.app.networkmanager_wifi import (
     WIFI_FOREIGN_MESSAGE,
-    WIFI_PROFILE_DRIFT_MESSAGE,
     NetworkManagerWifi,
 )
 from rootfs.app.nm_profile import NmProfile
@@ -253,7 +252,7 @@ class NmProfileTests(unittest.TestCase):
             cli.run,
             monotonic=cli.monotonic,
         )
-        self.assertIsNone(manager.ensure_profile())
+        manager.profile.create()
         cli.active["wlan0"] = WIFI_PROFILE_UUID
         cli.addresses["wlan0"] = [config.upstream_address]
         address = config.upstream_ip
@@ -283,7 +282,7 @@ class NmProfileTests(unittest.TestCase):
             hotspot_password="supersecret",
         )
         manager = NetworkManagerWifi(config, cli.run)
-        manager.ensure_profile()
+        manager.profile.create()
         cli.active["wlan0"] = "foreign"
 
         result = manager.inspect()
@@ -298,12 +297,13 @@ class NmProfileTests(unittest.TestCase):
             hotspot_password="supersecret",
         )
         manager = NetworkManagerWifi(config, cli.run)
-        manager.ensure_profile()
+        manager.profile.create()
         cli.profiles[WIFI_PROFILE_UUID]["ipv4.route-table"] = "254"
 
-        error = manager.ensure_profile()
+        inspection = manager.profile.inspect()
 
-        self.assertEqual(error, WIFI_PROFILE_DRIFT_MESSAGE)
+        self.assertEqual(inspection.state, "drifted")
+        self.assertIn("ipv4.route-table", inspection.drifted_fields)
 
     def test_inventory_finds_foreign_wifi_and_ipheth_profiles(self) -> None:
         cli = FakeNmcli()

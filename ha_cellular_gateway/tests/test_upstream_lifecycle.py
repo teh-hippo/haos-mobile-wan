@@ -23,6 +23,10 @@ from rootfs.app.upstream_lifecycle import (
     LEGACY_WIFI_MANUAL_ERROR,
     UpstreamLifecycle,
 )
+from rootfs.app.nm_migration import (
+    LEGACY_WIFI_DELETE_ERROR,
+    LEGACY_WIFI_MISMATCH_ERROR,
+)
 
 
 class UpstreamLifecycleTests(unittest.TestCase):
@@ -60,11 +64,13 @@ class UpstreamLifecycleTests(unittest.TestCase):
         self.assertIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
         self.assertNotIn(USB_PROFILE_UUID, engine.runner.nm_profiles)
         self.assertEqual(
-            engine.upstream_lifecycle.state(),
-            {
-                "phase": "active",
-                "owned": {"wifi_hotspot": WIFI_PROFILE_UUID},
-            },
+            engine.upstream_lifecycle.state()["phase"],
+            "active",
+        )
+        owned = engine.upstream_lifecycle.state()["owned"]
+        self.assertEqual(
+            owned["wifi_hotspot"]["uuid"],
+            WIFI_PROFILE_UUID,
         )
 
     def test_fallback_activation_creates_warm_standby_profiles(self) -> None:
@@ -131,6 +137,100 @@ class UpstreamLifecycleTests(unittest.TestCase):
 
         self.assertNotIn(WIFI_PROFILE_UUID, runner.nm_profiles)
         self.assertIsNone(engine.upstream_lifecycle.state())
+
+    def test_disabled_restart_uses_historical_fingerprint_after_config_change(
+        self,
+    ) -> None:
+        runner = FakeRunner()
+        old_config = make_config(
+            enabled=True,
+            hotspot_ssid="OldPhone",
+            hotspot_password="oldsecret",
+        )
+        old_spec = wifi_profile_spec(old_config)
+        NmProfile(
+            lambda *args, **kwargs: runner.run(list(args), **kwargs),
+            old_spec,
+        ).create()
+        StateStore(self.state_path).save(
+            owned=None,
+            profiles={
+                "phase": "active",
+                "owned": {
+                    "wifi_hotspot": {
+                        "uuid": old_spec.uuid,
+                        "fingerprint": old_spec.fingerprint,
+                    }
+                },
+            },
+        )
+        new_config = make_config(
+            enabled=False,
+            hotspot_ssid="NewPhone",
+            hotspot_password="newsecret",
+        )
+        engine = GatewayEngine(
+            new_config,
+            runner=runner,
+            read_text=lambda path: sysctl_values()[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
+
+        engine.reconcile()
+
+        self.assertNotIn(WIFI_PROFILE_UUID, runner.nm_profiles)
+
+    def test_disabled_restart_removes_partial_claimed_profile(self) -> None:
+        runner = FakeRunner()
+        config = make_config(
+            enabled=False,
+            hotspot_ssid="Phone",
+            hotspot_password="supersecret",
+        )
+        spec = wifi_profile_spec(config)
+        runner.nm_profiles[spec.uuid] = {
+            "connection.uuid": spec.uuid,
+            "connection.id": spec.name,
+            "connection.type": spec.connection_type,
+        }
+        StateStore(self.state_path).save(
+            owned=None,
+            profiles={
+                "phase": "acquiring",
+                "owned": {
+                    "wifi_hotspot": {
+                        "uuid": spec.uuid,
+                        "fingerprint": spec.fingerprint,
+                    }
+                },
+            },
+        )
+        engine = GatewayEngine(
+            config,
+            runner=runner,
+            read_text=lambda path: sysctl_values()[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
+
+        engine.reconcile()
+
+        self.assertNotIn(WIFI_PROFILE_UUID, runner.nm_profiles)
+
+    def test_unclaimed_drifted_profile_is_never_deleted(self) -> None:
+        engine = self._engine(enabled=False)
+        spec = wifi_profile_spec(engine.config)
+        NmProfile(engine._run, spec).create()
+        engine.runner.nm_profiles[spec.uuid]["ipv4.route-table"] = "254"
+
+        engine.reconcile()
+
+        self.assertIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertIn(
+            "unexpected settings",
+            engine.upstream_lifecycle.error or "",
+        )
 
     def test_activation_requires_management_before_mutation(self) -> None:
         engine = self._engine()
@@ -215,6 +315,71 @@ class UpstreamLifecycleTests(unittest.TestCase):
         self.assertIsNone(engine.upstream_lifecycle.error)
         self.assertNotIn("legacy", engine.runner.nm_profiles)
         self.assertIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
+
+    def test_legacy_wifi_address_substring_is_not_a_match(self) -> None:
+        engine = self._engine(
+            legacy_wifi_migration=LEGACY_WIFI_MIGRATE_MATCHING,
+        )
+        engine.runner.nm_profiles["legacy"] = {
+            "connection.uuid": "legacy",
+            "connection.id": "Supervisor wlan0",
+            "connection.type": "802-11-wireless",
+            "connection.interface-name": "wlan0",
+            "802-11-wireless.ssid": "Phone",
+            "ipv4.addresses": "1172.20.10.4/28",
+        }
+
+        engine.upstream_lifecycle.activate(self._management())
+
+        self.assertIn(
+            LEGACY_WIFI_MISMATCH_ERROR,
+            engine.upstream_lifecycle.error or "",
+        )
+        self.assertIn("legacy", engine.runner.nm_profiles)
+
+    def test_mixed_legacy_wifi_candidates_are_not_partially_deleted(self) -> None:
+        engine = self._engine(
+            legacy_wifi_migration=LEGACY_WIFI_MIGRATE_MATCHING,
+        )
+        for uuid, address in (
+            ("matching", "172.20.10.4/28"),
+            ("mismatch", "172.20.11.4/28"),
+        ):
+            engine.runner.nm_profiles[uuid] = {
+                "connection.uuid": uuid,
+                "connection.id": "Supervisor wlan0",
+                "connection.type": "802-11-wireless",
+                "connection.interface-name": "wlan0",
+                "802-11-wireless.ssid": "Phone",
+                "ipv4.addresses": address,
+            }
+
+        engine.upstream_lifecycle.activate(self._management())
+
+        self.assertIn("matching", engine.runner.nm_profiles)
+        self.assertIn("mismatch", engine.runner.nm_profiles)
+
+    def test_failed_legacy_wifi_delete_is_reported(self) -> None:
+        engine = self._engine(
+            legacy_wifi_migration=LEGACY_WIFI_MIGRATE_MATCHING,
+        )
+        engine.runner.nm_profiles["legacy"] = {
+            "connection.uuid": "legacy",
+            "connection.id": "Supervisor wlan0",
+            "connection.type": "802-11-wireless",
+            "connection.interface-name": "wlan0",
+            "802-11-wireless.ssid": "Phone",
+            "ipv4.addresses": "172.20.10.4/28",
+        }
+        engine.runner.nm_delete_fail = True
+
+        engine.upstream_lifecycle.activate(self._management())
+
+        self.assertIn(
+            LEGACY_WIFI_DELETE_ERROR,
+            engine.upstream_lifecycle.error or "",
+        )
+        self.assertIn("legacy", engine.runner.nm_profiles)
 
     def test_usb_cleanup_failure_is_reported_without_escaping(self) -> None:
         engine = self._engine(mobile_connection=IPHONE_USB)

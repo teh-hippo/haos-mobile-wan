@@ -71,6 +71,7 @@ class FakeRunner:
         self.nm_active: dict[str, str] = {}
         self.nm_routes: dict[int, list[dict[str, object]]] = {}
         self.nm_auto_activate = True
+        self.nm_delete_fail = False
         self.interface_addresses = {
             "end0": ("192.168.1.2", 24),
             "wlan0": ("172.20.10.4", 28),
@@ -171,6 +172,8 @@ class FakeRunner:
                     del self.nm_active[interface]
             return Result()
         if args[:4] == ["nmcli", "connection", "delete", "uuid"]:
+            if self.nm_delete_fail:
+                return Result(returncode=1)
             self.nm_profiles.pop(args[4], None)
             return Result()
         if args[:3] == ["nmcli", "-g", "GENERAL.CON-UUID"]:

@@ -46,7 +46,10 @@ class GatewayConfigTests(unittest.TestCase):
     def test_load_path_reports_no_error_for_valid_options(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "options.json"
-            path.write_text('{"enabled":true}', encoding="utf-8")
+            path.write_text(
+                '{"enabled":true,"mobile_connection":"USB (iPhone)"}',
+                encoding="utf-8",
+            )
 
             config, error = GatewayConfig.load_path(path)
 
@@ -106,6 +109,19 @@ class GatewayConfigTests(unittest.TestCase):
                 )
                 self.assertEqual(config.mobile_connection, connection)
 
+    def test_maps_legacy_wifi_migration_choice(self) -> None:
+        config = GatewayConfig._from_data(
+            {
+                "legacy_wifi_migration": (
+                    "Migrate matching Supervisor profile"
+                )
+            }
+        )
+        self.assertEqual(
+            config.legacy_wifi_migration,
+            "migrate_matching",
+        )
+
     def test_rejects_overlapping_networks(self) -> None:
         config = make_config(downstream_address="172.20.10.9/28")
         with self.assertRaisesRegex(GatewayError, "must not overlap"):
@@ -134,6 +150,15 @@ class GatewayConfigTests(unittest.TestCase):
 
     def test_accepts_empty_hotspot_credentials(self) -> None:
         make_config(hotspot_ssid="", hotspot_password="").validate()
+
+    def test_enabled_wifi_requires_hotspot_credentials(self) -> None:
+        config = make_config(
+            enabled=True,
+            hotspot_ssid="",
+            hotspot_password="",
+        )
+        with self.assertRaisesRegex(GatewayError, "credentials are required"):
+            config.validate()
 
     def test_requires_hotspot_ssid_and_password_together(self) -> None:
         for overrides in (

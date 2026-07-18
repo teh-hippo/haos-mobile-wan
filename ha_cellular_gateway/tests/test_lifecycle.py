@@ -5,6 +5,7 @@ from pathlib import Path
 from rootfs.app import lifecycle
 from rootfs.app.const import IPHONE_USB, WIFI_HOTSPOT
 from rootfs.app.gateway import GatewayEngine
+from rootfs.app.errors import GatewayError
 from rootfs.app.upstream_models import ResolvedUpstream
 
 from helpers import FakeRunner, make_config, sysctl_values
@@ -138,6 +139,18 @@ class LifecycleTransitionLoggingTests(unittest.TestCase):
                 None,
                 {"enabled": True, "connected": False},
             )
+
+    def test_wifi_status_failure_is_non_throwing(self) -> None:
+        engine = self._engine(
+            mobile_connection=WIFI_HOTSPOT,
+            hotspot_ssid="Phone",
+            hotspot_password="supersecret",
+        )
+        engine.wifi.profile.active_uuid = lambda interface: (
+            _ for _ in ()
+        ).throw(GatewayError("NetworkManager unavailable"))
+
+        self.assertIsNone(lifecycle.wifi_interface_status(engine))
 
 
 if __name__ == "__main__":

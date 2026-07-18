@@ -83,9 +83,9 @@ or the router LAN. If it does, set the optional **Router WAN address**.
 
 HAOS connects to the phone over Wi-Fi.
 
-Leave the Wi-Fi hotspot name and password empty to keep an existing HAOS Wi-Fi
-profile. Set both values to let the app apply the profile through Supervisor
-when it starts.
+Provide a Wi-Fi adapter dedicated to HAOS Mobile WAN. It must not be the
+management interface and must not have another NetworkManager profile that can
+bind to it. Enter the hotspot name and password in the app options.
 
 The default Wi-Fi settings are:
 
@@ -96,31 +96,14 @@ The default Wi-Fi settings are:
 | Phone gateway | `172.20.10.1` |
 | IPv6 | Disabled |
 
-The app intentionally omits a Wi-Fi main-table gateway. It installs the phone
-gateway only in its own routing table.
+The app creates its fixed-fingerprint Wi-Fi profile only while Enabled.
+NetworkManager places its connected and default routes in isolated table 203;
+the app copies the selected path into policy table 201. The profile is brought
+down and deleted when Disabled.
 
-To configure the profile outside the app:
-
-```sh
-ha network update wlan0 \
-  --wifi-mode infrastructure \
-  --wifi-auth wpa-psk \
-  --wifi-ssid "MobileHotspot" \
-  --wifi-psk "REPLACE_WITH_HOTSPOT_PASSWORD" \
-  --ipv4-method static \
-  --ipv4-address 172.20.10.4/28 \
-  --ipv4-nameserver 1.1.1.1 \
-  --ipv4-nameserver 8.8.8.8 \
-  --ipv6-method disabled
-```
-
-Do not add an IPv4 gateway to this HAOS profile.
-
-If the Wi-Fi upstream does not come up, the app reads the Supervisor interface
-state to tell two faults apart: the Wi-Fi adapter is disabled, or the adapter is
-enabled but has not associated with the phone. Raw 802.11 association status
-codes are recorded only in the host Wi-Fi supplicant logs, which the add-on
-cannot read, so check those host logs for the underlying rejection code.
+Do not create a separate Wi-Fi profile on this adapter. The app refuses to
+enable rather than modify or race a foreign profile. Raw 802.11 association
+status codes remain available in the host Wi-Fi supplicant logs.
 
 ### USB (iPhone)
 
@@ -133,12 +116,12 @@ The app:
 - keeps the phone default route in NetworkManager table 202, out of the main
   table.
 
-Host NetworkManager owns the iPhone connection through a persistent profile
-named `haos-mobile-wan-iphone`. The app creates that profile through `nmcli`
-before a phone is inserted, matches it to the `ipheth` driver rather than an
-interface name or MAC address, and reconciles it only when it is missing or has
-drifted. NetworkManager owns the address, renewals and DHCP-derived routes; the
-app does not edit its leased address or table 202 routes.
+While Enabled, the app creates a temporary profile named
+`haos-mobile-wan-iphone`, matched to the `ipheth` driver rather than an
+interface name or MAC address. Autoconnect is disabled; the app activates the
+profile only after the phone, trust, interface and carrier are ready.
+NetworkManager owns the lease and table-202 routes. The profile is removed when
+Disabled.
 
 Connect the unlocked iPhone with a data-capable cable, enable **Personal
 Hotspot** and **Allow Others to Join**, then accept **Trust** if prompted.
@@ -155,7 +138,7 @@ iPhone USB remains experimental because it depends on the HAOS kernel,
 
 ### USB (iPhone), Wi-Fi fallback
 
-This strategy prepares both mobile paths.
+This strategy keeps both app-owned profiles active while Enabled.
 
 - USB is selected while the iPhone is paired, `ipheth` is available and the
   NetworkManager lease is valid.
@@ -177,16 +160,18 @@ in this release.
 |---|---|
 | **Enabled** | Starts or stops gateway service to the router |
 | **Mobile connection** | Selects Wi-Fi, USB (iPhone), or USB-preferred Wi-Fi fallback |
-| **Wi-Fi hotspot name** | Optional app-managed Wi-Fi name |
-| **Wi-Fi hotspot password** | Optional app-managed Wi-Fi password |
+| **Wi-Fi hotspot name** | Required hotspot name when Wi-Fi is selected |
+| **Wi-Fi hotspot password** | Required hotspot password when Wi-Fi is selected |
 
-The Wi-Fi name and password must both be set or both be empty.
+The Wi-Fi name and password must both be set whenever the selected strategy
+uses Wi-Fi.
 
 ### Optional advanced options
 
 | Option | Default | Use |
 |---|---|---|
 | Auto-disable after disconnect | `30` minutes | Persist Enabled off after this long without an active gateway; use `0` to disable |
+| Legacy Wi-Fi profile | Manual cleanup | Optionally migrate only a matching legacy `Supervisor <interface>` profile |
 | Router adapter MAC address | Automatic | Select between multiple USB Ethernet adapters |
 | Router WAN address | `192.168.80.1/24` | Avoid a subnet overlap |
 | Wi-Fi interface | `wlan0` | Override the hotspot interface |
@@ -197,6 +182,22 @@ Options are read when the app starts. Restart the app after changing them.
 The **Enabled** option controls the gateway. The Home Assistant entities
 published over MQTT are status-only monitoring; they do not change app options
 or control the gateway.
+
+## Upgrade to 0.9.0
+
+Version 0.9.0 is a breaking NetworkManager ownership update.
+
+1. Leave **Enabled** off during the update.
+2. Reserve a dedicated Wi-Fi adapter if the selected strategy uses Wi-Fi.
+3. Remove any ordinary NetworkManager profile bound to that adapter.
+4. For a legacy `Supervisor <interface>` profile, either keep **Manual cleanup**
+   and remove it yourself, or select **Migrate matching Supervisor profile**.
+5. Re-enter the hotspot name and password if Wi-Fi is selected.
+6. Enable the gateway only after **Health** reports no ownership conflict.
+
+The old fixed iPhone USB profile is removed automatically only when its complete
+fingerprint matches the known legacy app profile. Drifted or foreign profiles
+are left untouched and reported for manual cleanup.
 
 ## Upgrade to 0.4.0
 
@@ -228,9 +229,9 @@ select entities are not retained.
 10. Confirm Home Assistant remains reachable through management Ethernet.
 11. Confirm router traffic cannot use the management interface.
 
-While disabled, the app may prepare Wi-Fi, pair the iPhone, maintain the USB
-lease and protect HAOS from the router-facing interface. It does not install
-the router-facing address, router DHCP, forwarding, NAT or policy routing.
+While disabled, the app removes its USB and Wi-Fi NetworkManager profiles,
+router-facing address, router DHCP, forwarding, NAT and policy routing. It
+retains only the downstream host-protection guard.
 
 Turning **Enabled** off removes gateway service while keeping the host
 protection rule until the app stops.
@@ -247,10 +248,10 @@ policy ownership becomes unsafe, the app:
 - retains the host protection rule while the app remains running;
 - keeps the enabled request and retries every five seconds.
 
-On graceful stop, cleanup also removes the host protection rule and stops the
-app `usbmuxd` helper. It leaves the persistent NetworkManager profile, its
-address and its table 202 routes in place. `/data/state.json` records exact
-ownership so the next start can clean interrupted state before reconciliation.
+On graceful stop, cleanup also removes the host protection rule, deletes exact
+app-owned NetworkManager profiles and stops the app `usbmuxd` helper.
+`/data/state.json` records profile fingerprints and exact network ownership so
+the next start can complete interrupted cleanup before reconciliation.
 
 If the app is terminated ungracefully (a forced kill or container removal),
 in-process cleanup cannot run, so a transient router-facing address and tagged
@@ -338,9 +339,10 @@ The app uses `host_network`, `host_dbus`, `NET_ADMIN`, `NET_RAW`, `hassio_api`,
 - Host networking and `NET_ADMIN` are required for real HAOS interfaces,
   policy routing and tagged firewall rules.
 - `NET_RAW` is required by the DHCP services.
-- Supervisor manager access is required to apply app-managed Wi-Fi profiles.
-- Host D-Bus is required so `nmcli` can drive the host NetworkManager iPhone USB
-  profile. The AppArmor profile scopes D-Bus to the NetworkManager service.
+- Supervisor access is required for MQTT service details and persistent
+  auto-disable option updates.
+- Host D-Bus is required so `nmcli` can manage the app-owned iPhone USB and
+  Wi-Fi profiles. The AppArmor profile scopes D-Bus to NetworkManager.
 - USB access is required by the iPhone path and is static for the app package.
 
 The app does not use `full_access` or `udev`.

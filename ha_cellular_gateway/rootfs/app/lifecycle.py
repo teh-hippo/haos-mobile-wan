@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 from typing import TYPE_CHECKING
 
+from .errors import GatewayError
 from .const import IPHONE_USB
 
 if TYPE_CHECKING:
@@ -16,9 +18,18 @@ def wifi_interface_status(engine: GatewayEngine) -> dict[str, object] | None:
     config = engine.config
     if not config.uses_wifi:
         return None
-    active = engine.wifi.profile.active_uuid(config.upstream_interface)
+    try:
+        active = engine.wifi.profile.active_uuid(config.upstream_interface)
+        enabled = engine.wifi.profile.inspect().state == "exact"
+    except (
+        GatewayError,
+        OSError,
+        subprocess.SubprocessError,
+        ValueError,
+    ):
+        return None
     return {
-        "enabled": engine.wifi.profile.inspect().state == "exact",
+        "enabled": enabled,
         "connected": active == engine.wifi.profile.spec.uuid,
     }
 

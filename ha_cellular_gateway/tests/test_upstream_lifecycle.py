@@ -326,6 +326,32 @@ class UpstreamLifecycleTests(unittest.TestCase):
         self.assertNotIn("legacy", engine.runner.nm_profiles)
         self.assertIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
 
+    def test_matching_bound_and_unbound_legacy_wifi_profiles_are_migrated(
+        self,
+    ) -> None:
+        engine = self._engine(
+            legacy_wifi_migration=LEGACY_WIFI_MIGRATE_MATCHING,
+        )
+        for uuid, interface in (
+            ("bound", "wlan0"),
+            ("unbound", ""),
+        ):
+            engine.runner.nm_profiles[uuid] = {
+                "connection.uuid": uuid,
+                "connection.id": "Supervisor wlan0",
+                "connection.type": "802-11-wireless",
+                "connection.interface-name": interface,
+                "802-11-wireless.ssid": "Phone",
+                "ipv4.addresses": "172.20.10.4/28",
+            }
+
+        engine.upstream_lifecycle.activate(self._management())
+
+        self.assertIsNone(engine.upstream_lifecycle.error)
+        self.assertNotIn("bound", engine.runner.nm_profiles)
+        self.assertNotIn("unbound", engine.runner.nm_profiles)
+        self.assertIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
+
     def test_legacy_wifi_address_substring_is_not_a_match(self) -> None:
         engine = self._engine(
             legacy_wifi_migration=LEGACY_WIFI_MIGRATE_MATCHING,

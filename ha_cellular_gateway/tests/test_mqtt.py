@@ -52,6 +52,16 @@ STATUS = {
     "public_ip": "203.0.113.10",
     "health": "healthy",
     "health_issues": [],
+    "networkmanager": {
+        "phase": "disabled",
+        "owned_profiles": {},
+        "profile_states": {
+            "iphone_usb": "missing",
+            "wifi_hotspot": "missing",
+        },
+        "legacy_wifi_profiles": 0,
+    },
+    "upstream_carrier": None,
     "auto_disable_at": None,
     "upstream_healthy": True,
     "downstream_present": True,
@@ -253,9 +263,11 @@ class DiscoveryPayloadTests(unittest.TestCase):
         health = self.cmps["health"]
         self.assertEqual(health["json_attributes_topic"], STATE_TOPIC)
         self.assertIn("health_issues", health["json_attributes_template"])
+        self.assertIn("networkmanager", health["json_attributes_template"])
         gateway = self.cmps["gateway_state"]
         self.assertEqual(gateway["json_attributes_topic"], STATE_TOPIC)
         self.assertIn("auto_disable_at", gateway["json_attributes_template"])
+        self.assertIn("upstream_carrier", gateway["json_attributes_template"])
 
     def test_state_topic_shared_by_stateful_components(self) -> None:
         for key in ("gateway_state", "upstream_healthy", "enabled"):

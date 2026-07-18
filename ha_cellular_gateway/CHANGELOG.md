@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.2
+
+- Publish the secret-safe NetworkManager ownership diagnostics and latest
+  iPhone carrier observation as MQTT entity attributes so live acceptance can
+  be captured directly from Home Assistant.
+
 ## 0.9.1
 
 - Add secret-safe acceptance diagnostics for iPhone carrier, app-owned

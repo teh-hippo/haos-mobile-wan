@@ -365,6 +365,8 @@ baseline.
 The `networkmanager` object in `/v2/status` reports the secret-safe ownership
 phase, app profile UUIDs and profile states. `upstream_carrier` reports the
 latest iPhone carrier observation. These fields contain no passwords.
+The same values are available as attributes on **Health** and **Gateway state**
+for acceptance evidence through Home Assistant.
 
 ## Security
 

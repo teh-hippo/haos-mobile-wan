@@ -44,6 +44,8 @@ STATE_FIELDS = (
     "public_ip",
     "health",
     "health_issues",
+    "networkmanager",
+    "upstream_carrier",
     "auto_disable_at",
     "upstream_healthy",
     "enabled",
@@ -151,7 +153,8 @@ def _gateway_state() -> dict[str, Any]:
     component["value_template"] = gateway_state_value_template()
     component["json_attributes_topic"] = STATE_TOPIC
     component["json_attributes_template"] = (
-        "{{ {'auto_disable_at': value_json.auto_disable_at} | tojson }}"
+        "{{ {'auto_disable_at': value_json.auto_disable_at, "
+        "'upstream_carrier': value_json.upstream_carrier} | tojson }}"
     )
     component["icon"] = "mdi:lan-connect"
     return component
@@ -170,7 +173,8 @@ def _health() -> dict[str, Any]:
     )
     component["json_attributes_topic"] = STATE_TOPIC
     component["json_attributes_template"] = (
-        "{{ {'issues': value_json.health_issues} | tojson }}"
+        "{{ {'issues': value_json.health_issues, "
+        "'networkmanager': value_json.networkmanager} | tojson }}"
     )
     component["icon"] = "mdi:heart-pulse"
     return component

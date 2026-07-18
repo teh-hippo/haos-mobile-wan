@@ -66,18 +66,27 @@ class FakeNmcli:
         if argv[0] != "nmcli":
             return Result()
         command = argv[1:]
-        if command[:4] == ["-t", "--separator", "|", "-f"]:
-            lines = [
-                "|".join(
-                    (
-                        uuid,
-                        profile.get("connection.type", ""),
-                        profile.get("connection.id", ""),
-                    )
-                )
-                for uuid, profile in self.profiles.items()
-            ]
+        if command == [
+            "--escape",
+            "no",
+            "-g",
+            "UUID",
+            "connection",
+            "show",
+        ]:
+            lines = list(self.profiles)
             return Result(stdout="\n".join(lines) + ("\n" if lines else ""))
+        if (
+            command[:3] == ["--escape", "no", "-g"]
+            and command[4:6] == ["connection", "show"]
+        ):
+            fields = command[3].split(",")
+            profile = self.profiles.get(command[-1])
+            if profile is None:
+                return Result(returncode=10)
+            return Result(
+                stdout="\n".join(profile.get(field, "") for field in fields) + "\n"
+            )
         if command[:2] == ["--show-secrets", "-g"]:
             fields = command[2].split(",")
             uuid = command[-1]
@@ -329,6 +338,21 @@ class NmProfileTests(unittest.TestCase):
 
         self.assertEqual([profile.uuid for profile in wifi], ["wifi-foreign"])
         self.assertEqual([profile.uuid for profile in usb], ["usb-foreign"])
+        self.assertIn(
+            [
+                "nmcli",
+                "--escape",
+                "no",
+                "-g",
+                "UUID",
+                "connection",
+                "show",
+            ],
+            cli.commands,
+        )
+        self.assertFalse(
+            any("--separator" in command for command in cli.commands)
+        )
 
     def test_preflight_requires_management_and_refuses_foreign_profiles(self) -> None:
         cli = FakeNmcli()

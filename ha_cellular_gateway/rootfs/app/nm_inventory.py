@@ -6,6 +6,15 @@ from .command import RunCommand
 from .errors import GatewayError
 from .nm_profile import normalise_setting
 
+PROFILE_FIELDS = (
+    "connection.type",
+    "connection.id",
+    "connection.interface-name",
+    "match.driver",
+    "802-11-wireless.ssid",
+    "ipv4.addresses",
+)
+
 
 @dataclass(frozen=True)
 class ProfileRecord:
@@ -25,11 +34,10 @@ class NmInventory:
     def profiles(self) -> list[ProfileRecord]:
         result = self.run(
             "nmcli",
-            "-t",
-            "--separator",
-            "|",
-            "-f",
-            "UUID,TYPE,NAME",
+            "--escape",
+            "no",
+            "-g",
+            "UUID",
             "connection",
             "show",
             check=False,
@@ -37,17 +45,18 @@ class NmInventory:
         if result.returncode != 0:
             raise GatewayError("Cannot inspect NetworkManager profiles")
         records: list[ProfileRecord] = []
-        for line in (result.stdout or "").splitlines():
-            parts = line.split("|", 2)
-            if len(parts) != 3:
+        for uuid in (result.stdout or "").splitlines():
+            uuid = uuid.strip()
+            if not uuid:
                 continue
-            uuid, connection_type, name = parts
-            settings = self._binding_settings(uuid)
+            settings = self._profile_settings(uuid)
             records.append(
                 ProfileRecord(
                     uuid=uuid,
-                    connection_type=connection_type,
-                    name=name,
+                    connection_type=normalise_setting(
+                        settings.get("connection.type", "")
+                    ),
+                    name=normalise_setting(settings.get("connection.id", "")),
                     interface_name=normalise_setting(
                         settings.get("connection.interface-name", "")
                     ),
@@ -90,26 +99,22 @@ class NmInventory:
             and "ipheth" in profile.match_driver.split(",")
         ]
 
-    def _binding_settings(self, uuid: str) -> dict[str, str]:
-        fields = (
-            "connection.interface-name",
-            "match.driver",
-            "802-11-wireless.ssid",
-            "ipv4.addresses",
-        )
+    def _profile_settings(self, uuid: str) -> dict[str, str]:
         result = self.run(
             "nmcli",
+            "--escape",
+            "no",
             "-g",
-            ",".join(fields),
+            ",".join(PROFILE_FIELDS),
             "connection",
             "show",
             uuid,
             check=False,
         )
         if result.returncode != 0:
-            return {}
+            raise GatewayError("Cannot inspect NetworkManager profile bindings")
         values = (result.stdout or "").splitlines()
         return {
             field: values[index].strip() if index < len(values) else ""
-            for index, field in enumerate(fields)
+            for index, field in enumerate(PROFILE_FIELDS)
         }

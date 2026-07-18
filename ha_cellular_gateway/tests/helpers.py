@@ -85,18 +85,28 @@ class FakeRunner:
         timeout: int = 20,
     ) -> Result:
         self.commands.append(args)
-        if args[:5] == ["nmcli", "-t", "--separator", "|", "-f"]:
-            lines = [
-                "|".join(
-                    (
-                        uuid,
-                        profile.get("connection.type", ""),
-                        profile.get("connection.id", ""),
-                    )
-                )
-                for uuid, profile in self.nm_profiles.items()
-            ]
+        if args == [
+            "nmcli",
+            "--escape",
+            "no",
+            "-g",
+            "UUID",
+            "connection",
+            "show",
+        ]:
+            lines = list(self.nm_profiles)
             return Result(stdout="\n".join(lines) + ("\n" if lines else ""))
+        if (
+            args[:4] == ["nmcli", "--escape", "no", "-g"]
+            and args[5:7] == ["connection", "show"]
+        ):
+            fields = args[4].split(",")
+            profile = self.nm_profiles.get(args[-1])
+            if profile is None:
+                return Result(returncode=10)
+            return Result(
+                stdout="\n".join(profile.get(field, "") for field in fields) + "\n"
+            )
         if args[:3] == ["nmcli", "--show-secrets", "-g"]:
             fields = args[3].split(",")
             profile = self.nm_profiles.get(args[-1])

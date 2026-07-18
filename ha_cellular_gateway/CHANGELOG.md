@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.3
+
+- Fix Enabled failing during NetworkManager ownership preflight by replacing an
+  unsupported `nmcli --separator` invocation with documented value queries.
+
 ## 0.9.2
 
 - Publish the secret-safe NetworkManager ownership diagnostics and latest

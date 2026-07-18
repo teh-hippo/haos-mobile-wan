@@ -38,7 +38,6 @@ class AddonSecurityTests(unittest.TestCase):
             {
                 "enabled",
                 "auto_disable_minutes",
-                "legacy_wifi_migration",
                 "mobile_connection",
                 "hotspot_ssid",
                 "hotspot_password",

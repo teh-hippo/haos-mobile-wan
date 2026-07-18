@@ -1,0 +1,11 @@
+services:
+  networkmanager:
+    build:
+      context: ../..
+      dockerfile: integration/networkmanager/Dockerfile
+    network_mode: none
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    security_opt:
+      - no-new-privileges:true

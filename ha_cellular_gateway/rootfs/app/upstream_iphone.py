@@ -15,7 +15,7 @@ from .networkmanager import (
     NetworkManagerIphone,
     NetworkManagerResult,
 )
-from .networkmanager_profile import DHCP_TIMEOUT_SECONDS
+from .nm_profile_specs import USB_DHCP_TIMEOUT_SECONDS
 from .upstream_iphone_runtime import IPhoneUsbRuntime
 from .upstream_models import ResolvedUpstream
 
@@ -28,7 +28,7 @@ UpstreamResolution = tuple[ResolvedUpstream | None, list[str]]
 class IPhoneUsbUpstream:
     LEASE_GRACE_SECONDS = max(
         ACTIVATION_COOLDOWN_SECONDS,
-        DHCP_TIMEOUT_SECONDS,
+        USB_DHCP_TIMEOUT_SECONDS,
     ) + 5
 
     def __init__(

@@ -72,10 +72,23 @@ class FakeRunner:
         self.nm_routes: dict[int, list[dict[str, object]]] = {}
         self.nm_auto_activate = True
         self.nm_delete_fail = False
+        self.nm_auth_failure = False
+        self.nm_up_failures: set[str] = set()
         self.interface_addresses = {
             "end0": ("192.168.1.2", 24),
             "wlan0": ("172.20.10.4", 28),
         }
+        self.nm_path = {
+            "end0": "platform-fd580000.ethernet",
+            "wlan0": "platform-fe300000.mmcnr",
+        }
+        self.nm_managed = {"end0": True, "wlan0": True}
+        self.nm_device_autoconnect = {"end0": True, "wlan0": True}
+        self.nm_device_state = {"end0": "100 (connected)", "wlan0": "30 (disconnected)"}
+        self.nm_device_reason = {"end0": "", "wlan0": ""}
+        self.nm_radio_software = True
+        self.nm_radio_hardware = True
+        self.nm_wifi_cache: dict[str, set[str]] = {}
 
     def run(
         self,
@@ -85,6 +98,9 @@ class FakeRunner:
         timeout: int = 20,
     ) -> Result:
         self.commands.append(args)
+        device_result = self._nm_device_command(args)
+        if device_result is not None:
+            return device_result
         if args == [
             "nmcli",
             "--escape",
@@ -142,38 +158,6 @@ class FakeRunner:
             pairs = args[4:]
             for index in range(0, len(pairs), 2):
                 profile[pairs[index]] = pairs[index + 1]
-            return Result()
-        if (
-            args[:4] == ["nmcli", "--wait", "8", "connection"]
-            and args[4:6] == ["up", "uuid"]
-        ):
-            uuid = args[6]
-            profile = self.nm_profiles.get(uuid, {})
-            interface = profile.get("connection.interface-name", "")
-            if interface and self.nm_auto_activate:
-                self.nm_active[interface] = uuid
-                address = profile.get("ipv4.addresses")
-                gateway = profile.get("ipv4.gateway")
-                table = profile.get("ipv4.route-table")
-                if address:
-                    local, _, prefix = address.partition("/")
-                    self.interface_addresses[interface] = (local, int(prefix))
-                if address and gateway and table:
-                    from ipaddress import ip_interface
-
-                    self.nm_routes[int(table)] = [
-                        {
-                            "dst": "default",
-                            "dev": interface,
-                            "gateway": gateway,
-                            "prefsrc": local,
-                        },
-                        {
-                            "dst": str(ip_interface(address).network),
-                            "dev": interface,
-                            "prefsrc": local,
-                        },
-                    ]
             return Result()
         if args[:4] == ["nmcli", "connection", "down", "uuid"]:
             uuid = args[4]
@@ -372,6 +356,112 @@ class FakeRunner:
             return Result(stdout="ip=203.0.113.10\n")
         return Result()
 
+    def _nm_device_command(self, args: list[str]) -> "Result | None":
+        if (
+            args[:2] == ["nmcli", "-g"]
+            and args[3:5] == ["device", "show"]
+            and all(field.startswith("GENERAL.") for field in args[2].split(","))
+        ):
+            return self._nm_device_show(args[2].split(","), args[-1])
+        if args == ["nmcli", "-g", "DEVICE", "device", "status"]:
+            return Result(stdout="\n".join(self.nm_path) + "\n")
+        if args == ["nmcli", "-g", "WIFI-HW,WIFI", "radio"]:
+            hardware = "enabled" if self.nm_radio_hardware else "disabled"
+            software = "enabled" if self.nm_radio_software else "disabled"
+            return Result(stdout=f"{hardware}\n{software}\n")
+        if args[:3] == ["nmcli", "device", "set"] and "autoconnect" in args:
+            iface = args[3]
+            value = args[args.index("autoconnect") + 1]
+            self.nm_device_autoconnect[iface] = value == "yes"
+            return Result()
+        if args[:2] == ["nmcli", "-w"] and args[3:5] == ["device", "disconnect"]:
+            self.nm_active.pop(args[5], None)
+            return Result()
+        if args[:4] == ["nmcli", "device", "wifi", "rescan"]:
+            return Result()
+        if args[:2] == ["nmcli", "-w"] and args[3:6] == ["connection", "up", "uuid"]:
+            return self._nm_connection_up(args[6])
+        if args[:5] == ["nmcli", "--rescan", "no", "-g", "SSID"] and "list" in args:
+            iface = args[args.index("ifname") + 1]
+            ssids = self.nm_wifi_cache.get(iface, set())
+            return Result(
+                stdout="\n".join(sorted(ssids)) + ("\n" if ssids else "")
+            )
+        if (
+            args[:3] == ["nmcli", "connection", "modify"]
+            and len(args) >= 6
+            and args[4].endswith("user.data")
+        ):
+            return self._nm_user_data(args)
+        return None
+
+    def _nm_device_show(self, fields: list[str], iface: str) -> Result:
+        values = {
+            "GENERAL.PATH": self.nm_path.get(iface, ""),
+            "GENERAL.STATE": self.nm_device_state.get(iface, ""),
+            "GENERAL.REASON": self.nm_device_reason.get(iface, ""),
+            "GENERAL.CON-UUID": self.nm_active.get(iface, ""),
+            "GENERAL.NM-MANAGED": "yes" if self.nm_managed.get(iface, True) else "no",
+            "GENERAL.AUTOCONNECT": (
+                "yes" if self.nm_device_autoconnect.get(iface, True) else "no"
+            ),
+        }
+        return Result(stdout="\n".join(values.get(field, "") for field in fields) + "\n")
+
+    def _nm_connection_up(self, uuid: str) -> Result:
+        if uuid in self.nm_up_failures:
+            return Result(
+                returncode=4,
+                stderr="Error: Connection activation failed.",
+            )
+        if self.nm_auth_failure:
+            return Result(
+                returncode=4,
+                stderr="Error: Connection activation failed: "
+                "Secrets were required, but not provided",
+            )
+        profile = self.nm_profiles.get(uuid, {})
+        interface = profile.get("connection.interface-name", "")
+        if interface and self.nm_auto_activate:
+            self.nm_active[interface] = uuid
+            address = profile.get("ipv4.addresses")
+            gateway = profile.get("ipv4.gateway")
+            table = profile.get("ipv4.route-table")
+            if address:
+                local, _, prefix = address.partition("/")
+                self.interface_addresses[interface] = (local, int(prefix))
+            if address and gateway and table:
+                from ipaddress import ip_interface
+
+                self.nm_routes[int(table)] = [
+                    {
+                        "dst": "default",
+                        "dev": interface,
+                        "gateway": gateway,
+                        "prefsrc": local,
+                    },
+                    {
+                        "dst": str(ip_interface(address).network),
+                        "dev": interface,
+                        "prefsrc": local,
+                    },
+                ]
+        return Result()
+
+    def _nm_user_data(self, args: list[str]) -> Result:
+        profile = self.nm_profiles.get(args[3])
+        if profile is None:
+            return Result(returncode=1)
+        data = dict(profile.get("_user_data", {}))
+        if args[4] == "-user.data":
+            data.pop(args[5], None)
+        else:
+            key, _, value = args[5].partition("=")
+            data[key] = value
+        profile["_user_data"] = data
+        profile["user.data"] = "\n".join(f"{key} = {value}" for key, value in data.items())
+        return Result()
+
     def _chain_lines(self, family: str, chain: str) -> list[str]:
         listing = self.chain_listings.get((family, chain))
         return [] if not listing else listing.splitlines()
@@ -435,7 +525,6 @@ def make_config(**overrides: object) -> GatewayConfig:
     values = {
         "enabled": False,
         "auto_disable_minutes": 30,
-        "legacy_wifi_migration": "manual",
         "mobile_connection": WIFI_HOTSPOT,
         "upstream_interface": "wlan0",
         "upstream_address": "172.20.10.4/28",

@@ -48,6 +48,8 @@ STATE_FIELDS = (
     "upstream_carrier",
     "auto_disable_at",
     "upstream_healthy",
+    "fallback_active",
+    "fallback_reason",
     "enabled",
     "downstream_present",
     "rules_installed",
@@ -154,6 +156,8 @@ def _gateway_state() -> dict[str, Any]:
     component["json_attributes_topic"] = STATE_TOPIC
     component["json_attributes_template"] = (
         "{{ {'auto_disable_at': value_json.auto_disable_at, "
+        "'fallback_active': value_json.fallback_active, "
+        "'fallback_reason': value_json.fallback_reason, "
         "'upstream_carrier': value_json.upstream_carrier} | tojson }}"
     )
     component["icon"] = "mdi:lan-connect"

@@ -199,7 +199,7 @@ addressing, interface names and iPhone identifiers.
 |---|---|
 | The gateway remains inactive while Enabled is on | Review **Gateway state** and **Health** |
 | USB is not selected | Unlock the iPhone, enable **Allow Others to Join** under Personal Hotspot, accept Trust, check `ipheth`, and confirm no other `ipheth` profile is configured in HAOS |
-| Wi-Fi fallback is unavailable | Confirm the selected adapter is dedicated, has no foreign NetworkManager profile, and the app credentials are correct |
+| Wi-Fi fallback is unavailable | Confirm the selected adapter is dedicated, its radio is on and NetworkManager-managed, the hotspot is in range, and the app credentials are correct |
 | The router receives no WAN lease | Confirm the router-facing USB adapter has HAOS IPv4 and IPv6 disabled |
 | More than one USB Ethernet adapter is attached | Set the optional router adapter MAC address |
 | Home Assistant becomes unreachable | Disable the app and verify the management Ethernet remains the only main default route |
@@ -233,6 +233,11 @@ The validation workflow runs the add-on unit tests, Python compilation, an
 `aarch64` image build. See
 [`.github/workflows/validate.yml`](.github/workflows/validate.yml) for the
 authoritative commands.
+
+The on-demand [NetworkManager integration
+lab](ha_cellular_gateway/integration/networkmanager/README.md) runs only by
+manual workflow dispatch or its local rootful Docker command. It is separate
+from unit discovery and does not replace HAOS hardware acceptance.
 
 The primary local checks are:
 

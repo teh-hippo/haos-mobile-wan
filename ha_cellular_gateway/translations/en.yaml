@@ -4,9 +4,6 @@ configuration:
   auto_disable_minutes:
     name: Auto-disable after disconnect
     description: Minutes without an active gateway before disabling it. Set to 0 to keep it enabled.
-  legacy_wifi_migration:
-    name: Legacy Wi-Fi profile
-    description: Keep manual cleanup unless migrating a matching Supervisor profile during enablement.
   mobile_connection:
     name: Mobile connection
   upstream_interface:

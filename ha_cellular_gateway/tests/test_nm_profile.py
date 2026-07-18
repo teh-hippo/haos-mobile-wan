@@ -9,17 +9,12 @@ from rootfs.app.nm_inventory import NmInventory
 from rootfs.app.nm_preflight import (
     MANAGEMENT_REQUIRED,
     USB_FOREIGN_PROFILE,
-    WIFI_FOREIGN_PROFILE,
     inspect_nm_ownership,
 )
-from rootfs.app.networkmanager_wifi import (
-    WIFI_FOREIGN_MESSAGE,
-    NetworkManagerWifi,
-)
+from rootfs.app.networkmanager_wifi import NetworkManagerWifi
 from rootfs.app.nm_profile import NmProfile
 from rootfs.app.nm_profile_specs import (
     WIFI_PROFILE_UUID,
-    WIFI_ROUTE_TABLE,
     usb_profile_spec,
     wifi_profile_spec,
 )
@@ -250,55 +245,6 @@ class NmProfileTests(unittest.TestCase):
         self.assertNotIn(profile.spec.uuid, cli.profiles)
         self.assertIn("foreign", cli.profiles)
 
-    def test_wifi_controller_returns_active_isolated_upstream(self) -> None:
-        cli = FakeNmcli()
-        config = make_config(
-            hotspot_ssid="Phone",
-            hotspot_password="supersecret",
-        )
-        manager = NetworkManagerWifi(
-            config,
-            cli.run,
-            monotonic=cli.monotonic,
-        )
-        manager.profile.create()
-        cli.active["wlan0"] = WIFI_PROFILE_UUID
-        cli.addresses["wlan0"] = [config.upstream_address]
-        address = config.upstream_ip
-        network = config.upstream_address
-        from ipaddress import ip_interface
-
-        subnet = str(ip_interface(network).network)
-        cli.table_routes[WIFI_ROUTE_TABLE] = [
-            {
-                "dst": "default",
-                "dev": "wlan0",
-                "gateway": config.upstream_gateway,
-                "prefsrc": address,
-            },
-            {"dst": subnet, "dev": "wlan0", "prefsrc": address},
-        ]
-
-        result = manager.inspect()
-
-        self.assertEqual(result.state, "active")
-        self.assertEqual(result.upstream.connection, "wifi_hotspot")
-
-    def test_wifi_controller_refuses_foreign_active_profile(self) -> None:
-        cli = FakeNmcli()
-        config = make_config(
-            hotspot_ssid="Phone",
-            hotspot_password="supersecret",
-        )
-        manager = NetworkManagerWifi(config, cli.run)
-        manager.profile.create()
-        cli.active["wlan0"] = "foreign"
-
-        result = manager.inspect()
-
-        self.assertEqual(result.error, WIFI_FOREIGN_MESSAGE)
-        self.assertFalse(result.safe)
-
     def test_wifi_controller_reports_profile_drift(self) -> None:
         cli = FakeNmcli()
         config = make_config(
@@ -354,7 +300,7 @@ class NmProfileTests(unittest.TestCase):
             any("--separator" in command for command in cli.commands)
         )
 
-    def test_preflight_requires_management_and_refuses_foreign_profiles(self) -> None:
+    def test_preflight_requires_management_and_keeps_usb_strict(self) -> None:
         cli = FakeNmcli()
         config = make_config(
             mobile_connection="iphone_usb_wifi_fallback",
@@ -384,10 +330,10 @@ class NmProfileTests(unittest.TestCase):
             ManagementBaseline("end0", "192.168.1.2/24"),
         )
 
-        self.assertIn(WIFI_FOREIGN_PROFILE, result.errors)
-        self.assertIn(USB_FOREIGN_PROFILE, result.errors)
+        self.assertEqual(result.errors, (USB_FOREIGN_PROFILE,))
+        self.assertEqual(result.lineage_wifi_profiles, ())
 
-    def test_preflight_classifies_matching_supervisor_profile_as_legacy(self) -> None:
+    def test_preflight_lineage_requires_matching_ssid(self) -> None:
         cli = FakeNmcli()
         config = make_config(
             hotspot_ssid="Phone",
@@ -398,6 +344,23 @@ class NmProfileTests(unittest.TestCase):
             "connection.id": "Supervisor wlan0",
             "connection.type": "802-11-wireless",
             "connection.interface-name": "wlan0",
+            "802-11-wireless.ssid": "Phone",
+            "ipv4.addresses": "172.20.10.4/28",
+        }
+        cli.profiles["genuine"] = {
+            "connection.uuid": "genuine",
+            "connection.id": "A-D074",
+            "connection.type": "802-11-wireless",
+            "connection.interface-name": "wlan0",
+            "ipv4.addresses": "",
+        }
+        cli.profiles["same-name"] = {
+            "connection.uuid": "same-name",
+            "connection.id": "Supervisor wlan0",
+            "connection.type": "802-11-wireless",
+            "connection.interface-name": "wlan0",
+            "802-11-wireless.ssid": "Neighbour",
+            "ipv4.addresses": "172.20.10.4/28",
         }
 
         result = inspect_nm_ownership(
@@ -408,7 +371,7 @@ class NmProfileTests(unittest.TestCase):
 
         self.assertEqual(result.errors, ())
         self.assertEqual(
-            [profile.uuid for profile in result.legacy_wifi_profiles],
+            [profile.uuid for profile in result.lineage_wifi_profiles],
             ["legacy"],
         )
 

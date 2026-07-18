@@ -84,8 +84,7 @@ or the router LAN. If it does, set the optional **Router WAN address**.
 HAOS connects to the phone over Wi-Fi.
 
 Provide a Wi-Fi adapter dedicated to HAOS Mobile WAN. It must not be the
-management interface and must not have another NetworkManager profile that can
-bind to it. Enter the hotspot name and password in the app options.
+management interface. Enter the hotspot name and password in the app options.
 
 The default Wi-Fi settings are:
 
@@ -101,9 +100,14 @@ NetworkManager places its connected and default routes in isolated table 203;
 the app copies the selected path into policy table 201. The profile is brought
 down and deleted when Disabled.
 
-Do not create a separate Wi-Fi profile on this adapter. The app refuses to
-enable rather than modify or race a foreign profile. Raw 802.11 association
-status codes remain available in the host Wi-Fi supplicant logs.
+While Enabled, the app temporarily reserves the selected dedicated adapter. It
+turns off device autoconnect and disconnects any active connection so its own
+profile controls the radio, without changing any other NetworkManager profile.
+Existing Wi-Fi profiles keep their definitions unchanged. When Disabled, the app
+restores the adapter's prior runtime state, so those profiles reconnect as
+before. Legacy `Supervisor <interface>` profiles that this app created in an
+earlier version are removed automatically. Raw 802.11 association status codes
+remain available in the host Wi-Fi supplicant logs.
 
 ### USB (iPhone)
 
@@ -171,7 +175,6 @@ uses Wi-Fi.
 | Option | Default | Use |
 |---|---|---|
 | Auto-disable after disconnect | `30` minutes | Persist Enabled off after this long without an active gateway; use `0` to disable |
-| Legacy Wi-Fi profile | Manual cleanup | Optionally migrate only a matching legacy `Supervisor <interface>` profile |
 | Router adapter MAC address | Automatic | Select between multiple USB Ethernet adapters |
 | Router WAN address | `192.168.80.1/24` | Avoid a subnet overlap |
 | Wi-Fi interface | `wlan0` | Override the hotspot interface |
@@ -189,15 +192,15 @@ Version 0.9.0 is a breaking NetworkManager ownership update.
 
 1. Leave **Enabled** off during the update.
 2. Reserve a dedicated Wi-Fi adapter if the selected strategy uses Wi-Fi.
-3. Remove any ordinary NetworkManager profile bound to that adapter.
-4. For a legacy `Supervisor <interface>` profile, either keep **Manual cleanup**
-   and remove it yourself, or select **Migrate matching Supervisor profile**.
-5. Re-enter the hotspot name and password if Wi-Fi is selected.
-6. Enable the gateway only after **Health** reports no ownership conflict.
+3. Re-enter the hotspot name and password if Wi-Fi is selected.
+4. Enable the gateway only after **Health** reports no ownership conflict.
 
-The old fixed iPhone USB profile is removed automatically only when its complete
-fingerprint matches the known legacy app profile. Drifted or foreign profiles
-are left untouched and reported for manual cleanup.
+Existing Wi-Fi profiles on the dedicated adapter are left unchanged; the app
+reserves the adapter at runtime while Enabled and restores it when Disabled.
+Legacy `Supervisor <interface>` profiles created by an earlier version of this
+app are removed automatically. The old fixed iPhone USB profile is removed
+automatically only when its complete fingerprint matches the known legacy app
+profile. Drifted or foreign iPhone USB profiles are left untouched and reported.
 
 ## Upgrade to 0.4.0
 
@@ -336,7 +339,8 @@ API for manual diagnostics.
 A pre-1.0 deployment remains a candidate until every applicable live gate
 passes. Keep the gateway disabled before, between and after scenarios.
 
-1. **Upgrade and baseline:** verify legacy migration, no active app profiles,
+1. **Upgrade and baseline:** verify automatic legacy-lineage cleanup, that any
+   genuine foreign Wi-Fi profile is preserved unchanged, no active app profiles,
    no gateway data plane, the downstream host guard, and an unchanged
    management default route.
 2. **iPhone USB:** require trust, `ipheth` carrier, the app profile,
@@ -347,7 +351,7 @@ passes. Keep the gateway disabled before, between and after scenarios.
    restart.
 4. **Wi-Fi:** require the dedicated app profile, table 203, Connected, Healthy,
    Internet available, router WAN lease and LAN HTTPS. Disable and confirm the
-   profile is deleted.
+   profile is deleted and the adapter's prior runtime state is restored.
 5. **Failover:** with USB-preferred fallback, remove USB and require Wi-Fi;
    restore USB and require a clean return without stale routing or NAT.
 6. **Cleanup:** verify disable, auto-disable, restart while Connected/Waiting,
@@ -363,10 +367,12 @@ without proven upstream Internet, or cleanup cannot restore the disabled
 baseline.
 
 The `networkmanager` object in `/v2/status` reports the secret-safe ownership
-phase, app profile UUIDs and profile states. `upstream_carrier` reports the
-latest iPhone carrier observation. These fields contain no passwords.
-The same values are available as attributes on **Health** and **Gateway state**
-for acceptance evidence through Home Assistant.
+phase, the Wi-Fi custody phase and restoration-pending state, app profile UUIDs
+and profile states. `upstream_carrier` reports the latest iPhone carrier
+observation. These fields contain no passwords.
+The `networkmanager` object is exposed as an attribute on **Health**, while
+`upstream_carrier` and the carrier fallback fields are attributes on **Gateway
+state**, for acceptance evidence through Home Assistant.
 
 ## Security
 

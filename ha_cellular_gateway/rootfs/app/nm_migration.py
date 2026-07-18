@@ -76,7 +76,7 @@ def _matches_legacy_wifi(
         if value.strip()
     }
     return (
-        profile.interface_name == config.upstream_interface
+        profile.interface_name in {"", config.upstream_interface}
         and profile.name == f"Supervisor {config.upstream_interface}"
         and profile.ssid == config.hotspot_ssid
         and addresses == {config.upstream_address}

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.4
+
+- Migrate matching legacy Supervisor Wi-Fi profiles when NetworkManager omits
+  their interface name, consistent with the ownership preflight classification.
+
 ## 0.9.3
 
 - Fix Enabled failing during NetworkManager ownership preflight by replacing an

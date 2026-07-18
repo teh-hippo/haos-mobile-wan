@@ -2,9 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from rootfs.app.gateway import GatewayEngine
 
-from helpers import FakeRunner, make_config, sysctl_values
+from helpers import FakeRunner, build_engine, make_config, sysctl_values
 
 
 class PolicyRoutingTests(unittest.TestCase):
@@ -12,7 +11,7 @@ class PolicyRoutingTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.runner = FakeRunner()
         values = sysctl_values()
-        self.engine = GatewayEngine(
+        self.engine = build_engine(
             make_config(),
             runner=self.runner,
             read_text=lambda path: values[path],

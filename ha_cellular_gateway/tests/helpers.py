@@ -387,12 +387,6 @@ class FakeRunner:
             return Result(
                 stdout="\n".join(sorted(ssids)) + ("\n" if ssids else "")
             )
-        if (
-            args[:3] == ["nmcli", "connection", "modify"]
-            and len(args) >= 6
-            and args[4].endswith("user.data")
-        ):
-            return self._nm_user_data(args)
         return None
 
     def _nm_device_show(self, fields: list[str], iface: str) -> Result:
@@ -446,20 +440,6 @@ class FakeRunner:
                         "prefsrc": local,
                     },
                 ]
-        return Result()
-
-    def _nm_user_data(self, args: list[str]) -> Result:
-        profile = self.nm_profiles.get(args[3])
-        if profile is None:
-            return Result(returncode=1)
-        data = dict(profile.get("_user_data", {}))
-        if args[4] == "-user.data":
-            data.pop(args[5], None)
-        else:
-            key, _, value = args[5].partition("=")
-            data[key] = value
-        profile["_user_data"] = data
-        profile["user.data"] = "\n".join(f"{key} = {value}" for key, value in data.items())
         return Result()
 
     def _chain_lines(self, family: str, chain: str) -> list[str]:
@@ -519,6 +499,30 @@ class FakeRunner:
     @staticmethod
     def _rule_line(chain: str, rule: list[str]) -> str:
         return shlex.join(["-A", chain, *rule])
+
+
+class FakeWifiProfileMetadata:
+    """In-memory stand-in for the app Wi-Fi profile's NetworkManager metadata."""
+
+    def __init__(self) -> None:
+        self.data: dict[str, str] = {}
+
+    def read(self, key: str) -> str | None:
+        return self.data.get(key)
+
+    def write(self, key: str, value: str) -> None:
+        self.data[key] = value
+
+    def clear(self, key: str) -> None:
+        self.data.pop(key, None)
+
+
+def build_engine(config: GatewayConfig, **kwargs: object):
+    """Construct a GatewayEngine with an in-memory Wi-Fi metadata store."""
+    from rootfs.app.gateway import GatewayEngine
+
+    kwargs.setdefault("wifi_metadata", FakeWifiProfileMetadata())
+    return GatewayEngine(config, **kwargs)  # type: ignore[arg-type]
 
 
 def make_config(**overrides: object) -> GatewayConfig:

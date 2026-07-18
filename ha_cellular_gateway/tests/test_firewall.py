@@ -2,9 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from rootfs.app.gateway import GatewayEngine
 
 from helpers import (
+    build_engine,
     FakeRunner,
     install_realistic_firewall_state,
     make_config,
@@ -18,7 +18,7 @@ class FirewallTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.runner = FakeRunner()
         values = sysctl_values()
-        self.engine = GatewayEngine(
+        self.engine = build_engine(
             make_config(),
             runner=self.runner,
             read_text=lambda path: values[path],

@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helpers import FakeRunner, make_config, sysctl_values
+from helpers import FakeRunner, build_engine, make_config, sysctl_values
 from rootfs.app.const import IPHONE_USB_WIFI_FALLBACK
 from rootfs.app.gateway import GatewayEngine
 from rootfs.app.management import ManagementBaseline
@@ -48,7 +48,7 @@ class UpstreamLifecycleTests(unittest.TestCase):
             hotspot_password="supersecret",
             **overrides,
         )
-        return GatewayEngine(
+        return build_engine(
             config,
             runner=runner,
             read_text=lambda path: sysctl_values()[path],
@@ -210,7 +210,7 @@ class UpstreamLifecycleTests(unittest.TestCase):
         runner = primer.runner
         self.assertFalse(runner.nm_device_autoconnect["wlan0"])
 
-        engine = GatewayEngine(
+        engine = build_engine(
             make_config(
                 enabled=False,
                 hotspot_ssid="Phone",
@@ -235,7 +235,7 @@ class UpstreamLifecycleTests(unittest.TestCase):
             hotspot_ssid="Phone",
             hotspot_password="supersecret",
         )
-        primer = GatewayEngine(
+        primer = build_engine(
             config,
             runner=runner,
             read_text=lambda path: sysctl_values()[path],
@@ -244,7 +244,7 @@ class UpstreamLifecycleTests(unittest.TestCase):
         primer.wifi.profile.create()
         runner.nm_device_autoconnect["wlan0"] = True
 
-        engine = GatewayEngine(
+        engine = build_engine(
             config,
             runner=runner,
             read_text=lambda path: sysctl_values()[path],
@@ -289,7 +289,7 @@ class UpstreamLifecycleTests(unittest.TestCase):
             hotspot_ssid="Phone",
             hotspot_password="supersecret",
         )
-        primer = GatewayEngine(
+        primer = build_engine(
             config,
             runner=runner,
             read_text=lambda path: sysctl_values()[path],
@@ -300,7 +300,7 @@ class UpstreamLifecycleTests(unittest.TestCase):
         self.assertIsNotNone(baseline)
         self.assertFalse(runner.nm_device_autoconnect["wlan0"])
 
-        engine = GatewayEngine(
+        engine = build_engine(
             config,
             runner=runner,
             read_text=lambda path: sysctl_values()[path],

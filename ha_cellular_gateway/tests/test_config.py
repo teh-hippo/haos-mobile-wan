@@ -21,7 +21,6 @@ class GatewayConfigTests(unittest.TestCase):
             path.write_text(
                 json.dumps(
                     {
-                        "enabled": False,
                         "mobile_connection": "Wi-Fi hotspot",
                         "downstream_mac": "00:11:22:33:44:55",
                     }
@@ -32,9 +31,22 @@ class GatewayConfigTests(unittest.TestCase):
             self.assertEqual(config.transit_subnet, "192.168.80.0/24")
             self.assertEqual(config.dhcp_start, "192.168.80.2")
             self.assertEqual(config.dhcp_end, "192.168.80.2")
-            self.assertFalse(config.enabled)
             self.assertEqual(config.auto_disable_minutes, 30)
             self.assertEqual(config.mobile_connection, WIFI_HOTSPOT)
+
+    def test_legacy_enabled_option_is_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "options.json"
+            path.write_text(
+                '{"enabled":false,"mobile_connection":"USB (iPhone)"}',
+                encoding="utf-8",
+            )
+
+            config, error = GatewayConfig.load_path(path)
+
+            self.assertIsNone(error)
+            self.assertFalse(hasattr(config, "enabled"))
+            self.assertEqual(config.mobile_connection, IPHONE_USB)
 
     def test_rejects_non_object_options(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -47,26 +59,25 @@ class GatewayConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "options.json"
             path.write_text(
-                '{"enabled":true,"mobile_connection":"USB (iPhone)"}',
+                '{"mobile_connection":"USB (iPhone)"}',
                 encoding="utf-8",
             )
 
             config, error = GatewayConfig.load_path(path)
 
             self.assertIsNone(error)
-            self.assertTrue(config.enabled)
+            self.assertEqual(config.mobile_connection, IPHONE_USB)
 
     def test_load_path_uses_safe_defaults_for_invalid_options(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "options.json"
             path.write_text(
-                '{"enabled":true,"router_address":"203.0.113.1/24"}',
+                '{"router_address":"203.0.113.1/24"}',
                 encoding="utf-8",
             )
 
             config, error = GatewayConfig.load_path(path)
 
-            self.assertFalse(config.enabled)
             self.assertEqual(config.downstream_address, "192.168.80.1/24")
             self.assertIn("Invalid app configuration", error)
 
@@ -74,13 +85,12 @@ class GatewayConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "options.json"
             path.write_text(
-                '{"enabled":true,"auto_disable_minutes":"bad"}',
+                '{"auto_disable_minutes":"bad"}',
                 encoding="utf-8",
             )
 
             config, error = GatewayConfig.load_path(path)
 
-            self.assertFalse(config.enabled)
             self.assertEqual(config.auto_disable_minutes, 30)
             self.assertIn("Invalid app configuration", error)
 
@@ -137,15 +147,6 @@ class GatewayConfigTests(unittest.TestCase):
 
     def test_accepts_empty_hotspot_credentials(self) -> None:
         make_config(hotspot_ssid="", hotspot_password="").validate()
-
-    def test_enabled_wifi_requires_hotspot_credentials(self) -> None:
-        config = make_config(
-            enabled=True,
-            hotspot_ssid="",
-            hotspot_password="",
-        )
-        with self.assertRaisesRegex(GatewayError, "credentials are required"):
-            config.validate()
 
     def test_requires_hotspot_ssid_and_password_together(self) -> None:
         for overrides in (

@@ -644,7 +644,6 @@ def build_engine(config: GatewayConfig, **kwargs: object):
 
 def make_config(**overrides: object) -> GatewayConfig:
     values = {
-        "enabled": False,
         "auto_disable_minutes": 30,
         "mobile_connection": WIFI_HOTSPOT,
         "upstream_interface": "wlan0",

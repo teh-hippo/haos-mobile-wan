@@ -88,7 +88,6 @@ class GatewayEngine:
             self.wifi,
         )
         self.config_error = config_error
-        self.enabled = config.enabled and not config_error
         self.last_error: str | None = None
         self.last_reconcile: float | None = None
         self.last_health_probe: float | None = None
@@ -114,15 +113,12 @@ class GatewayEngine:
         management = restore_management_identity(state)
         self.management_interface, management_state_error = management
         self.management_error: str | None = None
-        self.auto_disable = AutoDisable(config, state)
-        if self.auto_disable.latched:
-            self.enabled = False
+        self.auto_disable = AutoDisable(config)
         startup_errors = [
             error
             for error in (
                 config_error,
                 state_error,
-                self.auto_disable.state_error,
                 self.upstream_lifecycle.load_state(state.get("profiles")),
                 self.wifi.load_state(state.get("wifi_custody")),
                 management_state_error,
@@ -138,7 +134,6 @@ class GatewayEngine:
             except (GatewayError, TypeError, ValueError):
                 self.owned_state = None
                 startup_errors.append("Persistent ownership state is invalid")
-                self.enabled = False
         self.state_load_error = "; ".join(startup_errors) or None
         if self.state_load_error:
             self.last_error = self.state_load_error
@@ -151,7 +146,6 @@ class GatewayEngine:
     def _persist_state(self) -> None:
         self.state_store.save(
             owned=self.owned_state,
-            auto_disable=self.auto_disable.state(),
             profiles=self.upstream_lifecycle.state(),
             wifi_custody=self.wifi.state(),
             management_interface=self.management_interface,
@@ -159,14 +153,12 @@ class GatewayEngine:
     def cleanup(
         self,
         *,
-        preserve_enabled: bool = False,
         preserve_host_protection: bool = False,
         force: bool = False,
         owned_only: bool = False,
     ) -> None:
         cleanup_gateway(
             self,
-            preserve_enabled=preserve_enabled,
             preserve_host_protection=preserve_host_protection,
             force=force,
             owned_only=owned_only,
@@ -234,8 +226,8 @@ class GatewayEngine:
 
     def _refresh_health_if_due(self) -> None:
         refresh_health_if_due(self)
-    def apply(self, *, recovering: bool = False) -> None:
-        apply_gateway(self, recovering=recovering)
+    def apply(self) -> None:
+        apply_gateway(self)
     def reconcile(self, *, refresh_health: bool = False) -> None:
         reconcile_gateway(self, refresh_health=refresh_health)
     def _fail_closed(self, error: Exception) -> None:

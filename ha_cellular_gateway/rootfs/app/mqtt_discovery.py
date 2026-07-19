@@ -50,7 +50,6 @@ STATE_FIELDS = (
     "upstream_healthy",
     "fallback_active",
     "fallback_reason",
-    "enabled",
     "downstream_present",
     "rules_installed",
     "dnsmasq_running",
@@ -100,11 +99,14 @@ _TEXT_SENSORS = (
 
 _BINARY_SENSORS = (
     ("upstream_healthy", "Internet available", "connectivity", None, True),
-    ("enabled", "Gateway enabled", None, "mdi:wan", True),
     ("downstream_present", "Downstream interface present", None, "mdi:ethernet", False),
     ("rules_installed", "Gateway rules applied", "running", "mdi:firewall", False),
     ("dnsmasq_running", "DHCP server running", "running", "mdi:server-network", False),
 )
+
+# Retired entities republished as empty device-discovery components (platform
+# only) so Home Assistant removes any entity retained from an earlier version.
+_REMOVED_COMPONENTS: dict[str, str] = {"enabled": "binary_sensor"}
 
 
 def _uid(key: str) -> str:
@@ -143,7 +145,6 @@ def _gateway_state() -> dict[str, Any]:
     component["entity_category"] = "diagnostic"
     component["device_class"] = "enum"
     component["options"] = [
-        "Disabled",
         "Waiting for iPhone",
         "Waiting for hotspot",
         "Waiting",
@@ -218,6 +219,8 @@ def build_components() -> dict[str, dict[str, Any]]:
         components[spec[0]] = _text_sensor(spec)
     for spec in _BINARY_SENSORS:
         components[spec[0]] = _binary_sensor(spec)
+    for key, platform in _REMOVED_COMPONENTS.items():
+        components[key] = {"platform": platform}
     return components
 
 

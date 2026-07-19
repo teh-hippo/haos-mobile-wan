@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.0
+
+- Replace the Enabled option with the add-on lifecycle. Starting the add-on
+  immediately claims the configured connection mode; stopping it performs
+  graceful network and profile cleanup.
+- Change automatic disable to release all owned state and request a Supervisor
+  self-stop, with fail-closed cleanup and rate-limited retry on failure.
+- Remove the Gateway enabled entity and Disabled gateway state. Stopped add-on
+  entities are now unavailable through MQTT availability.
+- This is a breaking option-schema change. Stop the add-on before updating,
+  then start it when the gateway should become active.
+
 ## 0.9.6
 
 - Create every app-owned NetworkManager profile with autoconnect disabled in

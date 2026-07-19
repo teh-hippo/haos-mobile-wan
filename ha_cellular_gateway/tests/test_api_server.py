@@ -13,7 +13,7 @@ class StubEngine:
         return {"ok": True}
 
     def status(self) -> dict[str, object]:
-        return {"enabled": False}
+        return {"state": "waiting"}
 
 class ApiServerTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -75,7 +75,7 @@ class ApiServerTests(unittest.TestCase):
             self._get_health()
 
     def test_post_control_endpoints_are_not_available(self) -> None:
-        for path in ("/v2/enabled", "/v2/reconcile"):
+        for path in ("/v2/stop", "/v2/reconcile"):
             with self.subTest(path=path):
                 status, body = self._post(path)
                 self.assertEqual(status, 404)

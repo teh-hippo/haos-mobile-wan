@@ -193,10 +193,10 @@ def _issue_from_error(error: str) -> dict[str, Any] | None:
         return _issue("safety_inspection_failed", "host_configuration", "The gateway could not complete its safety inspection")
     if error.startswith("Activation failed:"):
         return _issue("activation_failed", "host_configuration", "The gateway could not apply the requested network state")
-    if error.startswith("Auto-disable option update failed:"):
-        return _issue("auto_disable_update_failed", None, error)
     if error.startswith("Auto-disable cleanup failed:"):
         return _issue("auto_disable_cleanup_failed", None, error)
+    if error.startswith("Auto-stop request failed:"):
+        return _issue("auto_stop_request_failed", None, error)
     if error.startswith("Auto-disable state persistence failed:"):
         return _issue("auto_disable_state_failed", None, error)
     if error.startswith("Hotspot Wi-Fi deactivation failed:"):

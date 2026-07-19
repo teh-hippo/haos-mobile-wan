@@ -76,7 +76,6 @@ class UsbRestartRegressionTests(unittest.TestCase):
         values = sysctl_values()
         engine = build_engine(
             make_config(
-                enabled=True,
                 mobile_connection=mode,
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",

@@ -1,9 +1,7 @@
 configuration:
-  enabled:
-    name: Enabled
   auto_disable_minutes:
     name: Auto-disable after disconnect
-    description: Minutes without an active gateway before disabling it. Set to 0 to keep it enabled.
+    description: Minutes without an active gateway before stopping the add-on. Set to 0 to keep it running.
   mobile_connection:
     name: Mobile connection
   upstream_interface:

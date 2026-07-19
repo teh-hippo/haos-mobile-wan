@@ -43,7 +43,6 @@ class DistributionMetadataTests(unittest.TestCase):
     def test_readme_documents_status_only_entities(self) -> None:
         text = README.read_text(encoding="utf-8")
         for table_row in (
-            "| Gateway enabled | `binary_sensor` |",
             "| Internet available | `binary_sensor` |",
             "| Downstream interface present | `binary_sensor` |",
             "| Gateway rules applied | `binary_sensor` |",
@@ -56,6 +55,7 @@ class DistributionMetadataTests(unittest.TestCase):
             "| Public IP | `sensor` |",
         ):
             self.assertIn(table_row, text)
+        self.assertNotIn("Gateway enabled", text)
         self.assertIn("MQTT discovery", text)
         self.assertIn("status-only", text)
         self.assertNotIn("| `switch` |", text)

@@ -29,7 +29,7 @@ class LifecycleTransitionLoggingTests(unittest.TestCase):
     def _engine(self, **overrides: object) -> GatewayEngine:
         values = sysctl_values()
         engine = build_engine(
-            make_config(enabled=False, **overrides),
+            make_config(**overrides),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,

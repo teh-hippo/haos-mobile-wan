@@ -13,12 +13,11 @@ if TYPE_CHECKING:
 
 def refresh_health_if_due(engine: GatewayEngine) -> None:
     with engine.lock:
-        enabled = engine.enabled
         applied = engine.applied
         last_probe = engine.last_health_probe
         upstream = engine.last_upstream
         generation = engine.health_generation
-    if not enabled or not applied or upstream is None:
+    if not applied or upstream is None:
         with engine.lock:
             engine.upstream_healthy = False
             engine.public_ip = None
@@ -44,7 +43,6 @@ def fail_closed(engine: GatewayEngine, error: Exception) -> None:
         cleanup_error: Exception | None = None
         try:
             engine.cleanup(
-                preserve_enabled=True,
                 preserve_host_protection=True,
             )
         except (
@@ -91,14 +89,11 @@ def status(engine: GatewayEngine) -> dict[str, object]:
         health_state, health_issues = derive_health(issues)
         return {
             "state": derive_gateway_state(
-                engine.enabled,
                 engine.applied,
                 issues,
             ),
             "health": health_state,
             "health_issues": health_issues,
-            "enabled": engine.enabled,
-            "configured_enabled": engine.config.enabled,
             "active": engine.applied,
             "management_interface": (
                 engine.management.interface if engine.management else None
@@ -172,7 +167,6 @@ def stop(engine: GatewayEngine) -> None:
         cleanup_error: Exception | None = None
         try:
             engine.cleanup(
-                preserve_enabled=True,
                 force=force,
             )
         except (
@@ -199,7 +193,6 @@ def _status_config(engine: GatewayEngine) -> dict[str, object]:
     config = engine.config
     management = engine.management
     return {
-        "enabled": config.enabled,
         "auto_disable_minutes": config.auto_disable_minutes,
         "management_interface": management.interface if management else None,
         "management_address": management.address if management else None,

@@ -26,7 +26,6 @@ def _attempt(
 def cleanup(
     engine: GatewayEngine,
     *,
-    preserve_enabled: bool = False,
     preserve_host_protection: bool = False,
     force: bool = False,
     owned_only: bool = False,
@@ -119,8 +118,6 @@ def cleanup(
             engine.upstream_healthy = False
             engine.public_ip = None
             engine.last_health_probe = None
-            if not preserve_enabled:
-                engine.enabled = False
             engine._persist_state()
         if errors:
             raise GatewayError("Cleanup failed: " + "; ".join(errors))

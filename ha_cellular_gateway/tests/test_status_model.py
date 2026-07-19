@@ -37,23 +37,19 @@ class StatusModelTests(unittest.TestCase):
         ]
 
         self.assertEqual(
-            derive_gateway_state(False, False, fault),
-            "disabled",
-        )
-        self.assertEqual(
-            derive_gateway_state(True, False, fault),
+            derive_gateway_state(False, fault),
             "error",
         )
         self.assertEqual(
-            derive_gateway_state(True, True, []),
+            derive_gateway_state(True, []),
             "connected",
         )
         self.assertEqual(
-            derive_gateway_state(True, False, waiting),
+            derive_gateway_state(False, waiting),
             "waiting",
         )
         self.assertEqual(
-            derive_gateway_state(True, False, connecting),
+            derive_gateway_state(False, connecting),
             "connecting",
         )
 

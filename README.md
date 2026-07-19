@@ -23,10 +23,10 @@ through the management network.
 ## How it works
 
 The app connects HAOS to the selected mobile connection and offers one DHCP
-lease to the router WAN. When enabled, it adds the router-facing address,
-policy routing, forwarding, NAT and DHCP needed to carry traffic to the phone.
-Enabled also grants temporary, exclusive control of the selected dedicated
-mobile adapters.
+lease to the router WAN. While the add-on runs, it adds the router-facing
+address, policy routing, forwarding, NAT and DHCP needed to carry traffic to
+the phone. Running also grants temporary, exclusive control of the selected
+dedicated mobile adapters.
 
 The gateway fails closed. If the mobile connection, router adapter, firewall or
 routing state becomes unsafe, it removes forwarding and waits for the problem
@@ -40,7 +40,7 @@ With **USB (iPhone), Wi-Fi fallback** selected, the app:
 
 The app creates temporary NetworkManager profiles for the selected iPhone USB
 and Wi-Fi paths. NetworkManager owns their addresses and leases; the app owns
-the profiles only while Enabled and removes them when Disabled.
+the profiles only while running and removes them when the add-on stops.
 
 Internet health checks are reported for diagnostics. This release switches
 sources based on connection readiness, not an external connectivity probe.
@@ -52,10 +52,11 @@ sources based on connection readiness, not an external connectivity probe.
 3. Add `https://github.com/teh-hippo/haos-mobile-wan`.
 4. Install **HAOS Mobile WAN**.
 
-The app starts disabled and uses manual boot. Before enabling it:
+The app uses manual boot and activates the gateway as soon as it starts.
+Before starting it:
 
 1. choose a **Mobile connection**;
-2. set the automatic disable delay, or use `0` to keep the gateway enabled;
+2. set the automatic stop delay, or use `0` to keep the add-on running;
 3. enter the Wi-Fi hotspot name and password when Wi-Fi is selected;
 4. reserve a dedicated, non-management Wi-Fi adapter when Wi-Fi is selected;
 5. prepare one USB Ethernet adapter for the router WAN;
@@ -66,8 +67,8 @@ address and adapter overrides remain available under unused optional settings.
 
 ## Remove the HAOS app
 
-1. Turn **Enabled** off.
-2. Allow the app to reconcile or stop it cleanly.
+1. Stop the add-on.
+2. Allow the app to release its network state as it stops.
 3. Disconnect the router WAN cable from the HAOS USB Ethernet adapter.
 4. Uninstall **HAOS Mobile WAN** from **Settings > Apps**.
 5. Restore the USB Ethernet HAOS profile if the adapter will be reused.
@@ -91,8 +92,6 @@ Add the entities to any built-in card, for example an `entities` card:
 type: entities
 title: HAOS Mobile WAN
 entities:
-  - entity: binary_sensor.haos_mobile_wan_gateway_enabled
-    name: Gateway enabled
   - entity: sensor.haos_mobile_wan_gateway_state
     name: Gateway state
   - entity: sensor.haos_mobile_wan_health
@@ -113,12 +112,11 @@ entities:
 
 | Entity | Platform | Purpose |
 |---|---|---|
-| Gateway enabled | `binary_sensor` | Whether gateway service is enabled |
 | Internet available | `binary_sensor` | Whether the selected mobile connection passed its latest Internet health check |
 | Downstream interface present | `binary_sensor` | Whether the router-facing USB Ethernet adapter is present |
 | Gateway rules applied | `binary_sensor` | Whether forwarding, NAT and policy routing are active |
 | DHCP server running | `binary_sensor` | Whether the router WAN DHCP service is running |
-| Gateway state | `sensor` | Disabled, waiting, connecting, connected or error |
+| Gateway state | `sensor` | Waiting, connecting, connected or error |
 | Health | `sensor` | Healthy or attention needed, with actionable issues as attributes |
 | Connection method | `sensor` | Configured Wi-Fi, USB or USB-preferred strategy |
 | Connected via | `sensor` | Wi-Fi hotspot or USB (iPhone) currently carrying gateway traffic, or not connected |
@@ -197,12 +195,12 @@ addressing, interface names and iPhone identifiers.
 
 | Problem | Check |
 |---|---|
-| The gateway remains inactive while Enabled is on | Review **Gateway state** and **Health** |
+| The gateway remains inactive while the add-on runs | Review **Gateway state** and **Health** |
 | USB is not selected | Unlock the iPhone, enable **Allow Others to Join** under Personal Hotspot, accept Trust, check `ipheth`, and confirm no other `ipheth` profile is configured in HAOS |
 | Wi-Fi fallback is unavailable | Confirm the selected adapter is dedicated, its radio is on and NetworkManager-managed, the hotspot is in range, and the app credentials are correct |
 | The router receives no WAN lease | Confirm the router-facing USB adapter has HAOS IPv4 and IPv6 disabled |
 | More than one USB Ethernet adapter is attached | Set the optional router adapter MAC address |
-| Home Assistant becomes unreachable | Disable the app and verify the management Ethernet remains the only main default route |
+| Home Assistant becomes unreachable | Stop the add-on and verify the management Ethernet remains the only main default route |
 | The entities do not appear | Confirm the MQTT integration and broker are running, then restart the add-on |
 
 ## Pre-1.0 live acceptance
@@ -211,7 +209,7 @@ Pre-1.0 deployments are candidates until USB, Wi-Fi, failover, stability,
 upgrade and cleanup pass end to end. MQTT entities or a router DHCP lease alone
 do not prove success. Use the full
 [live acceptance checklist](ha_cellular_gateway/DOCS.md#pre-10-live-acceptance)
-and leave failed candidates disabled.
+and leave failed candidates stopped.
 
 ## Safety and security
 

@@ -110,6 +110,11 @@ QMI and MBIM devices that require modem setup are outside this first generic
 USB transport. The device must already present an Ethernet-style DHCP
 interface.
 
+USB modes without Wi-Fi fallback do not claim or use Wi-Fi. When changing from
+a Wi-Fi mode, the app releases its profile and restores the adapter's prior
+runtime state. It does not turn off the HAOS Wi-Fi radio or modify unrelated
+profiles.
+
 ### USB (iPhone), Wi-Fi fallback
 
 This strategy keeps both app-owned profiles active while the add-on runs.

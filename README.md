@@ -43,6 +43,11 @@ The generic USB modes use the same selection and failover flow for Android
 RNDIS, CDC Ethernet, CDC NCM and compatible USB dongles. Apple trust,
 `usbmuxd` and `ipheth` remain isolated to the iPhone modes.
 
+USB modes without Wi-Fi fallback do not claim or use Wi-Fi. When changing from
+a Wi-Fi mode, the app releases its profile and restores the adapter's prior
+runtime state. It does not turn off the HAOS Wi-Fi radio or modify unrelated
+profiles.
+
 The app creates temporary NetworkManager profiles for the selected USB and
 Wi-Fi paths. NetworkManager owns their addresses and leases; the app owns the
 profiles only while running and removes them when the add-on stops.

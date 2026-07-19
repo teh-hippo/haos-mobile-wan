@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.6
+
+- Create every app-owned NetworkManager profile with autoconnect disabled in
+  the initial add transaction, preventing a connected iPhone from installing
+  its DHCP default in the main table during an add-on restart.
+- Add graceful USB-to-fallback restart regression coverage and paired real
+  NetworkManager controls that reproduce the unsafe pre-fix activation window.
+
 ## 0.9.5
 
 - Temporarily reserve the selected dedicated Wi-Fi adapter while Enabled,

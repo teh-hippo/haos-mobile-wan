@@ -66,11 +66,24 @@ class FakeRunner:
         self.idevice_paired_udids: list[str] = []
         self.idevice_pair_result = Result(returncode=1, stdout="ERROR: Please accept the trust dialog\n")
         self.idevice_validate_result = Result(returncode=1, stdout="ERROR: Device is not paired\n")
-        self.main_default_routes = [{"dst": "default", "gateway": "192.168.1.1", "dev": "end0"}]
+        self.main_default_routes: list[dict[str, object]] = [
+            {"dst": "default", "gateway": "192.168.1.1", "dev": "end0"}
+        ]
         self.nm_profiles: dict[str, dict[str, str]] = {}
         self.nm_active: dict[str, str] = {}
         self.nm_routes: dict[int, list[dict[str, object]]] = {}
         self.nm_auto_activate = True
+        # Interfaces that model a carrier-up device with a DHCP server ready to
+        # lease, keyed to the offered {address, prefix, gateway}. A NetworkManager
+        # connection added without connection.autoconnect=no auto-activates onto a
+        # matching device and installs its DHCP routes, reproducing the real leak.
+        self.nm_dhcp: dict[str, dict[str, object]] = {}
+        # Interface an ethernet profile added with `ifname *` binds to, mirroring
+        # the iPhone ipheth device that has no stable interface name.
+        self.nm_wildcard_bind: str | None = None
+        # DHCP leases the fake installed per profile uuid, so deactivate/delete
+        # tears the lease and its routes down exactly as NetworkManager does.
+        self.nm_dhcp_leases: dict[str, dict[str, object]] = {}
         self.nm_delete_fail = False
         self.nm_auth_failure = False
         self.nm_up_failures: set[str] = set()
@@ -140,18 +153,33 @@ class FakeRunner:
                 stdout="\n".join(profile.get(field, "") for field in fields) + "\n"
             )
         if args[:3] == ["nmcli", "connection", "add"]:
-            uuid = args[args.index("connection.uuid") + 1]
-            name = args[args.index("con-name") + 1]
-            kind = args[args.index("type") + 1]
-            self.nm_profiles[uuid] = {
+            pairs = args[3:]
+            add_fields = dict(zip(pairs[::2], pairs[1::2]))
+            uuid = add_fields["connection.uuid"]
+            kind = add_fields["type"]
+            profile = {
                 "connection.uuid": uuid,
-                "connection.id": name,
+                "connection.id": add_fields["con-name"],
                 "connection.type": (
                     "802-3-ethernet"
                     if kind == "ethernet"
                     else "802-11-wireless"
                 ),
             }
+            profile.update(
+                {key: value for key, value in add_fields.items() if "." in key}
+            )
+            if "ssid" in add_fields:
+                profile["802-11-wireless.ssid"] = add_fields["ssid"]
+            ifname = add_fields.get("ifname", "")
+            profile["__bind_iface"] = (
+                ifname
+                if ifname not in {"", "*"}
+                else (self.nm_wildcard_bind or "")
+            )
+            self.nm_profiles[uuid] = profile
+            if add_fields.get("connection.autoconnect", "yes") != "no":
+                self._nm_autoactivate(uuid)
             return Result()
         if args[:3] == ["nmcli", "connection", "modify"]:
             profile = self.nm_profiles[args[3]]
@@ -164,11 +192,17 @@ class FakeRunner:
             for interface, active_uuid in list(self.nm_active.items()):
                 if active_uuid == uuid:
                     del self.nm_active[interface]
+            self._nm_teardown_lease(uuid)
             return Result()
         if args[:4] == ["nmcli", "connection", "delete", "uuid"]:
             if self.nm_delete_fail:
                 return Result(returncode=1)
-            self.nm_profiles.pop(args[4], None)
+            uuid = args[4]
+            for interface, active_uuid in list(self.nm_active.items()):
+                if active_uuid == uuid:
+                    del self.nm_active[interface]
+            self._nm_teardown_lease(uuid)
+            self.nm_profiles.pop(uuid, None)
             return Result()
         if args[:3] == ["nmcli", "-g", "GENERAL.CON-UUID"]:
             return Result(stdout=self.nm_active.get(args[-1], "") + "\n")
@@ -379,7 +413,11 @@ class FakeRunner:
             return Result()
         if args[:4] == ["nmcli", "device", "wifi", "rescan"]:
             return Result()
-        if args[:2] == ["nmcli", "-w"] and args[3:6] == ["connection", "up", "uuid"]:
+        if (
+            args[0] == "nmcli"
+            and args[1:2] in (["-w"], ["--wait"])
+            and args[3:6] == ["connection", "up", "uuid"]
+        ):
             return self._nm_connection_up(args[6])
         if args[:5] == ["nmcli", "--rescan", "no", "-g", "SSID"] and "list" in args:
             iface = args[args.index("ifname") + 1]
@@ -415,7 +453,9 @@ class FakeRunner:
                 "Secrets were required, but not provided",
             )
         profile = self.nm_profiles.get(uuid, {})
-        interface = profile.get("connection.interface-name", "")
+        interface = profile.get("connection.interface-name") or profile.get(
+            "__bind_iface", ""
+        )
         if interface and self.nm_auto_activate:
             self.nm_active[interface] = uuid
             address = profile.get("ipv4.addresses")
@@ -440,7 +480,84 @@ class FakeRunner:
                         "prefsrc": local,
                     },
                 ]
+            elif not address and interface in self.nm_dhcp:
+                self._nm_install_dhcp(uuid, interface, self.nm_dhcp[interface])
         return Result()
+
+    def _nm_autoactivate(self, uuid: str) -> None:
+        """Model NetworkManager auto-activating an autoconnectable add."""
+        if not self.nm_auto_activate:
+            return
+        profile = self.nm_profiles[uuid]
+        interface = profile.get("__bind_iface", "")
+        offer = self.nm_dhcp.get(interface) if interface else None
+        if offer is not None:
+            self._nm_install_dhcp(uuid, interface, offer)
+
+    def _nm_install_dhcp(
+        self,
+        uuid: str,
+        interface: str,
+        offer: dict[str, object],
+    ) -> None:
+        """Assign a DHCP lease and install its routes into the profile's table.
+
+        An unset ipv4.route-table lands the mobile default in the main table,
+        exactly as NetworkManager does before route isolation is applied.
+        """
+        from ipaddress import ip_interface
+
+        profile = self.nm_profiles[uuid]
+        address = str(offer["address"])
+        prefix = int(str(offer["prefix"]))
+        gateway = str(offer["gateway"])
+        self.nm_active[interface] = uuid
+        self.interface_addresses[interface] = (address, prefix)
+        network = str(ip_interface(f"{address}/{prefix}").network)
+        default_route: dict[str, object] = {
+            "dst": "default",
+            "dev": interface,
+            "gateway": gateway,
+            "prefsrc": address,
+        }
+        network_route: dict[str, object] = {
+            "dst": network,
+            "dev": interface,
+            "prefsrc": address,
+        }
+        table = profile.get("ipv4.route-table", "")
+        if table and str(table).isdigit():
+            self.nm_routes[int(table)] = [default_route, network_route]
+            table_id: int | None = int(table)
+        else:
+            self.main_default_routes = [*self.main_default_routes, default_route]
+            table_id = None
+        self.nm_dhcp_leases[uuid] = {
+            "interface": interface,
+            "address": (address, prefix),
+            "table": table_id,
+        }
+
+    def _nm_teardown_lease(self, uuid: str) -> None:
+        """Tear down a DHCP lease and its routes as NetworkManager does."""
+        lease = self.nm_dhcp_leases.pop(uuid, None)
+        if lease is None:
+            return
+        interface = str(lease["interface"])
+        if self.interface_addresses.get(interface) == lease["address"]:
+            self.interface_addresses.pop(interface, None)
+        table_id = lease["table"]
+        if table_id is None:
+            self.main_default_routes = [
+                route
+                for route in self.main_default_routes
+                if not (
+                    route.get("dev") == interface
+                    and route.get("dst") == "default"
+                )
+            ]
+        else:
+            self.nm_routes.pop(int(str(table_id)), None)
 
     def _chain_lines(self, family: str, chain: str) -> list[str]:
         listing = self.chain_listings.get((family, chain))

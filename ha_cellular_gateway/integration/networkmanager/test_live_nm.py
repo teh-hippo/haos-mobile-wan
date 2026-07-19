@@ -28,7 +28,22 @@ ROUTE_TABLE = 202
 FOREIGN_UUID = "4a229445-9e75-45a6-9a0a-8d9ea2a75a01"
 CUSTODY_UUID = "4a229445-9e75-45a6-9a0a-8d9ea2a75a02"
 WIFI_UUID = "4a229445-9e75-45a6-9a0a-8d9ea2a75a03"
-FIXED_UUIDS = (USB_PROFILE_UUID, FOREIGN_UUID, CUSTODY_UUID, WIFI_UUID)
+LEAK_UUID = "4a229445-9e75-45a6-9a0a-8d9ea2a75a04"
+INERT_UUID = "4a229445-9e75-45a6-9a0a-8d9ea2a75a05"
+FIXED_UUIDS = (
+    USB_PROFILE_UUID,
+    FOREIGN_UUID,
+    CUSTODY_UUID,
+    WIFI_UUID,
+    LEAK_UUID,
+    INERT_UUID,
+)
+LEASE_ADDRESS = "192.0.2.100/24"
+LEASE_GATEWAY = "192.0.2.1"
+HARNESS_DIR = "/run/networkmanager-integration"
+# DHCP peer processes started for realised veth links, tracked so main() can
+# guarantee teardown on every exit path.
+_ACTIVE_DNSMASQ: list["subprocess.Popen[bytes]"] = []
 
 # Synthetic lab-only secret. It is never printed and is not a real user's PSK.
 SYNTHETIC_PSK = "lab-synthetic-psk-01"
@@ -234,6 +249,294 @@ def delete_fixed_profiles(run: TracingRun) -> None:
         run("nmcli", "connection", "delete", "uuid", uuid, check=False)
 
 
+def device_ipv4(run: TracingRun) -> list[str]:
+    result = run(
+        "nmcli",
+        "-g",
+        "IP4.ADDRESS",
+        "device",
+        "show",
+        DEVICE,
+        check=False,
+    )
+    return [
+        stripped
+        for line in (result.stdout or "").splitlines()
+        if (stripped := line.strip()) and stripped != "--"
+    ]
+
+
+def device_present(run: TracingRun) -> bool:
+    return run("nmcli", "device", "show", DEVICE, check=False).returncode == 0
+
+
+def realise_link(run: TracingRun) -> "subprocess.Popen[bytes]":
+    """Create the carrier-up veth and DHCP peer, then wait for NM to see it.
+
+    NetworkManager is already running, so realising the link here exercises the
+    real one-time have_connection_for_device gate exactly as HAOS does.
+    """
+    run("ip", "link", "add", DEVICE, "type", "veth", "peer", "name", PHONE)
+    run("ip", "address", "add", "192.0.2.1/24", "dev", PHONE)
+    run("ip", "link", "set", PHONE, "up")
+    run("ip", "link", "set", DEVICE, "up")
+    # Each realisation gets a fresh single-address pool. Every veth is created
+    # with a new MAC, so a lease database carried over from a prior scenario
+    # would leave the only address bound to a stale client and starve DHCP.
+    lease_file = os.path.join(HARNESS_DIR, "dnsmasq.leases")
+    if os.path.exists(lease_file):
+        os.remove(lease_file)
+    log = open(os.path.join(HARNESS_DIR, "dnsmasq.log"), "ab")
+    proc = subprocess.Popen(
+        [
+            "dnsmasq",
+            "--keep-in-foreground",
+            "--port=0",
+            f"--interface={PHONE}",
+            "--bind-interfaces",
+            "--except-interface=lo",
+            f"--dhcp-leasefile={lease_file}",
+            "--dhcp-authoritative",
+            "--dhcp-range=192.0.2.100,192.0.2.100,255.255.255.0,1h",
+            "--dhcp-option=option:router,192.0.2.1",
+            "--dhcp-option=option:dns-server,192.0.2.1",
+            "--log-dhcp",
+        ],
+        stdout=log,
+        stderr=log,
+    )
+    wait_for(
+        lambda: device_present(run),
+        "NetworkManager did not realise the veth device",
+    )
+    _ACTIVE_DNSMASQ.append(proc)
+    return proc
+
+
+def destroy_link(
+    run: TracingRun, proc: "subprocess.Popen[bytes] | None"
+) -> None:
+    if proc is not None and proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+    if proc is not None and proc in _ACTIVE_DNSMASQ:
+        _ACTIVE_DNSMASQ.remove(proc)
+    run("ip", "link", "delete", DEVICE, "type", "veth", check=False)
+    wait_for(
+        lambda: not device_present(run),
+        "veth device was not removed",
+    )
+
+
+def drop_generated_connections(run: TracingRun) -> None:
+    """Remove any NetworkManager-generated connection so cleanup stays exact."""
+    run("nmcli", "-w", "5", "device", "disconnect", DEVICE, check=False)
+    listing = (
+        run(
+            "nmcli",
+            "--escape",
+            "no",
+            "-g",
+            "UUID",
+            "connection",
+            "show",
+            check=False,
+        ).stdout
+        or ""
+    )
+    for uuid in listing.split():
+        if uuid not in FIXED_UUIDS:
+            run("nmcli", "connection", "delete", "uuid", uuid, check=False)
+
+
+def test_inert_creation_controls(run: TracingRun) -> None:
+    """Paired controls run through NetworkManager's real realisation gate.
+
+    Each control installs its profile before the carrier-up veth exists, so the
+    one-time have_connection_for_device gate behaves as it does on HAOS.
+    """
+    # Negative control (mandatory, non-vacuous): an autoconnectable profile with
+    # no route isolation is present at realisation, so NM auto-activates it and
+    # leaks a default into the main table.
+    run(
+        "nmcli",
+        "connection",
+        "add",
+        "type",
+        "ethernet",
+        "con-name",
+        "nm-lab-leak",
+        "connection.uuid",
+        LEAK_UUID,
+        "connection.interface-name",
+        DEVICE,
+        "connection.autoconnect",
+        "yes",
+        "ipv4.method",
+        "auto",
+        "ipv6.method",
+        "disabled",
+    )
+    proc = realise_link(run)
+    try:
+        wait_for(
+            lambda: active_uuid(run) == LEAK_UUID,
+            "autoconnectable profile did not auto-activate at realisation",
+        )
+        wait_for(
+            lambda: main_default_present(run, DEVICE),
+            "NetworkManager did not leak the mobile default into the main table",
+        )
+        require(
+            networkmanager_routes(run, ROUTE_TABLE) == [],
+            "the leaked default was unexpectedly isolated in table 202",
+        )
+    finally:
+        destroy_link(run, proc)
+        run("nmcli", "connection", "delete", "uuid", LEAK_UUID, check=False)
+    require(not profile_exists(run, LEAK_UUID), "leak control profile remains")
+
+    # Positive control: the production inert profile is present at realisation,
+    # so NM neither generates a default nor activates it.
+    profile = NmProfile(
+        run, veth_spec(INERT_UUID, "nm-lab-inert", autoconnect="no")
+    )
+    profile.create()
+    require(profile.inspect().state == "exact", "inert profile is not exact")
+    proc = realise_link(run)
+    try:
+        time.sleep(2)
+        require(active_uuid(run) != INERT_UUID, "inert profile auto-activated")
+        require(not device_ipv4(run), "inert profile obtained an address")
+        require(
+            not main_default_present(run, DEVICE),
+            "inert profile leaked a default into the main table",
+        )
+        require(
+            networkmanager_routes(run, ROUTE_TABLE) == [],
+            "inert profile installed an isolated lease before activation",
+        )
+        _activate_inert(run, profile)
+
+        # Same-link delete/recreate without global no-auto-default masking: the
+        # realisation gate already passed with a matching profile, so churning
+        # the profile over the still-realised device wires no default.
+        profile.deactivate()
+        profile.delete()
+        wait_for(
+            lambda: active_uuid(run) == "" and not device_ipv4(run),
+            "device did not release the lease on delete",
+        )
+        require(
+            not main_default_present(run, DEVICE),
+            "the same-link profile gap wired a default into the main table",
+        )
+        require(
+            networkmanager_routes(run, ROUTE_TABLE) == [],
+            "the same-link profile gap left an isolated route",
+        )
+        profile.create()
+        time.sleep(2)
+        require(
+            active_uuid(run) != INERT_UUID, "recreated inert profile activated"
+        )
+        require(
+            not main_default_present(run, DEVICE),
+            "recreated inert profile leaked a default into the main table",
+        )
+        _activate_inert(run, profile)
+    finally:
+        run("nmcli", "connection", "down", "uuid", INERT_UUID, check=False)
+        run("nmcli", "connection", "delete", "uuid", INERT_UUID, check=False)
+        destroy_link(run, proc)
+    require(not profile_exists(run, INERT_UUID), "inert control profile remains")
+
+
+def test_generated_default_safety(run: TracingRun) -> None:
+    """Honest safety cases for scenarios the production fix does not cover.
+
+    When a device is realised with no matching profile, NetworkManager may
+    generate a default wired connection and wire a default into the main table.
+    The production inert-create fix has no bearing on this; the app's
+    kernel-truth main-table safety must still detect it fail-closed.
+    """
+    # Profile-absent first realisation.
+    proc = realise_link(run)
+    try:
+        time.sleep(3)
+        _assert_generated_default_is_caught(run, "profile-absent realisation")
+    finally:
+        drop_generated_connections(run)
+        destroy_link(run, proc)
+
+    # Link re-realisation during a profile gap.
+    proc = realise_link(run)
+    try:
+        time.sleep(3)
+        _assert_generated_default_is_caught(run, "gap link re-realisation")
+    finally:
+        drop_generated_connections(run)
+        destroy_link(run, proc)
+
+
+def _assert_generated_default_is_caught(run: TracingRun, label: str) -> None:
+    generated = bool(active_uuid(run)) and bool(device_ipv4(run))
+    if not generated:
+        # This NetworkManager build did not auto-generate a default for the veth
+        # device; make no claim that the production fix prevents the scenario.
+        return
+    require(
+        main_default_present(run, DEVICE),
+        f"{label}: NetworkManager generated a default lease but the app's "
+        "kernel-truth main-table safety did not detect it fail-closed",
+    )
+
+
+def _activate_inert(run: TracingRun, profile: NmProfile) -> None:
+    run(
+        "nmcli",
+        "-w",
+        "20",
+        "connection",
+        "up",
+        "uuid",
+        INERT_UUID,
+        "ifname",
+        DEVICE,
+        check=False,
+    )
+    wait_for(
+        lambda: active_uuid(run) == INERT_UUID,
+        "explicit activation did not bring up the inert profile",
+    )
+    wait_for(
+        lambda: LEASE_ADDRESS in device_ipv4(run),
+        "explicit activation did not obtain the DHCP lease",
+    )
+    routes = networkmanager_routes(run, ROUTE_TABLE)
+    require(
+        any(
+            route.get("dst") == "default"
+            and route.get("gateway") == LEASE_GATEWAY
+            and route.get("dev") == DEVICE
+            for route in routes
+        ),
+        "explicit activation did not isolate the default in table 202",
+    )
+    require(
+        not main_default_present(run, DEVICE),
+        "explicit activation leaked a default into the main table",
+    )
+    require(
+        not rule_selects_table(run, ROUTE_TABLE),
+        "explicit activation added a policy rule for the isolated table",
+    )
+
+
 def command_index(
     events: list[tuple[str, tuple[str, ...]]],
     predicate: Callable[[tuple[str, ...]], bool],
@@ -258,6 +561,15 @@ def test_production_profile_and_inventory(run: TracingRun) -> None:
 
 
 def test_custody_dhcp_and_cleanup(run: TracingRun) -> None:
+    # Install the foreign profile before the device is realised so NM's one-time
+    # gate is satisfied and no generated default is created; NM then
+    # auto-activates it (autoconnect yes) when the carrier-up veth appears.
+    foreign = NmProfile(
+        run,
+        veth_spec(FOREIGN_UUID, "nm-lab-foreign", autoconnect="yes"),
+    )
+    foreign.create()
+    proc = realise_link(run)
     unmanaged = run(
         "nmcli",
         "-g",
@@ -273,11 +585,6 @@ def test_custody_dhcp_and_cleanup(run: TracingRun) -> None:
     run("nmcli", "radio", "wifi", "on")
     run("nmcli", "device", "set", DEVICE, "autoconnect", "yes")
 
-    foreign = NmProfile(
-        run,
-        veth_spec(FOREIGN_UUID, "nm-lab-foreign", autoconnect="yes"),
-    )
-    foreign.create()
     run(
         "nmcli",
         "-w",
@@ -288,6 +595,7 @@ def test_custody_dhcp_and_cleanup(run: TracingRun) -> None:
         FOREIGN_UUID,
         "ifname",
         DEVICE,
+        check=False,
     )
     wait_for(
         lambda: active_uuid(run) == FOREIGN_UUID,
@@ -422,6 +730,15 @@ def test_custody_dhcp_and_cleanup(run: TracingRun) -> None:
     )
 
     run("ip", "link", "delete", DEVICE, "type", "veth")
+    if proc in _ACTIVE_DNSMASQ:
+        _ACTIVE_DNSMASQ.remove(proc)
+    if proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
     require(
         run("nmcli", "device", "show", DEVICE, check=False).returncode != 0,
         "early veth deletion did not remove the NetworkManager device",
@@ -525,13 +842,25 @@ def test_wifi_marker_preserves_secret(run: TracingRun) -> None:
     )
 
 
+def _teardown_active_links(run: TracingRun) -> None:
+    for proc in list(_ACTIVE_DNSMASQ):
+        destroy_link(run, proc)
+    run("ip", "link", "delete", DEVICE, "type", "veth", check=False)
+    delete_fixed_profiles(run)
+
+
 def main() -> None:
     run = TracingRun()
     delete_fixed_profiles(run)
-    test_production_profile_and_inventory(run)
-    test_custody_dhcp_and_cleanup(run)
-    test_wifi_marker_preserves_secret(run)
-    print("NetworkManager integration lab passed")
+    try:
+        test_production_profile_and_inventory(run)
+        test_inert_creation_controls(run)
+        test_generated_default_safety(run)
+        test_custody_dhcp_and_cleanup(run)
+        test_wifi_marker_preserves_secret(run)
+        print("NetworkManager integration lab passed")
+    finally:
+        _teardown_active_links(run)
 
 
 if __name__ == "__main__":

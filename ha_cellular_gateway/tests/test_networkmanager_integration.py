@@ -50,6 +50,7 @@ class NetworkManagerIntegrationTests(unittest.TestCase):
     def test_lab_configuration_and_runner_stay_rootful_and_manual(self) -> None:
         config = (LAB_DIR / "nm.conf").read_text(encoding="utf-8")
         entrypoint = (LAB_DIR / "entrypoint.sh").read_text(encoding="utf-8")
+        livetest = (LAB_DIR / "test_live_nm.py").read_text(encoding="utf-8")
         runner = (LAB_DIR / "run.sh").read_text(encoding="utf-8")
         workflow = (
             REPO_ROOT
@@ -59,9 +60,22 @@ class NetworkManagerIntegrationTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("plugins=keyfile", config)
-        self.assertIn("no-auto-default=*", config)
+        # HAOS does not set no-auto-default; neither may the lab, or its
+        # realisation-gate controls would be masked and pass vacuously.
+        self.assertNotIn("no-auto-default", config)
         self.assertIn("unmanaged-devices=interface-name:phone0", config)
-        self.assertIn('ip link add "$NM_DEVICE" type veth peer name "$PHONE_DEVICE"', entrypoint)
+        # NetworkManager starts before any test veth; the test realises the
+        # carrier-up device itself after installing the intended profile.
+        self.assertNotIn(
+            'ip link add "$NM_DEVICE" type veth peer name "$PHONE_DEVICE"',
+            entrypoint,
+        )
+        self.assertIn("NetworkManager --no-daemon", entrypoint)
+        self.assertIn("python3 /integration/test_live_nm.py", entrypoint)
+        self.assertIn(
+            '"ip", "link", "add", DEVICE, "type", "veth"',
+            livetest,
+        )
         self.assertIn("trap cleanup EXIT INT TERM", entrypoint)
         self.assertIn("Rootful Docker", runner)
         self.assertIn("rootless Docker and Podman are not supported", runner)

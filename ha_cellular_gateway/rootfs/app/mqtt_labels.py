@@ -38,7 +38,7 @@ GATEWAY_WAITING_LABELS: dict[str, str] = {
 }
 
 HEALTH_LABELS: dict[str, str] = {
-    "healthy": "Healthy",
+    "healthy": "OK",
     "attention": "Attention needed",
 }
 

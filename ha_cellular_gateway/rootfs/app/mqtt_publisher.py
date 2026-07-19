@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 CLIENT_ID = "haos-mobile-wan"
+MQTT_RETRY_SECONDS = 60.0
 
 
 class MqttPublisher:
@@ -36,6 +37,7 @@ class MqttPublisher:
         credentials: MqttCredentials | None = None,
         client_factory: ClientFactory | None = None,
         interval: float | None = None,
+        retry_interval: float = MQTT_RETRY_SECONDS,
     ) -> None:
         self._engine = engine
         self._token = token
@@ -44,14 +46,32 @@ class MqttPublisher:
         self._interval = (
             interval if interval is not None else engine.config.reconcile_seconds
         )
+        self._retry_interval = retry_interval
         self._connection: MqttConnection | None = None
+        self._warning_emitted = False
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
     def start(self) -> bool:
-        credentials = self._credentials or read_mqtt_service(token=self._token)
+        connected = self._connect()
+        self._thread = threading.Thread(
+            target=self._publish_loop,
+            name="mqtt-state",
+            daemon=True,
+        )
+        self._thread.start()
+        return connected
+
+    def _connect(self) -> bool:
+        credentials = self._credentials or read_mqtt_service(
+            token=self._token,
+            warn=not self._warning_emitted,
+        )
         if credentials is None:
-            _LOGGER.warning("Starting without MQTT discovery")
+            self._log_unavailable(
+                "MQTT discovery is unavailable; retrying in %s seconds",
+                self._retry_interval,
+            )
             return False
         connection = MqttConnection(
             credentials,
@@ -66,16 +86,22 @@ class MqttPublisher:
                 on_message=self._on_message,
             )
         except OSError as err:
-            _LOGGER.warning("MQTT connection failed; starting without MQTT: %s", err)
+            self._log_unavailable(
+                "MQTT connection failed; retrying in %s seconds: %s",
+                self._retry_interval,
+                err,
+            )
             return False
         self._connection = connection
-        self._thread = threading.Thread(
-            target=self._publish_loop,
-            name="mqtt-state",
-            daemon=True,
-        )
-        self._thread.start()
+        if self._warning_emitted:
+            _LOGGER.info("MQTT discovery recovered")
+        self._warning_emitted = False
         return True
+
+    def _log_unavailable(self, message: str, *args: object) -> None:
+        level = logging.DEBUG if self._warning_emitted else logging.WARNING
+        _LOGGER.log(level, message, *args)
+        self._warning_emitted = True
 
     def stop(self) -> None:
         self._stop.set()
@@ -122,8 +148,18 @@ class MqttPublisher:
             self.announce()
 
     def _publish_loop(self) -> None:
-        while not self._stop.wait(self._interval):
-            self.publish_state()
+        while True:
+            interval = (
+                self._interval
+                if self._connection is not None
+                else self._retry_interval
+            )
+            if self._stop.wait(interval):
+                return
+            if self._connection is None:
+                self._connect()
+            else:
+                self.publish_state()
 
 
 def _decode(payload: Any) -> str:

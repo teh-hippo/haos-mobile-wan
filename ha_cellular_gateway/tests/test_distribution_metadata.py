@@ -7,17 +7,27 @@ import yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+APP_DIR = REPO_ROOT / "ha_cellular_gateway"
 README = REPO_ROOT / "README.md"
-DOCS = REPO_ROOT / "ha_cellular_gateway" / "DOCS.md"
+DOCS = APP_DIR / "DOCS.md"
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "validate.yml"
-CONFIG = REPO_ROOT / "ha_cellular_gateway" / "config.yaml"
+CONFIG = APP_DIR / "config.yaml"
 
 
 class DistributionMetadataTests(unittest.TestCase):
     def test_addon_config_uses_mqtt_service_without_supervisor_discovery(self) -> None:
         config = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+        self.assertEqual(config["name"], "Mobile WAN")
         self.assertIn("mqtt:need", config["services"])
         self.assertNotIn("discovery", config)
+
+    def test_addon_includes_native_artwork(self) -> None:
+        for name in ("icon.svg", "logo.svg"):
+            text = (APP_DIR / name).read_text(encoding="utf-8")
+            self.assertIn("<svg", text)
+            self.assertIn("<title>Mobile WAN</title>", text)
+        for name in ("icon.png", "logo.png"):
+            self.assertEqual((APP_DIR / name).read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
 
     def test_readme_covers_distribution_docs_scope(self) -> None:
         text = README.read_text(encoding="utf-8")
@@ -79,6 +89,14 @@ class DistributionMetadataTests(unittest.TestCase):
         text = DOCS.read_text(encoding="utf-8")
         self.assertIn("## Home Assistant entities (MQTT)", text)
         self.assertNotIn("## Optional Home Assistant integration", text)
+        for obsolete in (
+            "## Prepare HAOS networking",
+            "ha network update",
+            "## Upgrade to 0.9.0",
+            "## Upgrade to 0.4.0",
+            "    name: Connection method",
+        ):
+            self.assertNotIn(obsolete, text)
 
     def test_readme_keeps_ci_as_source_of_truth(self) -> None:
         text = README.read_text(encoding="utf-8")

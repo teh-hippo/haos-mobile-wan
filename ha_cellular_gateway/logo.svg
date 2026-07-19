@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 384">
+  <title>Mobile WAN</title>
+  <svg x="24" y="24" width="336" height="336" viewBox="0 0 512 512">
+    <rect x="32" y="32" width="448" height="448" rx="112" fill="#03a9f4"/>
+    <g fill="none" stroke="#fff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M154 194c56-56 148-56 204 0"/>
+      <path d="M198 238c32-32 84-32 116 0"/>
+      <path d="M256 292v36"/>
+      <path d="M256 328H158"/>
+      <path d="M256 328h98"/>
+      <path d="m192 288-40 40 40 40"/>
+      <path d="m320 288 40 40-40 40"/>
+    </g>
+    <circle cx="256" cy="274" r="18" fill="#fff"/>
+  </svg>
+  <text
+    x="404"
+    y="230"
+    fill="#03a9f4"
+    font-family="Inter, Roboto, Arial, sans-serif"
+    font-size="112"
+    font-weight="600"
+  >Mobile WAN</text>
+</svg>

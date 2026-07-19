@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import unittest
 from types import SimpleNamespace
 from unittest import mock
@@ -227,7 +228,7 @@ class DiscoveryPayloadTests(unittest.TestCase):
         )
         self.assertEqual(
             self.cmps["health"]["options"],
-            ["Healthy", "Attention needed"],
+            ["OK", "Attention needed"],
         )
         self.assertEqual(
             self.cmps["active_connection"]["options"],
@@ -437,7 +438,7 @@ class FriendlyLabelTests(unittest.TestCase):
         )
         self.assertEqual(_render(interface, {"downstream_interface": "eth1"}), "eth1")
         health = self.cmps["health"]["value_template"]
-        self.assertEqual(_render(health, {"health": "healthy"}), "Healthy")
+        self.assertEqual(_render(health, {"health": "healthy"}), "OK")
 
     @unittest.skipUnless(
         _HAS_HOME_ASSISTANT,
@@ -561,6 +562,34 @@ class GracefulDegradationTests(unittest.TestCase):
         factory.assert_not_called()
         publisher.publish_state()
         publisher.stop()
+
+    def test_service_lookup_recovers_without_restart(self) -> None:
+        engine = StubEngine()
+        credentials = MqttCredentials("broker", 1883, None, None, False)
+        connected = threading.Event()
+
+        def factory(client_id):
+            connected.set()
+            return FakeClient(client_id)
+
+        with mock.patch(
+            "rootfs.app.mqtt_publisher.read_mqtt_service",
+            side_effect=[None, credentials],
+        ) as lookup:
+            publisher = MqttPublisher(
+                engine,
+                client_factory=factory,
+                interval=3600,
+                retry_interval=0.01,
+            )
+            with self.assertLogs(
+                "rootfs.app.mqtt_publisher",
+                level="WARNING",
+            ):
+                self.assertFalse(publisher.start())
+            self.assertTrue(connected.wait(1))
+            self.assertGreaterEqual(lookup.call_count, 2)
+            publisher.stop()
 
     def test_read_mqtt_service_missing_token(self) -> None:
         with mock.patch.dict("os.environ", {}, clear=True):

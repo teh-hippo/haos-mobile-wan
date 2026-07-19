@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 from .errors import GatewayError, SafetyError
 from .gateway_cleanup import cleanup
-from .gateway_dormant import reconcile_disabled
 from .gateway_management import reconcile_without_management
 from .gateway_transition import cleanup_changed_ownership
 from .lifecycle import log_upstream_transitions, wifi_interface_status
@@ -30,7 +29,6 @@ def _protect_host(engine: GatewayEngine, downstream: str | None) -> None:
 def apply(
     engine: GatewayEngine,
     *,
-    recovering: bool = False,
     upstream: ResolvedUpstream | None = None,
     upstream_errors: list[str] | None = None,
 ) -> None:
@@ -38,10 +36,6 @@ def apply(
         raise GatewayError(engine.config_error)
 
     with engine.operation_lock:
-        with engine.lock:
-            if not recovering:
-                engine.enabled = True
-
         management = engine._resolve_management()
         downstream = engine.safety.find_downstream(
             management.interface if management else None
@@ -68,7 +62,6 @@ def apply(
         if errors:
             cleanup(
                 engine,
-                preserve_enabled=True,
                 preserve_host_protection=True,
             )
             _protect_host(engine, downstream)
@@ -81,7 +74,6 @@ def apply(
 
         cleanup(
             engine,
-            preserve_enabled=True,
             preserve_host_protection=True,
         )
         with engine.lock:
@@ -97,7 +89,6 @@ def apply(
         except OPERATION_ERRORS as err:
             cleanup(
                 engine,
-                preserve_enabled=True,
                 preserve_host_protection=True,
             )
             message = f"Activation failed: {err}"
@@ -119,15 +110,16 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                 engine.last_reconcile = time.time()
                 startup_cleanup_pending = engine.startup_cleanup_pending
                 owned_state = engine.owned_state
-                enabled = engine.enabled
                 state_load_error = engine.state_load_error
+
+            if engine.auto_disable.pending:
+                return
 
             management = engine._resolve_management()
 
             if startup_cleanup_pending:
                 cleanup(
                     engine,
-                    preserve_enabled=True,
                     preserve_host_protection=(
                         not engine.config_error and management is not None
                     ),
@@ -155,18 +147,11 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                 engine._record_upstream(None)
                 return
             if management is None:
-                reconcile_without_management(engine, enabled=enabled)
+                reconcile_without_management(engine)
                 return
             downstream = engine.safety.find_downstream(
                 management.interface
             )
-            if not enabled:
-                reconcile_disabled(
-                    engine,
-                    downstream,
-                    management,
-                )
-                return
 
             engine.upstream_lifecycle.activate(management)
             engine._persist_state()
@@ -201,7 +186,6 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
             if errors:
                 cleanup(
                     engine,
-                    preserve_enabled=True,
                     preserve_host_protection=True,
                 )
                 _protect_host(engine, downstream)
@@ -220,7 +204,6 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
             ):
                 apply(
                     engine,
-                    recovering=True,
                     upstream=upstream,
                     upstream_errors=upstream_errors,
                 )

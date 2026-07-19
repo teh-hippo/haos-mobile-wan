@@ -33,6 +33,5 @@ def cleanup_changed_ownership(
         return
     cleanup(
         engine,
-        preserve_enabled=True,
         preserve_host_protection=True,
     )

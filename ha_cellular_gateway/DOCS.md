@@ -16,9 +16,9 @@ fall back through the management network.
 1. Take a Home Assistant backup.
 2. Leave the router WAN cable disconnected from the HAOS USB Ethernet adapter.
 3. Keep the app on manual boot.
-4. Keep **Enabled** off.
+4. Keep the add-on stopped until you are ready to commission it.
 5. Do not connect the router-facing adapter to a normal LAN port. The app
-   serves DHCP on that interface when enabled.
+   serves DHCP on that interface while it runs.
 
 Manual boot means the app does not start automatically after an HAOS reboot.
 Enable start-on-boot only after the complete gateway path has been tested.
@@ -53,7 +53,7 @@ Confirm that the management Ethernet:
 - remains reachable;
 - is the only interface with a main default route.
 
-The app detects this baseline at startup and disables gateway service if it
+The app detects this baseline at startup and removes gateway service if it
 changes unexpectedly.
 
 ### Prepare the router-facing adapter
@@ -66,9 +66,9 @@ ha network update enp1s0u1 \
   --ipv6-method disabled
 ```
 
-Do not configure an address, gateway or DNS server on this interface. When
-enabled, the app owns one exact address and removes it during disable, failure
-or shutdown.
+Do not configure an address, gateway or DNS server on this interface. While
+running, the app owns one exact address and removes it on stop, failure or
+shutdown.
 
 The default router WAN transit address is `192.168.80.1/24`. The app leases
 `192.168.80.2` to the router and advertises `.1` as its gateway.
@@ -95,17 +95,17 @@ The default Wi-Fi settings are:
 | Phone gateway | `172.20.10.1` |
 | IPv6 | Disabled |
 
-The app creates its fixed-fingerprint Wi-Fi profile only while Enabled.
+The app creates its fixed-fingerprint Wi-Fi profile only while it runs.
 NetworkManager places its connected and default routes in isolated table 203;
 the app copies the selected path into policy table 201. The profile is brought
-down and deleted when Disabled.
+down and deleted when the add-on stops.
 
-While Enabled, the app temporarily reserves the selected dedicated adapter. It
+While running, the app temporarily reserves the selected dedicated adapter. It
 turns off device autoconnect and disconnects any active connection so its own
 profile controls the radio, without changing any other NetworkManager profile.
-Existing Wi-Fi profiles keep their definitions unchanged. When Disabled, the app
-restores the adapter's prior runtime state, so those profiles reconnect as
-before. Legacy `Supervisor <interface>` profiles that this app created in an
+Existing Wi-Fi profiles keep their definitions unchanged. When the add-on stops,
+the app restores the adapter's prior runtime state, so those profiles reconnect
+as before. Legacy `Supervisor <interface>` profiles that this app created in an
 earlier version are removed automatically. Raw 802.11 association status codes
 remain available in the host Wi-Fi supplicant logs.
 
@@ -120,12 +120,12 @@ The app:
 - keeps the phone default route in NetworkManager table 202, out of the main
   table.
 
-While Enabled, the app creates a temporary profile named
+While running, the app creates a temporary profile named
 `haos-mobile-wan-iphone`, matched to the `ipheth` driver rather than an
 interface name or MAC address. Autoconnect is disabled; the app activates the
 profile only after the phone, trust, interface and carrier are ready.
 NetworkManager owns the lease and table-202 routes. The profile is removed when
-Disabled.
+the add-on stops.
 
 Connect the unlocked iPhone with a data-capable cable, enable **Personal
 Hotspot** and **Allow Others to Join**, then accept **Trust** if prompted.
@@ -142,7 +142,7 @@ iPhone USB remains experimental because it depends on the HAOS kernel,
 
 ### USB (iPhone), Wi-Fi fallback
 
-This strategy keeps both app-owned profiles active while Enabled.
+This strategy keeps both app-owned profiles active while the add-on runs.
 
 - USB is selected while the iPhone is paired, `ipheth` is available and the
   NetworkManager lease is valid.
@@ -158,11 +158,13 @@ in this release.
 
 ## App options
 
+Starting the add-on activates the gateway; stopping it releases all gateway
+state. There is no separate enable switch.
+
 ### Normal options
 
 | Option | Purpose |
 |---|---|
-| **Enabled** | Starts or stops gateway service to the router |
 | **Mobile connection** | Selects Wi-Fi, USB (iPhone), or USB-preferred Wi-Fi fallback |
 | **Wi-Fi hotspot name** | Required hotspot name when Wi-Fi is selected |
 | **Wi-Fi hotspot password** | Required hotspot password when Wi-Fi is selected |
@@ -174,7 +176,7 @@ uses Wi-Fi.
 
 | Option | Default | Use |
 |---|---|---|
-| Auto-disable after disconnect | `30` minutes | Persist Enabled off after this long without an active gateway; use `0` to disable |
+| Auto-disable after disconnect | `30` minutes | Stop the add-on after this long without an active gateway; use `0` to keep it running |
 | Router adapter MAC address | Automatic | Select between multiple USB Ethernet adapters |
 | Router WAN address | `192.168.80.1/24` | Avoid a subnet overlap |
 | Wi-Fi interface | `wlan0` | Override the hotspot interface |
@@ -182,7 +184,7 @@ uses Wi-Fi.
 | Wi-Fi gateway | `172.20.10.1` | Override the phone address |
 
 Options are read when the app starts. Restart the app after changing them.
-The **Enabled** option controls the gateway. The Home Assistant entities
+Start or stop the add-on to control the gateway. The Home Assistant entities
 published over MQTT are status-only monitoring; they do not change app options
 or control the gateway.
 
@@ -190,15 +192,15 @@ or control the gateway.
 
 Version 0.9.0 is a breaking NetworkManager ownership update.
 
-1. Leave **Enabled** off during the update.
+1. Keep the add-on stopped during the update.
 2. Reserve a dedicated Wi-Fi adapter if the selected strategy uses Wi-Fi.
 3. Re-enter the hotspot name and password if Wi-Fi is selected.
-4. Enable the gateway only after **Health** reports no ownership conflict.
+4. Start the add-on only after **Health** reports no ownership conflict.
 
 Existing Wi-Fi profiles on the dedicated adapter are left unchanged; the app
-reserves the adapter at runtime while Enabled and restores it when Disabled.
-Legacy `Supervisor <interface>` profiles created by an earlier version of this
-app are removed automatically. The old fixed iPhone USB profile is removed
+reserves the adapter at runtime while it runs and restores it when the add-on
+stops. Legacy `Supervisor <interface>` profiles created by an earlier version of
+this app are removed automatically. The old fixed iPhone USB profile is removed
 automatically only when its complete fingerprint matches the known legacy app
 profile. Drifted or foreign iPhone USB profiles are left untouched and reported.
 
@@ -207,37 +209,37 @@ profile. Drifted or foreign iPhone USB profiles are left untouched and reported.
 Version 0.4.0 is a breaking app update. The old option names, mode API and
 select entities are not retained.
 
-1. Disable the 0.3 gateway and let cleanup finish.
+1. Stop the 0.3 gateway and let cleanup finish.
 2. Update the HAOS app.
 3. Select the required **Mobile connection** again.
 4. Re-enter **Router WAN address** only if the default
    `192.168.80.1/24` is unsuitable.
 5. Confirm the Wi-Fi hotspot fields, then restart the app.
 6. Remove any unavailable legacy mode entities from the entity registry.
-7. Repeat the disabled commissioning checks before enabling the gateway.
+7. Repeat the commissioning checks after you start the add-on.
 
 ## Commission the gateway
 
-1. Start the app with **Enabled** off.
+1. Start the add-on with the router WAN cable still disconnected.
 2. Review the logs and confirm **Health** is healthy.
-3. Resolve every host or ownership issue.
+3. Resolve every host or ownership issue. The app keeps running and fails
+   closed until they clear.
 4. Connect the prepared USB Ethernet adapter only to the intended router WAN
    port.
-5. Turn **Enabled** on.
-6. If using USB, connect and trust the iPhone. If using Wi-Fi, enable the phone
+5. If using USB, connect and trust the iPhone. If using Wi-Fi, enable the phone
    hotspot.
-7. Confirm **Gateway state** moves through Waiting or Connecting to Connected.
-8. Confirm the router receives the single WAN lease.
-9. Confirm DNS and HTTPS traffic use the selected mobile connection.
-10. Confirm Home Assistant remains reachable through management Ethernet.
-11. Confirm router traffic cannot use the management interface.
+6. Confirm **Gateway state** moves through Waiting or Connecting to Connected.
+7. Confirm the router receives the single WAN lease.
+8. Confirm DNS and HTTPS traffic use the selected mobile connection.
+9. Confirm Home Assistant remains reachable through management Ethernet.
+10. Confirm router traffic cannot use the management interface.
 
-While disabled, the app removes its USB and Wi-Fi NetworkManager profiles,
-router-facing address, router DHCP, forwarding, NAT and policy routing. It
-retains only the downstream host-protection guard.
+While waiting or failing closed, the app removes its USB and Wi-Fi
+NetworkManager profiles, router-facing address, router DHCP, forwarding, NAT and
+policy routing. It retains only the downstream host-protection guard.
 
-Turning **Enabled** off removes gateway service while keeping the host
-protection rule until the app stops.
+Stopping the add-on removes all gateway service, including the host protection
+rule.
 
 ## Failure and recovery
 
@@ -249,7 +251,7 @@ policy ownership becomes unsafe, the app:
 - removes only the policy rules and routes it owns;
 - removes the exact router-facing address it added;
 - retains the host protection rule while the app remains running;
-- keeps the enabled request and retries every five seconds.
+- keeps running and retries every five seconds.
 
 On graceful stop, cleanup also removes the host protection rule, deletes exact
 app-owned NetworkManager profiles and stops the app `usbmuxd` helper.
@@ -259,8 +261,8 @@ the next start can complete interrupted cleanup before reconciliation.
 If the app is terminated ungracefully (a forced kill or container removal),
 in-process cleanup cannot run, so a transient router-facing address and tagged
 host rules can remain until the app next starts, when startup cleanup removes
-the state recorded in `/data/state.json`, or until HAOS reboots. Turn
-**Enabled** off before uninstalling so cleanup completes.
+the state recorded in `/data/state.json`, or until HAOS reboots. Stop the
+add-on before uninstalling so cleanup completes.
 
 The router can retain its five-minute DHCP lease after gateway service stops,
 but the lease has no usable gateway during that time.
@@ -268,12 +270,12 @@ but the lease has no usable gateway during that time.
 To recover manually:
 
 1. Keep Home Assistant connected through management Ethernet.
-2. Turn **Enabled** off or stop the app.
+2. Stop the add-on.
 3. Disconnect the router WAN cable.
 4. Correct the HAOS interface profile or app options.
 5. Restart the app and repeat commissioning.
 
-Before uninstalling, turn **Enabled** off and let cleanup finish. Restore the
+Before uninstalling, stop the add-on and let cleanup finish. Restore the
 USB Ethernet profile if the adapter will return to ordinary networking:
 
 ```sh
@@ -291,8 +293,8 @@ broker add-on. Enable both before starting the add-on.
 The **HAOS Mobile WAN** device and its entities then appear automatically. The
 add-on refreshes their state while it runs, so no reload is needed after an
 add-on update. The entities are status-only for monitoring; there are no Home
-Assistant controls, so continue to control the gateway through the add-on
-options. They include **Gateway enabled**, **Gateway state**, **Connection
+Assistant controls, so continue to control the gateway by starting and stopping
+the add-on. They include **Gateway state**, **Connection
 method**, **Connected via**, **iPhone USB pairing**, **Internet available**,
 **Health**, interface and diagnostic sensors. Statuses read in plain language:
 **Public IP** and **Connected via** show "Not connected" when no path is active,
@@ -313,8 +315,6 @@ Add the entities to a dashboard with any built-in card, for example an
 type: entities
 title: HAOS Mobile WAN
 entities:
-  - entity: binary_sensor.haos_mobile_wan_gateway_enabled
-    name: Gateway enabled
   - entity: sensor.haos_mobile_wan_gateway_state
     name: Gateway state
   - entity: sensor.haos_mobile_wan_health
@@ -337,7 +337,7 @@ API for manual diagnostics.
 ## Pre-1.0 live acceptance
 
 A pre-1.0 deployment remains a candidate until every applicable live gate
-passes. Keep the gateway disabled before, between and after scenarios.
+passes. Keep the add-on stopped before, between and after scenarios.
 
 1. **Upgrade and baseline:** verify automatic legacy-lineage cleanup, that any
    genuine foreign Wi-Fi profile is preserved unchanged, no active app profiles,
@@ -350,11 +350,12 @@ passes. Keep the gateway disabled before, between and after scenarios.
    Personal Hotspot and reconnect the cable. Recovery must not require an app
    restart.
 4. **Wi-Fi:** require the dedicated app profile, table 203, Connected, Healthy,
-   Internet available, router WAN lease and LAN HTTPS. Disable and confirm the
-   profile is deleted and the adapter's prior runtime state is restored.
+   Internet available, router WAN lease and LAN HTTPS. Stop the add-on and
+   confirm the profile is deleted and the adapter's prior runtime state is
+   restored.
 5. **Failover:** with USB-preferred fallback, remove USB and require Wi-Fi;
    restore USB and require a clean return without stale routing or NAT.
-6. **Cleanup:** verify disable, auto-disable, restart while Connected/Waiting,
+6. **Cleanup:** verify stop, auto-stop, restart while Connected/Waiting,
    interrupted-stop recovery and exact journal cleanup.
 
 For each gate record timestamps, Gateway state, Health issues, profile UUID and
@@ -363,7 +364,7 @@ traffic and final cleanup.
 
 Stop immediately if the management route changes, a foreign profile is
 modified, table 201 selects an unverified source, the router receives a lease
-without proven upstream Internet, or cleanup cannot restore the disabled
+without proven upstream Internet, or cleanup cannot restore the stopped
 baseline.
 
 The `networkmanager` object in `/v2/status` reports the secret-safe ownership
@@ -382,8 +383,8 @@ The app uses `host_network`, `host_dbus`, `NET_ADMIN`, `NET_RAW`, `hassio_api`,
 - Host networking and `NET_ADMIN` are required for real HAOS interfaces,
   policy routing and tagged firewall rules.
 - `NET_RAW` is required by the DHCP services.
-- Supervisor access is required for MQTT service details and persistent
-  auto-disable option updates.
+- Supervisor access is required for MQTT service details and the auto-stop
+  self-stop request to Supervisor.
 - Host D-Bus is required so `nmcli` can manage the app-owned iPhone USB and
   Wi-Fi profiles, and so the app can read and write the Wi-Fi profile's
   recovery marker directly over the NetworkManager `Settings.Connection` API.

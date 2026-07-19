@@ -29,14 +29,6 @@ def validate_config(config: GatewayConfig) -> None:
     if config.uses_wifi and not config.upstream_interface:
         raise GatewayError("Network interface names must not be empty")
     validate_hotspot_credentials(config.hotspot_ssid, config.hotspot_password)
-    if (
-        config.enabled
-        and config.uses_wifi
-        and not config.hotspot_credentials_configured
-    ):
-        raise GatewayError(
-            "Wi-Fi hotspot credentials are required while enabled"
-        )
     _validate_addresses(config)
     _validate_downstream_mac(config.downstream_mac)
 

@@ -44,7 +44,6 @@ def _render(template: str, value_json: dict) -> str:
 
 STATUS = {
     "state": "connected",
-    "enabled": True,
     "mobile_connection": "iphone_usb_wifi_fallback",
     "active_connection": None,
     "upstream_pairing_state": "paired",
@@ -79,11 +78,14 @@ EXPECTED_COMPONENTS = {
     "downstream_interface",
     "public_ip",
     "upstream_healthy",
-    "enabled",
     "downstream_present",
     "rules_installed",
     "dnsmasq_running",
 }
+
+# Retired entities are still published as empty device-discovery components so
+# Home Assistant removes any retained entity from an earlier add-on version.
+REMOVED_COMPONENTS = {"enabled"}
 
 
 class FakeClient:
@@ -186,7 +188,10 @@ class DiscoveryPayloadTests(unittest.TestCase):
         self.assertEqual(availability["payload_not_available"], "offline")
 
     def test_every_entity_reproduced(self) -> None:
-        self.assertEqual(set(self.cmps), EXPECTED_COMPONENTS)
+        self.assertEqual(set(self.cmps), EXPECTED_COMPONENTS | REMOVED_COMPONENTS)
+
+    def test_removed_enabled_entity_is_tombstoned(self) -> None:
+        self.assertEqual(self.cmps["enabled"], {"platform": "binary_sensor"})
 
     def test_components_are_status_only(self) -> None:
         for key, comp in self.cmps.items():
@@ -200,8 +205,9 @@ class DiscoveryPayloadTests(unittest.TestCase):
         self.assertEqual(platforms["mobile_connection"], "sensor")
         self.assertEqual(platforms["active_connection"], "sensor")
         self.assertEqual(platforms["upstream_healthy"], "binary_sensor")
-        self.assertEqual(platforms["enabled"], "binary_sensor")
         for key, comp in self.cmps.items():
+            if key in REMOVED_COMPONENTS:
+                continue
             self.assertEqual(comp["unique_id"], f"haos_mobile_wan_{key}")
 
     def test_enum_options_and_device_class(self) -> None:
@@ -210,7 +216,6 @@ class DiscoveryPayloadTests(unittest.TestCase):
         self.assertEqual(
             gateway_state["options"],
             [
-                "Disabled",
                 "Waiting for iPhone",
                 "Waiting for hotspot",
                 "Waiting",
@@ -244,14 +249,11 @@ class DiscoveryPayloadTests(unittest.TestCase):
         self.assertEqual(self.cmps["rules_installed"]["device_class"], "running")
         self.assertEqual(self.cmps["dnsmasq_running"]["device_class"], "running")
         self.assertNotIn("device_class", self.cmps["downstream_present"])
-        self.assertNotIn("device_class", self.cmps["enabled"])
 
     def test_entity_categories_and_enabled_default(self) -> None:
         self.assertEqual(self.cmps["gateway_state"]["entity_category"], "diagnostic")
-        self.assertEqual(self.cmps["enabled"]["entity_category"], "diagnostic")
         self.assertNotIn("enabled_by_default", self.cmps["gateway_state"])
         self.assertNotIn("enabled_by_default", self.cmps["mobile_connection"])
-        self.assertNotIn("enabled_by_default", self.cmps["enabled"])
         self.assertNotIn("enabled_by_default", self.cmps["health"])
         self.assertNotIn(
             "enabled_by_default",
@@ -270,7 +272,7 @@ class DiscoveryPayloadTests(unittest.TestCase):
         self.assertIn("upstream_carrier", gateway["json_attributes_template"])
 
     def test_state_topic_shared_by_stateful_components(self) -> None:
-        for key in ("gateway_state", "upstream_healthy", "enabled"):
+        for key in ("gateway_state", "upstream_healthy", "dnsmasq_running"):
             self.assertEqual(self.cmps[key]["state_topic"], STATE_TOPIC)
 
 
@@ -298,7 +300,6 @@ class FriendlyLabelTests(unittest.TestCase):
         self.assertEqual(self.cmps["active_connection"]["name"], "Connected via")
         self.assertEqual(self.cmps["gateway_state"]["name"], "Gateway state")
         self.assertEqual(self.cmps["mobile_connection"]["name"], "Connection method")
-        self.assertEqual(self.cmps["enabled"]["name"], "Gateway enabled")
         self.assertEqual(self.cmps["health"]["name"], "Health")
 
     def test_pairing_template_embeds_friendly_mapping(self) -> None:
@@ -454,10 +455,11 @@ class FriendlyLabelTests(unittest.TestCase):
         )
 
     @unittest.skipUnless(_HAS_JINJA, "jinja2 not installed")
-    def test_enabled_binary_sensor_renders_on_off(self) -> None:
-        template = self.cmps["enabled"]["value_template"]
-        self.assertEqual(_render(template, {"enabled": True}), "ON")
-        self.assertEqual(_render(template, {"enabled": False}), "OFF")
+    def test_gateway_state_template_has_no_disabled_option(self) -> None:
+        template = self.cmps["gateway_state"]["value_template"]
+        self.assertNotIn("Disabled", template)
+        self.assertNotIn("disabled", template)
+        self.assertEqual(_render(template, {"state": "connected"}), "Connected")
 
 
 class PublisherLifecycleTests(unittest.TestCase):

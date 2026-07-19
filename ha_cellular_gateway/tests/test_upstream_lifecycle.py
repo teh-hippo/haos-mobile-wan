@@ -204,7 +204,7 @@ class UpstreamLifecycleTests(unittest.TestCase):
         self.assertIn("hardware-blocked", engine.upstream_lifecycle.error or "")
         self.assertNotIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
 
-    def test_disabled_restart_restores_from_persisted_marker(self) -> None:
+    def test_startup_recovery_restores_from_persisted_marker(self) -> None:
         primer = self._engine()
         primer.upstream_lifecycle.activate(self._management())
         runner = primer.runner
@@ -212,7 +212,6 @@ class UpstreamLifecycleTests(unittest.TestCase):
 
         engine = build_engine(
             make_config(
-                enabled=False,
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",
             ),
@@ -220,18 +219,16 @@ class UpstreamLifecycleTests(unittest.TestCase):
             read_text=lambda path: sysctl_values()[path],
             state_path=self.state_path,
         )
-        engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
 
-        engine.reconcile()
+        engine.upstream_lifecycle.recover(self._management())
 
         self.assertNotIn(WIFI_PROFILE_UUID, runner.nm_profiles)
         self.assertTrue(runner.nm_device_autoconnect["wlan0"])
         self.assertIsNone(engine.wifi.state())
 
-    def test_disabled_restart_reclaims_fixed_uuid_without_marker(self) -> None:
+    def test_startup_recovery_reclaims_fixed_uuid_without_marker(self) -> None:
         runner = FakeRunner()
         config = make_config(
-            enabled=False,
             hotspot_ssid="Phone",
             hotspot_password="supersecret",
         )
@@ -250,9 +247,8 @@ class UpstreamLifecycleTests(unittest.TestCase):
             read_text=lambda path: sysctl_values()[path],
             state_path=self.state_path,
         )
-        engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
 
-        engine.reconcile()
+        engine.upstream_lifecycle.recover(self._management())
 
         self.assertNotIn(WIFI_PROFILE_UUID, runner.nm_profiles)
         self.assertTrue(runner.nm_device_autoconnect["wlan0"])
@@ -280,12 +276,11 @@ class UpstreamLifecycleTests(unittest.TestCase):
             engine.upstream_lifecycle.error or "",
         )
 
-    def test_enabled_restart_preserves_marker_and_restores_exactly(self) -> None:
+    def test_restart_preserves_marker_and_restores_exactly(self) -> None:
         runner = FakeRunner()
         runner.nm_profiles["A-D074"] = _genuine_profile()
         runner.nm_active["wlan0"] = "A-D074"
         config = make_config(
-            enabled=True,
             hotspot_ssid="Phone",
             hotspot_password="supersecret",
         )

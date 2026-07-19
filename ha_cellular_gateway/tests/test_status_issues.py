@@ -88,17 +88,17 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertEqual(result[0]["id"], "hotspot_not_associated")
         self.assertTrue(result[0]["transient"])
 
-    def test_runtime_option_failure_is_actionable(self) -> None:
+    def test_runtime_stop_failure_is_actionable(self) -> None:
         result = build_status_issues(
             [],
             None,
             {},
             runtime_errors=[
-                "Auto-disable option update failed: Supervisor unavailable"
+                "Auto-stop request failed: Supervisor token is unavailable"
             ],
         )
 
-        self.assertEqual(result[0]["id"], "auto_disable_update_failed")
+        self.assertEqual(result[0]["id"], "auto_stop_request_failed")
         self.assertFalse(result[0]["transient"])
 
     def test_stable_upstream_pairing_state_produces_repairable_issue(self) -> None:

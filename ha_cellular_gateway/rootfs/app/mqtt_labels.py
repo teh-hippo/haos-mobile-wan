@@ -21,7 +21,6 @@ UPSTREAM_PAIRING_STATE_LABELS: dict[str, str] = {
 }
 
 GATEWAY_STATE_LABELS: dict[str, str] = {
-    "disabled": "Disabled",
     "waiting": "Waiting",
     "connecting": "Connecting",
     "connected": "Connected",

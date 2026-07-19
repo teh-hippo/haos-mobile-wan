@@ -36,13 +36,13 @@ class AddonSecurityTests(unittest.TestCase):
         self.assertEqual(
             set(self.config["options"]),
             {
-                "enabled",
                 "auto_disable_minutes",
                 "mobile_connection",
                 "hotspot_ssid",
                 "hotspot_password",
             },
         )
+        self.assertNotIn("enabled", self.config["schema"])
         self.assertEqual(
             self.config["schema"]["router_address"],
             "str?",

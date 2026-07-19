@@ -16,12 +16,9 @@ WAITING_ISSUE_IDS = {
 
 
 def derive_gateway_state(
-    enabled: bool,
     applied: bool,
     issues: list[dict[str, Any]],
 ) -> str:
-    if not enabled:
-        return "disabled"
     if actionable_messages(issues):
         return "error"
     if applied:

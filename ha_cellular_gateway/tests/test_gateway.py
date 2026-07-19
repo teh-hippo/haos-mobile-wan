@@ -46,23 +46,26 @@ class GatewayEngineTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.directory.cleanup()
 
-    def _restart_disabled_engine(self) -> GatewayEngine:
+    def _restart_engine(self) -> GatewayEngine:
         values = sysctl_values()
         restarted = build_engine(
-            make_config(enabled=False),
+            make_config(),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,
         )
         restarted.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
-        restarted.safety.errors = lambda *args, **kwargs: []
+        # Stay in the running-but-waiting state so the data plane is not applied
+        # and only the host-protection guard behaviour is exercised.
+        restarted.safety.errors = lambda *args, **kwargs: [
+            "Upstream interface is unavailable"
+        ]
         return restarted
 
-    def _prepare_active_engine(self, enabled: bool = True) -> GatewayEngine:
+    def _prepare_active_engine(self) -> GatewayEngine:
         values = sysctl_values()
         engine = build_engine(
             make_config(
-                enabled=enabled,
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",
             ),
@@ -87,7 +90,7 @@ class GatewayEngineTests(unittest.TestCase):
         )
         return engine
 
-    def _assert_disabled_restart_repairs_host_guard(
+    def _assert_restart_repairs_host_guard(
         self,
         ipv4_input_rules: tuple[str, ...],
         ipv6_input_rules: tuple[str, ...],
@@ -95,7 +98,7 @@ class GatewayEngineTests(unittest.TestCase):
         engine = self._prepare_active_engine()
         engine.apply()
 
-        restarted = self._restart_disabled_engine()
+        restarted = self._restart_engine()
         install_realistic_firewall_state(
             restarted.runner,
             restarted.firewall,
@@ -122,34 +125,22 @@ class GatewayEngineTests(unittest.TestCase):
             restarted.runner.interface_addresses,
         )
 
-    def test_disabled_reconcile_does_not_activate_gateway(self) -> None:
-        self.engine.safety.errors = lambda *args, **kwargs: []
-        self.engine.reconcile()
-        self.assertFalse(self.engine.enabled)
-        self.assertFalse(self.engine.applied)
-        self.assertFalse(self.engine.dhcp.running)
-        self.assertNotIn(
-            "enx001122334455",
-            self.runner.interface_addresses,
-        )
-        self.assertFalse(
-            any(
-                command[:3] in (["ip", "rule", "add"], ["ip", "route", "replace"])
-                for command in self.runner.commands
-            )
-        )
-        self.assertTrue(
-            self.engine.firewall.host_protection_installed(
-                "enx001122334455"
-            )
-        )
+    def test_running_reconcile_activates_gateway(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.startup_cleanup_pending = False
+
+        engine.reconcile()
+
+        self.assertTrue(engine.applied)
+        self.assertTrue(engine.dhcp.running)
+        self.assertNotEqual(engine.status()["state"], "disabled")
 
     def test_config_error_still_cleans_owned_host_state(self) -> None:
         active = self._prepare_active_engine()
         active.apply()
         values = sysctl_values()
         degraded = build_engine(
-            make_config(enabled=True),
+            make_config(),
             runner=active.runner,
             read_text=lambda path: values[path],
             state_path=self.state_path,
@@ -164,7 +155,6 @@ class GatewayEngineTests(unittest.TestCase):
 
         degraded.reconcile()
 
-        self.assertFalse(degraded.enabled)
         self.assertIsNone(degraded.owned_state)
         self.assertNotIn(
             "enx001122334455",
@@ -181,7 +171,6 @@ class GatewayEngineTests(unittest.TestCase):
         values = sysctl_values()
         engine = build_engine(
             make_config(
-                enabled=True,
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",
             ),
@@ -199,7 +188,6 @@ class GatewayEngineTests(unittest.TestCase):
 
         engine.reconcile()
 
-        self.assertFalse(engine.enabled)
         self.assertFalse(engine.applied)
         self.assertIsNone(engine.last_downstream)
         self.assertIn("Invalid app configuration", engine.last_error)
@@ -207,7 +195,7 @@ class GatewayEngineTests(unittest.TestCase):
     def test_config_error_rejects_direct_enable_without_mutation(self) -> None:
         values = sysctl_values()
         engine = build_engine(
-            make_config(enabled=True),
+            make_config(),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,
@@ -226,7 +214,6 @@ class GatewayEngineTests(unittest.TestCase):
         ):
             engine.apply()
 
-        self.assertFalse(engine.enabled)
         self.assertFalse(engine.applied)
 
     def test_config_error_forces_owned_only_direct_cleanup(self) -> None:
@@ -244,7 +231,6 @@ class GatewayEngineTests(unittest.TestCase):
 
         engine.cleanup()
 
-        self.assertFalse(engine.enabled)
         self.assertFalse(engine.applied)
 
     def test_status_uses_cached_health(self) -> None:
@@ -256,9 +242,12 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertTrue(status["upstream_healthy"])
         self.assertEqual(status["public_ip"], "203.0.113.10")
 
-    def test_status_reports_disabled_state_when_not_enabled(self) -> None:
-        self.assertFalse(self.engine.enabled)
-        self.assertEqual(self.engine.status()["state"], "disabled")
+    def test_status_never_reports_disabled_state(self) -> None:
+        status = self.engine.status()
+        self.assertEqual(status["state"], "connecting")
+        self.assertNotIn("enabled", status)
+        self.assertNotIn("configured_enabled", status)
+        self.assertNotIn("enabled", status["config"])
 
     def test_status_reports_error_and_attention_for_genuine_fault(self) -> None:
         engine = self._prepare_active_engine()
@@ -340,7 +329,6 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertIsNone(self.engine.last_health_probe)
 
     def test_stale_health_probe_result_is_discarded(self) -> None:
-        self.engine.enabled = True
         self.engine.applied = True
         wifi = ResolvedUpstream(
             connection=WIFI_HOTSPOT,
@@ -369,7 +357,6 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertIsNone(self.engine.last_health_probe)
 
     def test_health_probe_result_is_discarded_after_cleanup(self) -> None:
-        self.engine.enabled = True
         self.engine.applied = True
         wifi = ResolvedUpstream(
             connection=WIFI_HOTSPOT,
@@ -392,11 +379,15 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertIsNone(self.engine.last_health_probe)
 
     def test_manual_reconcile_does_not_run_external_health_probe(self) -> None:
-        self.engine.startup_cleanup_pending = False
-        self.engine.safety.errors = lambda *args, **kwargs: []
-        self.engine.reconcile()
+        engine = self._prepare_active_engine()
+        engine.startup_cleanup_pending = False
+        before = len(engine.runner.commands)
+        engine.reconcile()
         self.assertFalse(
-            any(command and command[0] == "curl" for command in self.runner.commands)
+            any(
+                command and command[0] == "curl"
+                for command in engine.runner.commands[before:]
+            )
         )
 
     def test_active_mode_recovers_after_transient_safety_failure(self) -> None:
@@ -408,7 +399,6 @@ class GatewayEngineTests(unittest.TestCase):
         engine.startup_cleanup_pending = False
         engine.reconcile()
         self.assertFalse(engine.applied)
-        self.assertTrue(engine.enabled)
 
         engine.safety.errors = lambda *args, **kwargs: []
         engine.reconcile()
@@ -420,7 +410,6 @@ class GatewayEngineTests(unittest.TestCase):
         runner.main_default_routes = []
         engine = build_engine(
             make_config(
-                enabled=True,
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",
             ),
@@ -445,7 +434,6 @@ class GatewayEngineTests(unittest.TestCase):
         engine.reconcile()
         self.assertIsNone(engine.management)
         self.assertFalse(engine.applied)
-        self.assertTrue(engine.enabled)
         self.assertIn(
             "Management interface is unavailable",
             engine.last_safety_errors,
@@ -471,7 +459,6 @@ class GatewayEngineTests(unittest.TestCase):
         runner.main_default_routes = []
         engine = build_engine(
             make_config(
-                enabled=True,
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",
             ),
@@ -518,7 +505,6 @@ class GatewayEngineTests(unittest.TestCase):
         with self.assertRaisesRegex(GatewayError, "Activation failed"):
             engine.apply()
         self.assertFalse(engine.applied)
-        self.assertTrue(engine.enabled)
         self.assertTrue(
             engine.firewall.host_protection_installed("enx001122334455")
         )
@@ -543,7 +529,6 @@ class GatewayEngineTests(unittest.TestCase):
             engine.apply()
 
         self.assertFalse(engine.applied)
-        self.assertTrue(engine.enabled)
         self.assertTrue(
             engine.firewall.host_protection_installed("enx001122334455")
         )
@@ -574,7 +559,6 @@ class GatewayEngineTests(unittest.TestCase):
             engine.firewall,
             engine.firewall.__class__,
         )
-        engine.enabled = True
         engine.applied = True
         engine.active_connection = WIFI_HOTSPOT
         engine.startup_cleanup_pending = False
@@ -606,7 +590,7 @@ class GatewayEngineTests(unittest.TestCase):
     ) -> None:
         values = sysctl_values()
         engine = build_engine(
-            make_config(enabled=True, mobile_connection=IPHONE_USB),
+            make_config(mobile_connection=IPHONE_USB),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,
@@ -640,7 +624,6 @@ class GatewayEngineTests(unittest.TestCase):
             engine.policy,
             engine.policy.__class__,
         )
-        engine.enabled = True
         engine.applied = True
         engine.active_connection = IPHONE_USB
         engine.startup_cleanup_pending = False
@@ -680,7 +663,6 @@ class GatewayEngineTests(unittest.TestCase):
         values = sysctl_values()
         engine = build_engine(
             make_config(
-                enabled=True,
                 mobile_connection=IPHONE_USB_WIFI_FALLBACK,
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",
@@ -749,7 +731,6 @@ class GatewayEngineTests(unittest.TestCase):
         values = sysctl_values()
         engine = build_engine(
             make_config(
-                enabled=True,
                 mobile_connection=IPHONE_USB_WIFI_FALLBACK,
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",
@@ -779,7 +760,7 @@ class GatewayEngineTests(unittest.TestCase):
         engine.startup_cleanup_pending = False
         before = len(engine.runner.commands)
 
-        apply_gateway(engine, recovering=True, upstream=new, upstream_errors=[])
+        apply_gateway(engine, upstream=new, upstream_errors=[])
 
         self.assertEqual(engine.owned_state["upstream_interface"], new.interface)
         return engine.runner.commands[before:]
@@ -929,16 +910,18 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertFalse(engine.applied)
         self.assertIsNone(engine.owned_state)
 
-    def test_disabled_mode_reconcile_preserves_host_guard(self) -> None:
+    def test_waiting_reconcile_preserves_host_guard(self) -> None:
         values = sysctl_values()
         engine = build_engine(
-            make_config(enabled=False),
+            make_config(),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,
         )
         engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
-        engine.safety.errors = lambda *args, **kwargs: []
+        engine.safety.errors = lambda *args, **kwargs: [
+            "Upstream interface is unavailable"
+        ]
         install_realistic_firewall_state(
             engine.runner,
             engine.firewall,
@@ -978,11 +961,11 @@ class GatewayEngineTests(unittest.TestCase):
         ]
         self.assertEqual(repeated_mutations, [])
 
-    def test_disabled_restart_cleanup_preserves_valid_host_guard(self) -> None:
+    def test_restart_cleanup_preserves_valid_host_guard(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply()
 
-        restarted = self._restart_disabled_engine()
+        restarted = self._restart_engine()
         install_realistic_firewall_state(
             restarted.runner,
             restarted.firewall,
@@ -1012,7 +995,7 @@ class GatewayEngineTests(unittest.TestCase):
         values = sysctl_values()
         runner = FakeRunner()
         engine = build_engine(
-            make_config(enabled=False),
+            make_config(),
             runner=runner,
             read_text=lambda path: values[path],
             state_path=self.state_path,
@@ -1035,10 +1018,10 @@ class GatewayEngineTests(unittest.TestCase):
             )
         )
 
-    def test_disabled_restart_repairs_duplicate_host_guard(
+    def test_restart_repairs_duplicate_host_guard(
         self,
     ) -> None:
-        self._assert_disabled_restart_repairs_host_guard(
+        self._assert_restart_repairs_host_guard(
             (
                 "-A INPUT -i enx001122334455 -m comment --comment ha-cellgw:local-jump -j HA_CELLGW_LOCAL",
                 "-A INPUT -j ACCEPT",
@@ -1051,8 +1034,8 @@ class GatewayEngineTests(unittest.TestCase):
             ),
         )
 
-    def test_disabled_restart_repairs_late_host_guard(self) -> None:
-        self._assert_disabled_restart_repairs_host_guard(
+    def test_restart_repairs_late_host_guard(self) -> None:
+        self._assert_restart_repairs_host_guard(
             (
                 "-A INPUT -j ACCEPT",
                 "-A INPUT -i enx001122334455 -m comment --comment ha-cellgw:local-jump -j HA_CELLGW_LOCAL",
@@ -1063,18 +1046,20 @@ class GatewayEngineTests(unittest.TestCase):
             ),
         )
 
-    def test_disabled_mode_reconcile_repairs_late_parent_jumps(
+    def test_waiting_reconcile_repairs_late_parent_jumps(
         self,
     ) -> None:
         values = sysctl_values()
         engine = build_engine(
-            make_config(enabled=False),
+            make_config(),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,
         )
         engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
-        engine.safety.errors = lambda *args, **kwargs: []
+        engine.safety.errors = lambda *args, **kwargs: [
+            "Upstream interface is unavailable"
+        ]
         install_realistic_firewall_state(
             engine.runner,
             engine.firewall,
@@ -1120,7 +1105,6 @@ class GatewayEngineTests(unittest.TestCase):
         engine = self._prepare_active_engine()
         engine.reconcile()
         self.assertTrue(engine.applied)
-        self.assertTrue(engine.enabled)
         self.assertNotIn("unused", self.state_path.read_text(encoding="utf-8"))
 
     def test_status_and_state_do_not_disclose_hotspot_password(self) -> None:
@@ -1151,13 +1135,12 @@ class GatewayEngineTests(unittest.TestCase):
         engine.startup_cleanup_pending = False
         engine.reconcile()
         self.assertFalse(engine.applied)
-        self.assertTrue(engine.enabled)
         self.assertIn("Safety inspection failed", engine.last_error)
 
     def test_status_remains_responsive_during_blocking_upstream_resolution(self) -> None:
         values = sysctl_values()
         engine = build_engine(
-            make_config(enabled=True, mobile_connection=IPHONE_USB),
+            make_config(mobile_connection=IPHONE_USB),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,
@@ -1183,28 +1166,28 @@ class GatewayEngineTests(unittest.TestCase):
         release.set()
         worker.join(timeout=2)
         self.assertLess(elapsed, 0.5)
-        self.assertTrue(status["enabled"])
+        self.assertEqual(status["mobile_connection"], IPHONE_USB)
 
-    def test_disabled_reconcile_skips_upstream_and_health_probes(self) -> None:
+    def test_stop_pending_reconcile_skips_upstream_and_health_probes(self) -> None:
         values = sysctl_values()
         engine = build_engine(
-            make_config(enabled=False, mobile_connection=IPHONE_USB),
+            make_config(mobile_connection=IPHONE_USB),
             runner=FakeRunner(),
             read_text=lambda path: values[path],
             state_path=self.state_path,
         )
         engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
         engine.startup_cleanup_pending = False
+        engine.auto_disable.pending = True
         engine.upstream.resolve = lambda *_a, **_k: (_ for _ in ()).throw(
-            AssertionError("upstream resolution must remain dormant")
+            AssertionError("upstream resolution must be skipped while stopping")
         )
         engine._health_probe = lambda *_a, **_k: (_ for _ in ()).throw(
-            AssertionError("health probe must remain dormant")
+            AssertionError("health probe must be skipped while stopping")
         )
 
         engine.reconcile(refresh_health=True)
 
-        self.assertFalse(engine.enabled)
         self.assertIsNone(engine.last_upstream)
         self.assertIsNone(engine.last_health_probe)
 
@@ -1232,7 +1215,6 @@ class GatewayEngineTests(unittest.TestCase):
         values = sysctl_values()
         engine = build_engine(
             make_config(
-                enabled=False,
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",
             ),
@@ -1311,7 +1293,6 @@ class GatewayEngineTests(unittest.TestCase):
         values = sysctl_values()
         engine = build_engine(
             make_config(
-                enabled=True,
                 mobile_connection=WIFI_HOTSPOT,
                 hotspot_ssid="Phone",
                 hotspot_password="supersecret",

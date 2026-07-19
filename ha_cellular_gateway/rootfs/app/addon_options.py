@@ -51,22 +51,3 @@ def update_options(
     except (OSError, urllib.error.URLError) as err:
         return f"{label}: {err}"
     return None
-
-
-def set_enabled_option(
-    enabled: bool,
-    *,
-    token: str | None = None,
-    urlopen: UrlOpen | None = None,
-    options_path: Path = OPTIONS_PATH,
-) -> str | None:
-    options = read_options(options_path)
-    if options is None:
-        return "Auto-disable option update failed: app options are unavailable"
-    options["enabled"] = enabled
-    return update_options(
-        options,
-        label="Auto-disable option update failed",
-        token=token,
-        urlopen=urlopen,
-    )

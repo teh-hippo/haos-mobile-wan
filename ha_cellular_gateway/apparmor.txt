@@ -39,6 +39,9 @@ profile ha_cellular_gateway flags=(attach_disconnected,mediate_deleted) {
   /sys/bus/usb/devices/ r,
   /sys/bus/usb/devices/** r,
   /sys/bus/usb/drivers/ipheth/** r,
+  /sys/bus/usb/drivers/rndis_host/** r,
+  /sys/bus/usb/drivers/cdc_ether/** r,
+  /sys/bus/usb/drivers/cdc_ncm/** r,
   /sys/module/ipheth/** r,
 
   /usr/bin/python3 ix,

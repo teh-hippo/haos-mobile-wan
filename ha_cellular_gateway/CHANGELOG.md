@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.11.0
+
+- Fix real NetworkManager radio and scan command parsing so the onboard Wi-Fi
+  adapter can associate without a manual HAOS Wi-Fi profile.
+- Report an unavailable configured Wi-Fi fallback as Health attention while a
+  healthy USB connection remains active.
+- Add generic Ethernet-style USB tethering for Android RNDIS, CDC Ethernet,
+  CDC NCM and compatible USB dongles, reusing the existing isolated DHCP,
+  table-202, failover and cleanup path.
+- Add an on-demand QEMU/KVM integration lab with real hwsim WPA association,
+  generic CDC USB, source switching, foreign-profile restoration and cleanup.
+- Rename the iPhone-specific pairing diagnostic to USB status.
+
 ## 0.10.0
 
 - Replace the Enabled option with the add-on lifecycle. Starting the add-on

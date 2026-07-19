@@ -32,6 +32,10 @@ class DeviceState:
     radio_hardware: bool
 
 
+class RadioInspectionError(GatewayError):
+    pass
+
+
 def _show(run: RunCommand, interface: str, fields: tuple[str, ...]) -> list[str] | None:
     result = run(
         "nmcli",
@@ -69,16 +73,19 @@ def resolve_interface(run: RunCommand, identity: str) -> str | None:
     return None
 
 
-def radio_state(run: RunCommand) -> tuple[bool, bool]:
-    result = run("nmcli", "-g", "WIFI-HW,WIFI", "radio", check=False)
-    if result.returncode != 0:
-        raise GatewayError("Cannot inspect NetworkManager Wi-Fi radio")
-    values = (result.stdout or "").splitlines()
+def _radio_enabled(run: RunCommand, field: str) -> bool:
+    result = run("nmcli", "-g", field, "radio", check=False)
+    value = normalise_setting(result.stdout or "").lower()
     enabled = {"enabled", "yes", "true", "1"}
-    hardware = normalise_setting(values[0]).lower() in enabled if values else False
-    software = (
-        normalise_setting(values[1]).lower() in enabled if len(values) > 1 else False
-    )
+    disabled = {"disabled", "no", "false", "0"}
+    if result.returncode != 0 or value not in enabled | disabled:
+        raise RadioInspectionError("Cannot inspect NetworkManager Wi-Fi radio")
+    return value in enabled
+
+
+def radio_state(run: RunCommand) -> tuple[bool, bool]:
+    hardware = _radio_enabled(run, "WIFI-HW")
+    software = _radio_enabled(run, "WIFI")
     return software, hardware
 
 
@@ -130,8 +137,6 @@ def disconnect_device(run: RunCommand, interface: str) -> None:
 def cached_ssids(run: RunCommand, interface: str) -> set[str]:
     result = run(
         "nmcli",
-        "--rescan",
-        "no",
         "-g",
         "SSID",
         "device",
@@ -139,6 +144,8 @@ def cached_ssids(run: RunCommand, interface: str) -> set[str]:
         "list",
         "ifname",
         interface,
+        "--rescan",
+        "no",
         check=False,
     )
     if result.returncode != 0:

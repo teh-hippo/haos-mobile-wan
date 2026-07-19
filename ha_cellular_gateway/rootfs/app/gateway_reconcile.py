@@ -41,7 +41,7 @@ def apply(
             management.interface if management else None
         )
         if upstream_errors is None:
-            upstream, upstream_errors = engine._resolve_upstream()
+            upstream, upstream_errors = engine._resolve_upstream(downstream)
         cleanup_changed_ownership(engine, downstream, upstream)
         address_owned = engine.downstream.owns_address(
             engine.owned_state,
@@ -156,7 +156,7 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
             engine.upstream_lifecycle.activate(management)
             engine._persist_state()
             engine.connection.wifi_error = engine.upstream_lifecycle.error
-            upstream, upstream_errors = engine._resolve_upstream()
+            upstream, upstream_errors = engine._resolve_upstream(downstream)
             cleanup_changed_ownership(
                 engine,
                 downstream,

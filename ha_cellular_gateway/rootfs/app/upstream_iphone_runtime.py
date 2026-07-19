@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .command import RunCommand, stop_process
 from .errors import GatewayError
+from .usb_network import interface_carrier, interfaces_by_driver
 
 
 @dataclass(frozen=True)
@@ -184,23 +185,7 @@ class IPhoneUsbRuntime:
         ).exists()
 
     def ipheth_interfaces(self) -> list[str]:
-        if not self.sys_net_root.exists():
-            return []
-        matches: list[str] = []
-        for interface in self.sys_net_root.iterdir():
-            try:
-                driver = (interface / "device" / "driver").resolve().name
-            except OSError:
-                continue
-            if driver == "ipheth":
-                matches.append(interface.name)
-        return sorted(matches)
+        return interfaces_by_driver(self.sys_net_root, {"ipheth"})
 
     def interface_carrier(self, interface: str) -> bool | None:
-        try:
-            value = (self.sys_net_root / interface / "carrier").read_text(
-                encoding="utf-8"
-            )
-        except OSError:
-            return None
-        return value.strip() == "1"
+        return interface_carrier(self.sys_net_root, interface)

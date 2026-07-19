@@ -5,6 +5,7 @@ from typing import Any
 from .mqtt_labels import (
     ACTIVE_CONNECTION_LABELS,
     GATEWAY_STATE_LABELS,
+    GATEWAY_WAITING_LABELS,
     HEALTH_LABELS,
     MOBILE_CONNECTION_DEFAULT_LABEL,
     MOBILE_CONNECTION_INTERNAL_LABELS,
@@ -76,7 +77,7 @@ _ENUM_SENSORS = (
     ),
     (
         "upstream_pairing_state",
-        "iPhone USB pairing",
+        "USB status",
         "upstream_pairing_state",
         UPSTREAM_PAIRING_STATE_LABELS,
         UNKNOWN_PAIRING_LABEL,
@@ -144,14 +145,14 @@ def _gateway_state() -> dict[str, Any]:
     component = _base("gateway_state", "sensor", "Gateway state", True)
     component["entity_category"] = "diagnostic"
     component["device_class"] = "enum"
-    component["options"] = [
-        "Waiting for iPhone",
-        "Waiting for hotspot",
-        "Waiting",
-        "Connecting",
-        "Connected",
-        "Error",
-    ]
+    component["options"] = list(
+        dict.fromkeys(
+            [
+                *GATEWAY_WAITING_LABELS.values(),
+                *GATEWAY_STATE_LABELS.values(),
+            ]
+        )
+    )
     component["state_topic"] = STATE_TOPIC
     component["value_template"] = gateway_state_value_template()
     component["json_attributes_topic"] = STATE_TOPIC

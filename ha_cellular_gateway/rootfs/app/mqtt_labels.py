@@ -7,6 +7,7 @@ UPSTREAM_PAIRING_STATE_LABELS: dict[str, str] = {
     "not_ready": "Not ready",
     "waiting_for_device": "Waiting for device",
     "waiting_for_hotspot": "Waiting for Personal Hotspot",
+    "waiting_for_carrier": "Waiting for USB tethering",
     "multiple_devices": "Multiple devices",
     "waiting_for_interface": "Waiting for interface",
     "waiting_for_trust": "Waiting for trust",
@@ -18,6 +19,7 @@ UPSTREAM_PAIRING_STATE_LABELS: dict[str, str] = {
     "profile_conflict": "Profile conflict",
     "invalid_lease": "Invalid lease",
     "paired": "Paired",
+    "ready": "Ready",
 }
 
 GATEWAY_STATE_LABELS: dict[str, str] = {
@@ -31,6 +33,8 @@ GATEWAY_WAITING_LABELS: dict[str, str] = {
     "iphone_usb": "Waiting for iPhone",
     "wifi_hotspot": "Waiting for hotspot",
     "iphone_usb_wifi_fallback": "Waiting",
+    "generic_usb": "Waiting for USB device",
+    "generic_usb_wifi_fallback": "Waiting",
 }
 
 HEALTH_LABELS: dict[str, str] = {
@@ -41,6 +45,7 @@ HEALTH_LABELS: dict[str, str] = {
 ACTIVE_CONNECTION_LABELS: dict[str, str] = {
     "wifi_hotspot": "Wi-Fi hotspot",
     "iphone_usb": "USB (iPhone)",
+    "generic_usb": "USB (generic)",
 }
 
 MOBILE_CONNECTION_INTERNAL_LABELS: dict[str, str] = {

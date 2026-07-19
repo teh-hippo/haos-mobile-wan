@@ -10,11 +10,13 @@ def issue(
     message: str,
     *,
     transient: bool,
+    blocking: bool = True,
 ) -> dict[str, object]:
     return {
         "id": issue_id,
         "message": message,
         "transient": transient,
+        "blocking": blocking,
     }
 
 
@@ -45,6 +47,13 @@ class StatusModelTests(unittest.TestCase):
             "connected",
         )
         self.assertEqual(
+            derive_gateway_state(
+                True,
+                [issue("fallback", "Fallback unavailable", transient=False, blocking=False)],
+            ),
+            "connected",
+        )
+        self.assertEqual(
             derive_gateway_state(False, waiting),
             "waiting",
         )
@@ -67,6 +76,19 @@ class StatusModelTests(unittest.TestCase):
         self.assertEqual(
             derive_health([issue("waiting", "Waiting", transient=True)]),
             ("healthy", []),
+        )
+        self.assertEqual(
+            derive_health(
+                [
+                    issue(
+                        "fallback",
+                        "Fallback unavailable",
+                        transient=False,
+                        blocking=False,
+                    )
+                ]
+            ),
+            ("attention", ["Fallback unavailable"]),
         )
 
 

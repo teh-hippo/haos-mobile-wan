@@ -8,6 +8,7 @@ from .command import RunCommand
 from .errors import GatewayError
 from .nm_device import (
     DeviceState,
+    RadioInspectionError,
     device_identity,
     disconnect_device,
     read_device_state,
@@ -26,6 +27,9 @@ DEVICE_MISSING = "The dedicated Wi-Fi adapter is not present"
 DEVICE_UNMANAGED = "NetworkManager does not manage the dedicated Wi-Fi adapter"
 RADIO_SOFT_OFF = "The Wi-Fi radio is turned off"
 RADIO_HARD_OFF = "The Wi-Fi radio is hardware-blocked"
+RADIO_INSPECTION_UNAVAILABLE = (
+    "NetworkManager Wi-Fi radio inspection is unavailable"
+)
 DISPLACE_FAILED = "A foreign Wi-Fi connection still controls the dedicated adapter"
 RESTORE_PENDING = "The marked Wi-Fi adapter runtime restoration is pending"
 
@@ -127,6 +131,9 @@ class WifiCustodian:
         self.interface = interface
         try:
             state = read_device_state(self.run, interface)
+        except RadioInspectionError:
+            self.blocker = RADIO_INSPECTION_UNAVAILABLE
+            return [RADIO_INSPECTION_UNAVAILABLE]
         except CUSTODY_ERRORS:
             self.blocker = DEVICE_MISSING
             return [DEVICE_MISSING]

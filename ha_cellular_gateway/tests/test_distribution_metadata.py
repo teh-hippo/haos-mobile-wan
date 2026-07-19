@@ -51,7 +51,7 @@ class DistributionMetadataTests(unittest.TestCase):
             "| Health | `sensor` |",
             "| Connection method | `sensor` |",
             "| Connected via | `sensor` |",
-            "| iPhone USB pairing | `sensor` |",
+            "| USB status | `sensor` |",
             "| Public IP | `sensor` |",
         ):
             self.assertIn(table_row, text)
@@ -68,6 +68,7 @@ class DistributionMetadataTests(unittest.TestCase):
         self.assertIn("to your router during a fixed-line outage", text)
         self.assertIn("- a phone Wi-Fi hotspot;", text)
         self.assertIn("- iPhone USB tethering;", text)
+        self.assertIn("- generic Android RNDIS, CDC and Ethernet-style USB tethering;", text)
         self.assertIn("- automatic USB-preferred Wi-Fi fallback;", text)
         self.assertNotIn("It does not know about or control", text)
         self.assertNotIn("The router only needs a WAN Ethernet port", text)

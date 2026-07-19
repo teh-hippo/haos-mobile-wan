@@ -4,10 +4,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .config import GatewayConfig
-from .const import IPHONE_USB, IPHONE_USB_WIFI_FALLBACK, WIFI_HOTSPOT
+from .const import WIFI_HOTSPOT
 from .networkmanager_wifi import NetworkManagerWifi
-from .upstream_iphone import IPhoneUsbUpstream
 from .upstream_models import ResolvedUpstream
+from .upstream_usb import UsbNetworkUpstream
 
 if TYPE_CHECKING:
     from .management import ManagementBaseline
@@ -26,19 +26,20 @@ class MobileConnectionResolver:
     def __init__(
         self,
         config: GatewayConfig,
-        iphone: IPhoneUsbUpstream,
+        usb: UsbNetworkUpstream,
         wifi: NetworkManagerWifi,
         *,
         wifi_error: str | None = None,
     ) -> None:
         self.config = config
-        self.iphone = iphone
+        self.usb = usb
         self.wifi = wifi
         self.wifi_error = wifi_error
 
     def resolve(
         self,
         management: ManagementBaseline | None = None,
+        downstream_interface: str | None = None,
     ) -> ConnectionResolution:
         if self.config.mobile_connection == WIFI_HOTSPOT:
             if self.wifi_error:
@@ -49,20 +50,23 @@ class MobileConnectionResolver:
                 errors=(result.error,) if result.error else (),
             )
 
-        upstream, usb_errors = self.iphone.resolve(management)
-        if not self.iphone.fallback_allowed():
+        upstream, usb_errors = self.usb.resolve(
+            management,
+            downstream_interface,
+        )
+        if not self.usb.fallback_allowed():
             upstream = None
             usb_errors = [
-                self.iphone.pairing_message
-                or "USB (iPhone) ownership is unsafe"
+                self.usb.pairing_message
+                or f"{self.usb.label} ownership is unsafe"
             ]
-        if self.config.mobile_connection == IPHONE_USB:
+        if self.config.uses_usb and not self.config.uses_wifi:
             return ConnectionResolution(
                 upstream,
                 errors=tuple(usb_errors),
             )
 
-        if self.config.mobile_connection != IPHONE_USB_WIFI_FALLBACK:
+        if not self.config.usb_with_wifi_fallback:
             return ConnectionResolution(
                 None,
                 errors=("Unsupported mobile connection",),
@@ -82,10 +86,11 @@ class MobileConnectionResolver:
         if upstream is not None and not usb_errors:
             return ConnectionResolution(
                 upstream,
+                warnings=(wifi.error,) if wifi.error else (),
             )
 
-        reason = "; ".join(usb_errors) or "USB (iPhone) is unavailable"
-        if not self.iphone.fallback_safe:
+        reason = "; ".join(usb_errors) or self.usb.unavailable_message
+        if not self.usb.fallback_safe:
             return ConnectionResolution(
                 None,
                 errors=tuple(usb_errors) or (reason,),

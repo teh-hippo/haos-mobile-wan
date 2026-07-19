@@ -99,6 +99,24 @@ class NmInventory:
             and "ipheth" in profile.match_driver.split(",")
         ]
 
+    def foreign_wired_profiles(
+        self,
+        interface: str,
+        *,
+        drivers: set[str],
+        allowed_uuids: set[str],
+    ) -> list[ProfileRecord]:
+        return [
+            profile
+            for profile in self.profiles()
+            if profile.uuid not in allowed_uuids
+            and profile.connection_type == "802-3-ethernet"
+            and (
+                profile.interface_name == interface
+                or bool(drivers & set(profile.match_driver.split(",")))
+            )
+        ]
+
     def _profile_settings(self, uuid: str) -> dict[str, str]:
         result = self.run(
             "nmcli",

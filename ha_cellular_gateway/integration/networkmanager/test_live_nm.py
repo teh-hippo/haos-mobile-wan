@@ -108,6 +108,27 @@ def wait_for(predicate: Callable[[], bool], message: str, seconds: float = 15) -
     raise AssertionError(message)
 
 
+def test_nmcli_radio_output_shape() -> None:
+    runner = CommandRunner()
+    combined = runner.run(
+        ["nmcli", "-g", "WIFI-HW,WIFI", "radio"],
+        check=False,
+    )
+    require(combined.returncode == 0, "real nmcli radio query failed")
+    rows = (combined.stdout or "").splitlines()
+    require(
+        len(rows) == 1 and ":" in rows[0],
+        "real nmcli did not return one tabular multi-field row",
+    )
+    for field in ("WIFI-HW", "WIFI"):
+        result = runner.run(["nmcli", "-g", field, "radio"], check=False)
+        require(result.returncode == 0, f"real nmcli {field} query failed")
+        require(
+            len((result.stdout or "").splitlines()) == 1,
+            f"real nmcli {field} query was not scalar",
+        )
+
+
 def veth_spec(uuid: str, name: str, *, autoconnect: str) -> ProfileSpec:
     return ProfileSpec(
         key=name,
@@ -850,6 +871,7 @@ def _teardown_active_links(run: TracingRun) -> None:
 
 
 def main() -> None:
+    test_nmcli_radio_output_shape()
     run = TracingRun()
     delete_fixed_profiles(run)
     try:

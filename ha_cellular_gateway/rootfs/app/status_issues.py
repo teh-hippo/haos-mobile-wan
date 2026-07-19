@@ -4,9 +4,10 @@ from collections.abc import Iterable
 from typing import Any
 
 _UPSTREAM_TRANSIENT_STATES = {
-    "waiting_for_device": ("upstream_waiting_for_device", "Waiting for an iPhone USB upstream"),
+    "waiting_for_device": ("upstream_waiting_for_device", "Waiting for a USB upstream device"),
     "waiting_for_hotspot": ("upstream_waiting_for_hotspot", "Waiting for iPhone Personal Hotspot"),
-    "waiting_for_profile": ("upstream_waiting_for_profile", "Waiting for the NetworkManager iPhone USB profile"),
+    "waiting_for_carrier": ("upstream_waiting_for_carrier", "Waiting for USB tethering carrier"),
+    "waiting_for_profile": ("upstream_waiting_for_profile", "Waiting for the NetworkManager USB profile"),
     "waiting_for_interface": ("upstream_waiting_for_interface", "Waiting for the iPhone USB network interface"),
     "not_ready": ("upstream_not_ready", "Upstream connectivity is not ready"),
     "waiting_for_trust": ("upstream_waiting_for_trust", "Waiting for iPhone USB trust confirmation"),
@@ -16,9 +17,9 @@ _UPSTREAM_TRANSIENT_STATES = {
 _UPSTREAM_STABLE_STATES: dict[str, tuple[str, str]] = {
     "daemon_failed": ("upstream_daemon_failed", "The iPhone USB pairing helper failed to start"),
     "profile_failed": ("upstream_profile_failed", "The NetworkManager iPhone USB profile could not be configured"),
-    "profile_conflict": ("upstream_profile_conflict", "A different NetworkManager profile controls the iPhone USB interface"),
-    "invalid_lease": ("upstream_invalid_lease", "The iPhone USB NetworkManager lease is invalid"),
-    "multiple_devices": ("upstream_multiple_devices", "Multiple iPhone USB upstream devices detected"),
+    "profile_conflict": ("upstream_profile_conflict", "A different NetworkManager profile controls the USB upstream interface"),
+    "invalid_lease": ("upstream_invalid_lease", "The USB NetworkManager lease is invalid"),
+    "multiple_devices": ("upstream_multiple_devices", "Multiple USB upstream devices detected"),
     "pairing_failed": ("upstream_pairing_failed", "iPhone USB pairing failed"),
 }
 
@@ -58,6 +59,7 @@ _EXACT_ERRORS: dict[str, tuple[str, str | None, str]] = {
     "NetworkManager does not manage the dedicated Wi-Fi adapter": ("wifi_device_unmanaged", "hotspot_configuration", "NetworkManager does not manage the dedicated Wi-Fi adapter"),
     "The Wi-Fi radio is turned off": ("wifi_radio_off", "hotspot_configuration", "The Wi-Fi radio is turned off"),
     "The Wi-Fi radio is hardware-blocked": ("wifi_radio_blocked", "hotspot_configuration", "The Wi-Fi radio is hardware-blocked"),
+    "NetworkManager Wi-Fi radio inspection is unavailable": ("wifi_radio_inspection_unavailable", None, "NetworkManager Wi-Fi radio inspection is unavailable"),
     "A foreign Wi-Fi connection still controls the dedicated adapter": ("wifi_displace_failed", "hotspot_configuration", "A foreign Wi-Fi connection still controls the dedicated adapter"),
     "A legacy Supervisor Wi-Fi profile could not be removed": ("lineage_wifi_delete_failed", "hotspot_configuration", "A legacy Supervisor Wi-Fi profile could not be removed"),
     "The hotspot rejected the configured Wi-Fi password": ("hotspot_auth_failed", "hotspot_configuration", "The hotspot rejected the configured Wi-Fi password"),
@@ -67,6 +69,7 @@ _EXACT_ERRORS: dict[str, tuple[str, str | None, str]] = {
     "The marked Wi-Fi adapter runtime restoration is pending": ("wifi_restoration_pending", None, "The dedicated Wi-Fi adapter runtime restoration is pending"),
     "iPhone USB has a foreign NetworkManager profile": ("upstream_foreign_profile", "upstream_configuration", "A foreign NetworkManager profile can control iPhone USB"),
     "The app-owned iPhone USB profile has unexpected settings": ("upstream_profile_drift", "upstream_configuration", "The app-owned iPhone USB profile has unexpected settings"),
+    "The app-owned generic USB profile has unexpected settings": ("upstream_profile_drift", "upstream_configuration", "The app-owned generic USB profile has unexpected settings"),
     "The app-owned Wi-Fi hotspot profile has unexpected settings": ("wifi_profile_drift", "hotspot_configuration", "The app-owned Wi-Fi hotspot profile has unexpected settings"),
     "Wi-Fi hotspot credentials are not configured": ("hotspot_credentials_missing", "hotspot_configuration", "Wi-Fi hotspot credentials are not configured"),
     "NetworkManager Wi-Fi inspection is unavailable": ("wifi_inspection_waiting", None, "Waiting for NetworkManager Wi-Fi inspection"),
@@ -114,14 +117,15 @@ def build_status_issues(
         issues.append(issue)
 
     for warning in connection_warnings:
-        issue = _issue_from_error(warning)
-        if issue is None:
+        warning_issue = _issue_from_error(warning)
+        if warning_issue is None:
             continue
-        issue_id = str(issue["id"])
+        warning_issue["blocking"] = False
+        issue_id = str(warning_issue["id"])
         if issue_id in seen:
             continue
         seen.add(issue_id)
-        issues.append(issue)
+        issues.append(warning_issue)
 
     if last_error and not safety_error_list:
         issue = _issue_from_error(last_error) or _generic_issue(last_error)
@@ -234,5 +238,6 @@ def _issue(
         "translation_key": translation_key,
         "repairable": bool(translation_key) and not transient,
         "transient": transient,
+        "blocking": True,
         "message": message,
     }

@@ -7,6 +7,7 @@ It supports:
 
 - a phone Wi-Fi hotspot;
 - iPhone USB tethering;
+- generic Android RNDIS, CDC and Ethernet-style USB tethering;
 - automatic USB-preferred Wi-Fi fallback;
 - an isolated USB Ethernet connection from HAOS to the router WAN.
 
@@ -38,9 +39,13 @@ With **USB (iPhone), Wi-Fi fallback** selected, the app:
 2. switches to the configured Wi-Fi hotspot when USB is unavailable;
 3. returns to USB when it becomes ready again.
 
-The app creates temporary NetworkManager profiles for the selected iPhone USB
-and Wi-Fi paths. NetworkManager owns their addresses and leases; the app owns
-the profiles only while running and removes them when the add-on stops.
+The generic USB modes use the same selection and failover flow for Android
+RNDIS, CDC Ethernet, CDC NCM and compatible USB dongles. Apple trust,
+`usbmuxd` and `ipheth` remain isolated to the iPhone modes.
+
+The app creates temporary NetworkManager profiles for the selected USB and
+Wi-Fi paths. NetworkManager owns their addresses and leases; the app owns the
+profiles only while running and removes them when the add-on stops.
 
 Internet health checks are reported for diagnostics. This release switches
 sources based on connection readiness, not an external connectivity probe.
@@ -102,11 +107,17 @@ entities:
     name: Connected via
   - entity: binary_sensor.haos_mobile_wan_internet_available
     name: Internet available
-  - entity: sensor.haos_mobile_wan_iphone_usb_pairing
-    name: iPhone USB pairing
+  - entity: sensor.haos_mobile_wan_usb_status
+    name: USB status
   - entity: sensor.haos_mobile_wan_public_ip
     name: Public IP
 ```
+
+Fresh installs normally create the USB entity as
+`sensor.haos_mobile_wan_usb_status`. Existing installs keep the entity ID
+already stored in Home Assistant, commonly
+`sensor.haos_mobile_wan_usb_pairing`; select it from the device page if the
+example ID differs.
 
 ### Entity reference
 
@@ -119,8 +130,8 @@ entities:
 | Gateway state | `sensor` | Waiting, connecting, connected or error |
 | Health | `sensor` | Healthy or attention needed, with actionable issues as attributes |
 | Connection method | `sensor` | Configured Wi-Fi, USB or USB-preferred strategy |
-| Connected via | `sensor` | Wi-Fi hotspot or USB (iPhone) currently carrying gateway traffic, or not connected |
-| iPhone USB pairing | `sensor` | Current iPhone trust, interface and DHCP state |
+| Connected via | `sensor` | Wi-Fi hotspot, USB (iPhone) or USB (generic) currently carrying gateway traffic, or not connected |
+| USB status | `sensor` | Current USB trust/readiness, interface and DHCP state |
 | Downstream interface | `sensor` | Selected router-facing interface, or not present |
 | Public IP | `sensor` | Public IPv4 address seen through the mobile connection, or not connected |
 
@@ -165,7 +176,9 @@ automation:
 | Phone Wi-Fi hotspot on a dedicated adapter such as `wlan0` | Supported |
 | One USB Ethernet adapter for the router WAN | Supported |
 | iPhone USB tethering through `ipheth` | Experimental |
-| USB-preferred Wi-Fi fallback | Supported with the current iPhone USB path |
+| Android RNDIS, CDC Ethernet and CDC NCM tethering | Experimental |
+| Ethernet-style USB cellular dongles with DHCP | Experimental |
+| USB-preferred Wi-Fi fallback | Supported with iPhone or generic USB |
 
 ### Unsupported hardware
 
@@ -173,13 +186,15 @@ automation:
 |---|---|
 | Home Assistant Core or Container without the HAOS app | The gateway requires HAOS host networking and Supervisor |
 | A downstream adapter connected to a normal LAN or switch network | The app serves authoritative DHCP on that interface |
-| Generic Android or RNDIS USB tethering | Not implemented yet; tracked in [issue #96](https://github.com/teh-hippo/haos-mobile-wan/issues/96) |
+| QMI or MBIM modems that require modem setup | The first generic USB transport supports devices that already expose an Ethernet DHCP interface |
 | Multiple router-facing USB adapters without a MAC override | The app will not guess which adapter to use |
 
 ### Limitations
 
 - iPhone USB requires **Allow Others to Join** under Personal Hotspot, an
   unlocked phone and accepted trust;
+- generic USB requires exactly one supported RNDIS/CDC upstream after excluding
+  management and the router-facing adapter;
 - automatic failover reacts to source readiness, not Internet health;
 - only IPv4 gateway service is supported;
 - the entities require the Home Assistant MQTT integration and a broker;
@@ -236,6 +251,11 @@ The on-demand [NetworkManager integration
 lab](ha_cellular_gateway/integration/networkmanager/README.md) runs only by
 manual workflow dispatch or its local rootful Docker command. It is separate
 from unit discovery and does not replace HAOS hardware acceptance.
+
+The manual-only [QEMU Wi-Fi integration
+lab](ha_cellular_gateway/integration/networkmanager_wifi/README.md) boots a
+disposable KVM guest and validates real hwsim WPA plus QEMU CDC generic USB.
+It runs locally on a KVM host or through its `workflow_dispatch` workflow.
 
 The primary local checks are:
 

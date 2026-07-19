@@ -9,28 +9,14 @@ from typing import TYPE_CHECKING
 from .command import RunCommand
 from .config import RUN_DIR, GatewayConfig
 from .errors import GatewayError
-from .networkmanager import (
-    ACTIVATION_COOLDOWN_SECONDS,
-    LEASE_OWNER,
-    NetworkManagerIphone,
-    NetworkManagerResult,
-)
-from .nm_profile_specs import USB_DHCP_TIMEOUT_SECONDS
+from .networkmanager import NetworkManagerIphone
 from .upstream_iphone_runtime import IPhoneUsbRuntime
-from .upstream_models import ResolvedUpstream
+from .upstream_usb import UpstreamResolution, UsbNetworkUpstream
 
 if TYPE_CHECKING:
     from .management import ManagementBaseline
 
-UpstreamResolution = tuple[ResolvedUpstream | None, list[str]]
-
-
-class IPhoneUsbUpstream:
-    LEASE_GRACE_SECONDS = max(
-        ACTIVATION_COOLDOWN_SECONDS,
-        USB_DHCP_TIMEOUT_SECONDS,
-    ) + 5
-
+class IPhoneUsbUpstream(UsbNetworkUpstream):
     def __init__(
         self,
         config: GatewayConfig,
@@ -47,7 +33,6 @@ class IPhoneUsbUpstream:
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self.config = config
-        self.run = run
         self.runtime = IPhoneUsbRuntime(
             run,
             run_dir=run_dir,
@@ -58,38 +43,29 @@ class IPhoneUsbUpstream:
             popen=popen,
             which=which,
         )
-        self.nm = network_manager or NetworkManagerIphone(
-            config,
+        super().__init__(
             run,
+            network_manager
+            or NetworkManagerIphone(config, run, monotonic=monotonic),
+            label="iPhone USB",
+            ready_state="paired",
             monotonic=monotonic,
         )
-        self._monotonic = monotonic
-        self.pairing_state = "not_applicable"
-        self.pairing_message: str | None = None
         self.device_udid: str | None = None
-        self.interface: str | None = None
-        self.carrier: bool | None = None
-        self.lease_owner: str | None = None
-        self.fallback_safe = True
-        self._last_lease: tuple[ResolvedUpstream, float] | None = None
 
     def runtime_status(self) -> dict[str, object]:
-        return {
-            "upstream_pairing_state": self.pairing_state,
-            "upstream_pairing_message": self.pairing_message,
-            "upstream_device_udid": self.device_udid,
-            "upstream_runtime_interface": self.interface,
-            "upstream_carrier": self.carrier,
-            "upstream_lockdown_path": str(self.runtime.lockdown_dir),
-            "upstream_lease_owner": self.lease_owner,
-        }
+        status = super().runtime_status()
+        status["upstream_device_udid"] = self.device_udid
+        status["upstream_lockdown_path"] = str(self.runtime.lockdown_dir)
+        return status
 
     def resolve(
         self,
         management: ManagementBaseline | None = None,
+        downstream_interface: str | None = None,
     ) -> UpstreamResolution:
-        self._reset_status()
-        self.pairing_state = "not_ready"
+        del downstream_interface
+        self._begin()
 
         errors = self.runtime.capability_errors()
         if errors:
@@ -154,93 +130,20 @@ class IPhoneUsbUpstream:
             return self._fail("waiting_for_interface", message)
 
         self.interface = interfaces[0]
-        self.carrier = self.runtime.interface_carrier(self.interface)
-        if self.carrier is False:
-            self._forget_lease()
-            return self._fail(
-                "waiting_for_hotspot",
-                "Enable Personal Hotspot and Allow Others to Join on the iPhone",
-            )
-        try:
-            result = self.nm.inspect(self.interface, management)
-        except (
-            GatewayError,
-            OSError,
-            subprocess.SubprocessError,
-            ValueError,
-        ) as err:
-            grace = self._grace_lease()
-            if grace is not None:
-                return grace, []
-            return self._fail(
-                "waiting_for_profile",
-                f"NetworkManager iPhone USB inspection is unavailable: {err}",
-            )
-        return self._consume(result)
-
-    def fallback_allowed(self) -> bool:
-        return self.fallback_safe
+        return self._resolve_network(
+            self.interface,
+            self.runtime.interface_carrier(self.interface),
+            management,
+            carrier_state="waiting_for_hotspot",
+            carrier_message=(
+                "Enable Personal Hotspot and Allow Others to Join on the iPhone"
+            ),
+        )
 
     def cleanup(self) -> None:
-        self._forget_lease()
         self.runtime.stop_usbmuxd()
-        self._reset_status()
-
-    def _consume(self, result: NetworkManagerResult) -> UpstreamResolution:
-        if result.state == "active":
-            assert result.upstream is not None
-            self._last_lease = (result.upstream, self._monotonic())
-            self.lease_owner = LEASE_OWNER
-            self.pairing_state = "paired"
-            self.pairing_message = None
-            return result.upstream, []
-        if result.state == "waiting":
-            grace = self._grace_lease()
-            if grace is not None:
-                self.lease_owner = LEASE_OWNER
-                self.pairing_state = "paired"
-                self.pairing_message = None
-                return grace, []
-            assert result.error is not None
-            return self._fail("waiting_for_profile", result.error)
-        self._forget_lease()
-        state = "profile_conflict" if result.state == "foreign" else "invalid_lease"
-        assert result.error is not None
-        return self._fail(state, result.error, safe=False)
-
-    def _fail(
-        self,
-        state: str,
-        message: str,
-        *,
-        safe: bool = True,
-    ) -> UpstreamResolution:
-        self.pairing_state = state
-        self.pairing_message = message
-        if not safe:
-            self.fallback_safe = False
-        return None, [message]
-
-    def _grace_lease(self) -> ResolvedUpstream | None:
-        if self._last_lease is None:
-            return None
-        upstream, seen = self._last_lease
-        if (
-            self._monotonic() - seen < self.LEASE_GRACE_SECONDS
-            and self.nm.continuity(upstream)
-        ):
-            return upstream
-        self._last_lease = None
-        return None
-
-    def _forget_lease(self) -> None:
-        self._last_lease = None
+        super().cleanup()
 
     def _reset_status(self) -> None:
-        self.pairing_state = "not_applicable"
-        self.pairing_message = None
+        super()._reset_status()
         self.device_udid = None
-        self.interface = None
-        self.carrier = None
-        self.lease_owner = None
-        self.fallback_safe = True

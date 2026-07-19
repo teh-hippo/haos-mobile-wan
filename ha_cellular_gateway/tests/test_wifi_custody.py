@@ -5,7 +5,11 @@ import unittest
 from helpers import FakeRunner, FakeWifiProfileMetadata, make_config
 from rootfs.app.networkmanager_wifi import NetworkManagerWifi
 from rootfs.app.nm_profile_specs import WIFI_PROFILE_UUID
-from rootfs.app.wifi_custody import MARKER_KEY, parse_marker
+from rootfs.app.wifi_custody import (
+    MARKER_KEY,
+    RADIO_INSPECTION_UNAVAILABLE,
+    parse_marker,
+)
 
 
 def _up_commands(runner: FakeRunner) -> list[list[str]]:
@@ -202,6 +206,19 @@ class WifiCustodianTests(unittest.TestCase):
         self.assertTrue(result.safe)
         self.assertNotIn(WIFI_PROFILE_UUID, runner.nm_profiles)
         self.assertTrue(runner.nm_device_autoconnect["wlan0"])
+
+    def test_radio_inspection_failure_is_not_device_missing(self) -> None:
+        runner = FakeRunner()
+        runner.nm_radio_query_fail = True
+        controller = self._controller(runner, [1000.0])
+
+        errors = controller.claim("end0")
+        result = controller.inspect()
+
+        self.assertEqual(errors, [RADIO_INSPECTION_UNAVAILABLE])
+        self.assertEqual(result.error, RADIO_INSPECTION_UNAVAILABLE)
+        self.assertTrue(result.safe)
+        self.assertNotIn(WIFI_PROFILE_UUID, runner.nm_profiles)
 
     def test_release_follows_renamed_device_by_stable_identity(self) -> None:
         runner = FakeRunner()

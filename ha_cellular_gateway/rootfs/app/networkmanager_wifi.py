@@ -24,6 +24,7 @@ from .wifi_custody import (
     DEVICE_MISSING,
     DEVICE_UNMANAGED,
     RADIO_HARD_OFF,
+    RADIO_INSPECTION_UNAVAILABLE,
     RADIO_SOFT_OFF,
     CustodyMarker,
     WifiCustodian,
@@ -50,7 +51,13 @@ CONTROL_ERRORS = (GatewayError, OSError, subprocess.SubprocessError, ValueError)
 # A safely unavailable adapter (absent, unmanaged, radio off, rfkill) leaves the
 # adapter untouched, so it must not fail closed or churn a healthy USB source.
 SAFE_WIFI_UNAVAILABLE = frozenset(
-    {DEVICE_MISSING, DEVICE_UNMANAGED, RADIO_SOFT_OFF, RADIO_HARD_OFF}
+    {
+        DEVICE_MISSING,
+        DEVICE_UNMANAGED,
+        RADIO_SOFT_OFF,
+        RADIO_HARD_OFF,
+        RADIO_INSPECTION_UNAVAILABLE,
+    }
 )
 
 

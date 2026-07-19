@@ -1,7 +1,7 @@
 name: HAOS Mobile WAN
-version: "0.10.0"
+version: "0.11.0"
 slug: ha_cellular_gateway
-description: Provides fallback WAN through Wi-Fi or iPhone USB tethering
+description: Provides fallback WAN through Wi-Fi or USB tethering
 url: https://github.com/teh-hippo/haos-mobile-wan
 arch:
   - aarch64
@@ -17,6 +17,7 @@ breaking_versions:
   - "0.8.0"
   - "0.9.0"
   - "0.10.0"
+  - "0.11.0"
 init: false
 host_network: true
 host_dbus: true
@@ -39,7 +40,7 @@ options:
   hotspot_password: ""
 schema:
   auto_disable_minutes: int(0,1440)
-  mobile_connection: 'list(Wi-Fi hotspot|USB (iPhone)|USB (iPhone), Wi-Fi fallback)'
+  mobile_connection: 'list(Wi-Fi hotspot|USB (iPhone)|USB (iPhone), Wi-Fi fallback|USB (generic)|USB (generic), Wi-Fi fallback)'
   hotspot_ssid: str
   hotspot_password: password
   downstream_mac: 'match(^$|^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$)?'

@@ -5,7 +5,7 @@ import subprocess
 from typing import TYPE_CHECKING
 
 from .errors import GatewayError
-from .const import IPHONE_USB
+from .const import GENERIC_USB, IPHONE_USB
 
 if TYPE_CHECKING:
     from .gateway import GatewayEngine
@@ -39,16 +39,23 @@ def log_upstream_transitions(
     upstream: ResolvedUpstream | None,
     wifi_status: dict[str, object] | None,
 ) -> None:
-    iphone = upstream is not None and upstream.connection == IPHONE_USB
+    usb = upstream is not None and upstream.connection in {
+        IPHONE_USB,
+        GENERIC_USB,
+    }
     wifi = wifi_status is not None and wifi_status.get("connected") is True
     with engine.lock:
-        previous_iphone = engine._prev_iphone_present
+        previous_usb = engine._prev_usb_present
         previous_wifi = engine._prev_wifi_connected
-        engine._prev_iphone_present = iphone
+        engine._prev_usb_present = usb
         engine._prev_wifi_connected = wifi
-    if iphone and not previous_iphone:
-        _LOGGER.info("iPhone USB device connected")
+    if usb and not previous_usb:
+        assert upstream is not None
+        _LOGGER.info(
+            "%s device connected",
+            "iPhone USB" if upstream.connection == IPHONE_USB else "Generic USB",
+        )
     if wifi and not previous_wifi:
         _LOGGER.info("Wi-Fi hotspot connected")
-    if (previous_iphone or previous_wifi) and not (iphone or wifi):
+    if (previous_usb or previous_wifi) and not (usb or wifi):
         _LOGGER.info("Mobile upstream disconnected")

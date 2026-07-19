@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 from .command import RunCommand
 from .errors import GatewayError
 from .management import interface_addresses
+from .nm_profile_specs import GENERIC_USB_DRIVERS
+from .usb_network import interface_driver
 
 if TYPE_CHECKING:
     from .config import GatewayConfig
@@ -30,7 +32,7 @@ class DownstreamInterface:
     def addresses(self, interface: str, *, family: int = 4) -> set[str]:
         return interface_addresses(self.run, interface, family=family)
 
-    def mac(self, interface: str) -> str | None:
+    def mac(self, interface: str | Path) -> str | None:
         try:
             return self.read_text(
                 self.sys_net_root / interface / "address"
@@ -137,16 +139,26 @@ class DownstreamInterface:
             )
         )
 
-    @staticmethod
-    def _is_usb_ethernet(interface: Path) -> bool:
+    def _is_usb_ethernet(self, interface: Path) -> bool:
         if (interface / "wireless").exists():
             return False
         device = interface / "device"
         try:
-            driver = (device / "driver").resolve(strict=True).name
             device_path = device.resolve(strict=True)
         except OSError:
             return False
-        return driver != "ipheth" and any(
+        driver = interface_driver(interface)
+        if driver is None or driver == "ipheth":
+            return False
+        if (
+            self.config.uses_generic_usb
+            and driver in GENERIC_USB_DRIVERS
+            and (
+                not self.config.downstream_mac
+                or self.mac(interface) != self.config.downstream_mac
+            )
+        ):
+            return False
+        return any(
             re.fullmatch(r"usb\d+", part) for part in device_path.parts
         )

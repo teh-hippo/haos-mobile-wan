@@ -9,6 +9,8 @@ from typing import ClassVar
 
 from .const import (
     DEFAULT_MOBILE_CONNECTION_OPTION,
+    GENERIC_USB,
+    GENERIC_USB_WIFI_FALLBACK,
     IPHONE_USB,
     IPHONE_USB_WIFI_FALLBACK,
     MOBILE_CONNECTION_OPTIONS,
@@ -125,6 +127,7 @@ class GatewayConfig:
         return self.mobile_connection in {
             WIFI_HOTSPOT,
             IPHONE_USB_WIFI_FALLBACK,
+            GENERIC_USB_WIFI_FALLBACK,
         }
 
     @property
@@ -132,6 +135,24 @@ class GatewayConfig:
         return self.mobile_connection in {
             IPHONE_USB,
             IPHONE_USB_WIFI_FALLBACK,
+        }
+
+    @property
+    def uses_generic_usb(self) -> bool:
+        return self.mobile_connection in {
+            GENERIC_USB,
+            GENERIC_USB_WIFI_FALLBACK,
+        }
+
+    @property
+    def uses_usb(self) -> bool:
+        return self.uses_iphone or self.uses_generic_usb
+
+    @property
+    def usb_with_wifi_fallback(self) -> bool:
+        return self.mobile_connection in {
+            IPHONE_USB_WIFI_FALLBACK,
+            GENERIC_USB_WIFI_FALLBACK,
         }
 
     @property

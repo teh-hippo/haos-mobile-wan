@@ -140,6 +140,26 @@ rather than racing NetworkManager.
 iPhone USB remains experimental because it depends on the HAOS kernel,
 `ipheth`, the cable and the phone trust workflow.
 
+### USB (generic)
+
+Generic USB supports devices that already expose a DHCP Ethernet interface
+through `rndis_host`, `cdc_ether` or `cdc_ncm`. This includes common Android
+USB tethering and Ethernet-style cellular dongles.
+
+The app excludes the HAOS management interface and the selected router-facing
+adapter, then requires exactly one eligible generic USB upstream. It creates a
+temporary `haos-mobile-wan-generic-usb` profile, obtains the NetworkManager
+lease in table 202 and applies the same lease validation, routing and cleanup
+used by iPhone USB.
+
+Do not create a separate HAOS profile for the tether interface. An ambiguous
+device set or a foreign profile that can control the selected interface blocks
+the gateway rather than guessing.
+
+QMI and MBIM devices that require modem setup are outside this first generic
+USB transport. The device must already present an Ethernet-style DHCP
+interface.
+
 ### USB (iPhone), Wi-Fi fallback
 
 This strategy keeps both app-owned profiles active while the add-on runs.
@@ -153,6 +173,9 @@ This strategy keeps both app-owned profiles active while the add-on runs.
 The app removes forwarding before changing routes and NAT, so source
 transitions remain fail closed.
 
+**USB (generic), Wi-Fi fallback** uses the same selection rules with the
+generic USB transport in place of the Apple pairing path.
+
 Internet health checks remain diagnostic. They do not trigger source changes
 in this release.
 
@@ -165,7 +188,7 @@ state. There is no separate enable switch.
 
 | Option | Purpose |
 |---|---|
-| **Mobile connection** | Selects Wi-Fi, USB (iPhone), or USB-preferred Wi-Fi fallback |
+| **Mobile connection** | Selects Wi-Fi, iPhone USB, generic USB, or either USB transport with Wi-Fi fallback |
 | **Wi-Fi hotspot name** | Required hotspot name when Wi-Fi is selected |
 | **Wi-Fi hotspot password** | Required hotspot password when Wi-Fi is selected |
 
@@ -295,7 +318,7 @@ add-on refreshes their state while it runs, so no reload is needed after an
 add-on update. The entities are status-only for monitoring; there are no Home
 Assistant controls, so continue to control the gateway by starting and stopping
 the add-on. They include **Gateway state**, **Connection
-method**, **Connected via**, **iPhone USB pairing**, **Internet available**,
+method**, **Connected via**, **USB status**, **Internet available**,
 **Health**, interface and diagnostic sensors. Statuses read in plain language:
 **Public IP** and **Connected via** show "Not connected" when no path is active,
 and the downstream interface shows "Not present" when no adapter is bound.
@@ -305,8 +328,10 @@ Normal source absence reads "Waiting for iPhone", "Waiting for hotspot" or
 during normal waiting and changes to "Attention needed" only for actionable
 issues, which are included in its attributes.
 
-For USB mode, **iPhone USB pairing** reads "Waiting for Personal Hotspot" when
+For iPhone USB mode, **USB status** reads "Waiting for Personal Hotspot" when
 the phone is trusted and attached but has not presented USB tethering carrier.
+Generic USB reports device, carrier, profile and lease readiness through the
+same status entity.
 
 Add the entities to a dashboard with any built-in card, for example an
 `entities` card:
@@ -325,11 +350,16 @@ entities:
     name: Connected via
   - entity: binary_sensor.haos_mobile_wan_internet_available
     name: Internet available
-  - entity: sensor.haos_mobile_wan_iphone_usb_pairing
-    name: iPhone USB pairing
+  - entity: sensor.haos_mobile_wan_usb_status
+    name: USB status
   - entity: sensor.haos_mobile_wan_public_ip
     name: Public IP
 ```
+
+Fresh installs normally create the USB entity as
+`sensor.haos_mobile_wan_usb_status`. Existing installs retain their registered
+entity ID, commonly `sensor.haos_mobile_wan_usb_pairing`; select the entity from
+the HAOS Mobile WAN device page if the example ID differs.
 
 The add-on still serves `GET /v2/status` and `/health` on the Supervisor-side
 API for manual diagnostics.
@@ -349,13 +379,16 @@ passes. Keep the add-on stopped before, between and after scenarios.
 3. **USB stability:** sustain the path, then lock/unlock the phone, toggle
    Personal Hotspot and reconnect the cable. Recovery must not require an app
    restart.
-4. **Wi-Fi:** require the dedicated app profile, table 203, Connected, Healthy,
+4. **Generic USB:** require the expected RNDIS/CDC driver, app profile,
+   NetworkManager lease/table 202, Connected, Healthy, Internet available and
+   exact cleanup. Verify the router-facing adapter is never selected upstream.
+5. **Wi-Fi:** require the dedicated app profile, table 203, Connected, Healthy,
    Internet available, router WAN lease and LAN HTTPS. Stop the add-on and
    confirm the profile is deleted and the adapter's prior runtime state is
    restored.
-5. **Failover:** with USB-preferred fallback, remove USB and require Wi-Fi;
+6. **Failover:** with USB-preferred fallback, remove USB and require Wi-Fi;
    restore USB and require a clean return without stale routing or NAT.
-6. **Cleanup:** verify stop, auto-stop, restart while Connected/Waiting,
+7. **Cleanup:** verify stop, auto-stop, restart while Connected/Waiting,
    interrupted-stop recovery and exact journal cleanup.
 
 For each gate record timestamps, Gateway state, Health issues, profile UUID and
@@ -390,14 +423,15 @@ The app uses `host_network`, `host_dbus`, `NET_ADMIN`, `NET_RAW`, `hassio_api`,
   recovery marker directly over the NetworkManager `Settings.Connection` API.
   The AppArmor profile scopes D-Bus to NetworkManager.
 - USB access is required by the iPhone path and is static for the app package.
+  Generic USB uses the host network interface after its kernel driver binds.
 
 The app does not use `full_access` or `udev`.
 
 The enforced AppArmor profile limits the process to its networking tools,
-app-owned data, required `/proc` and sysfs reads, and the iPhone USB paths.
+app-owned data, required `/proc` and sysfs reads, and the USB runtime paths.
 The API binds to the Supervisor-side address and requires a generated bearer
 token. Diagnostics redact credentials, addressing, interface names and iPhone
 identifiers.
 
-Generic Android, RNDIS and CDC USB tethering is not yet supported. It is
-tracked in [issue #96](https://github.com/teh-hippo/haos-mobile-wan/issues/96).
+Generic USB remains experimental until physical Android/RNDIS or CDC hardware
+passes the complete live acceptance sequence.

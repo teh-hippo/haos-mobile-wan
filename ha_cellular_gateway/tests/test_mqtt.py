@@ -219,6 +219,7 @@ class DiscoveryPayloadTests(unittest.TestCase):
                 "Waiting for iPhone",
                 "Waiting for hotspot",
                 "Waiting",
+                "Waiting for USB device",
                 "Connecting",
                 "Connected",
                 "Error",
@@ -230,16 +231,29 @@ class DiscoveryPayloadTests(unittest.TestCase):
         )
         self.assertEqual(
             self.cmps["active_connection"]["options"],
-            ["Wi-Fi hotspot", "USB (iPhone)", "Not connected"],
+            [
+                "Wi-Fi hotspot",
+                "USB (iPhone)",
+                "USB (generic)",
+                "Not connected",
+            ],
         )
         self.assertEqual(
             self.cmps["mobile_connection"]["options"],
-            ["Wi-Fi hotspot", "USB (iPhone)", "USB (iPhone), Wi-Fi fallback"],
+            [
+                "Wi-Fi hotspot",
+                "USB (iPhone)",
+                "USB (iPhone), Wi-Fi fallback",
+                "USB (generic)",
+                "USB (generic), Wi-Fi fallback",
+            ],
         )
         pairing = self.cmps["upstream_pairing_state"]
-        self.assertEqual(len(pairing["options"]), 15)
+        self.assertEqual(len(pairing["options"]), 17)
         self.assertIn("Waiting for device", pairing["options"])
         self.assertIn("Waiting for Personal Hotspot", pairing["options"])
+        self.assertIn("Waiting for USB tethering", pairing["options"])
+        self.assertIn("Ready", pairing["options"])
         self.assertNotIn("waiting_for_device", pairing["options"])
 
     def test_binary_sensor_device_classes(self) -> None:

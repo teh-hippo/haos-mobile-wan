@@ -1,0 +1,15 @@
+#cloud-config
+hostname: haos-wan-lab
+manage_etc_hosts: true
+ssh_pwauth: false
+package_update: true
+packages:
+  - rsync
+users:
+  - name: lab
+    groups:
+      - sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - __SSH_PUBLIC_KEY__

@@ -4,6 +4,7 @@ Use Home Assistant OS to provide a fallback WAN connection to your router.
 
 - Connect through a phone Wi-Fi hotspot.
 - Use iPhone USB tethering.
+- Use generic Android RNDIS, CDC or Ethernet-style USB tethering.
 - Prefer USB and fall back automatically to Wi-Fi.
 - Hand the connection to the router through an isolated USB Ethernet adapter.
 

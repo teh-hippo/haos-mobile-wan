@@ -55,7 +55,7 @@ sources based on connection readiness, not an external connectivity probe.
 1. Open **Settings > Apps > App store**.
 2. Open the menu and select **Repositories**.
 3. Add `https://github.com/teh-hippo/haos-mobile-wan`.
-4. Install **HAOS Mobile WAN**.
+4. Install **Mobile WAN**.
 
 The app uses manual boot and activates the gateway as soon as it starts.
 Before starting it:
@@ -64,7 +64,7 @@ Before starting it:
 2. set the automatic stop delay, or use `0` to keep the add-on running;
 3. enter the Wi-Fi hotspot name and password when Wi-Fi is selected;
 4. reserve a dedicated, non-management Wi-Fi adapter when Wi-Fi is selected;
-5. prepare one USB Ethernet adapter for the router WAN;
+5. connect one USB Ethernet adapter for the router WAN;
 6. follow the [commissioning guide](ha_cellular_gateway/DOCS.md).
 
 The normal form contains only the settings needed for everyday use. Interface,
@@ -75,8 +75,7 @@ address and adapter overrides remain available under unused optional settings.
 1. Stop the add-on.
 2. Allow the app to release its network state as it stops.
 3. Disconnect the router WAN cable from the HAOS USB Ethernet adapter.
-4. Uninstall **HAOS Mobile WAN** from **Settings > Apps**.
-5. Restore the USB Ethernet HAOS profile if the adapter will be reused.
+4. Uninstall **Mobile WAN** from **Settings > Apps**.
 
 ## Home Assistant entities (MQTT)
 
@@ -95,14 +94,14 @@ Add the entities to any built-in card, for example an `entities` card:
 
 ```yaml
 type: entities
-title: HAOS Mobile WAN
+title: Mobile WAN
+icon: mdi:wan
+show_header_toggle: false
 entities:
   - entity: sensor.haos_mobile_wan_gateway_state
     name: Gateway state
   - entity: sensor.haos_mobile_wan_health
     name: Health
-  - entity: sensor.haos_mobile_wan_connection_method
-    name: Connection method
   - entity: sensor.haos_mobile_wan_connected_via
     name: Connected via
   - entity: binary_sensor.haos_mobile_wan_internet_available
@@ -128,7 +127,7 @@ example ID differs.
 | Gateway rules applied | `binary_sensor` | Whether forwarding, NAT and policy routing are active |
 | DHCP server running | `binary_sensor` | Whether the router WAN DHCP service is running |
 | Gateway state | `sensor` | Waiting, connecting, connected or error |
-| Health | `sensor` | Healthy or attention needed, with actionable issues as attributes |
+| Health | `sensor` | OK or attention needed, with actionable issues as attributes |
 | Connection method | `sensor` | Configured Wi-Fi, USB or USB-preferred strategy |
 | Connected via | `sensor` | Wi-Fi hotspot, USB (iPhone) or USB (generic) currently carrying gateway traffic, or not connected |
 | USB status | `sensor` | Current USB trust/readiness, interface and DHCP state |
@@ -137,8 +136,9 @@ example ID differs.
 
 ### Control reference
 
-The MQTT entities are status-only for monitoring. There are no Home Assistant
-control entities; control the gateway through the add-on options.
+The MQTT entities are status-only for monitoring. Start and stop the app
+through **Settings > Apps**, or use Home Assistant's standard
+`hassio.addon_start` and `hassio.addon_stop` actions in a dashboard.
 
 ### Use cases
 
@@ -162,7 +162,7 @@ automation:
     actions:
       - action: persistent_notification.create
         data:
-          title: HAOS Mobile WAN needs attention
+          title: Mobile WAN needs attention
           message: >-
             {{ state_attr('sensor.haos_mobile_wan_health', 'issues')
                | join('; ') }}
@@ -198,7 +198,7 @@ automation:
 - automatic failover reacts to source readiness, not Internet health;
 - only IPv4 gateway service is supported;
 - the entities require the Home Assistant MQTT integration and a broker;
-- physical networking still needs to be commissioned for each HAOS host.
+- the router-facing USB Ethernet adapter must be connected to the router WAN.
 
 ### Diagnostics
 
@@ -211,11 +211,11 @@ addressing, interface names and iPhone identifiers.
 | Problem | Check |
 |---|---|
 | The gateway remains inactive while the add-on runs | Review **Gateway state** and **Health** |
-| USB is not selected | Unlock the iPhone, enable **Allow Others to Join** under Personal Hotspot, accept Trust, check `ipheth`, and confirm no other `ipheth` profile is configured in HAOS |
+| USB is not selected | Unlock the iPhone, enable **Allow Others to Join** under Personal Hotspot, accept Trust and review **Health** for the blocking reason |
 | Wi-Fi fallback is unavailable | Confirm the selected adapter is dedicated, its radio is on and NetworkManager-managed, the hotspot is in range, and the app credentials are correct |
-| The router receives no WAN lease | Confirm the router-facing USB adapter has HAOS IPv4 and IPv6 disabled |
+| The router receives no WAN lease | Confirm the intended USB Ethernet adapter is connected only to the router WAN and set its MAC option if more than one adapter is attached |
 | More than one USB Ethernet adapter is attached | Set the optional router adapter MAC address |
-| Home Assistant becomes unreachable | Stop the add-on and verify the management Ethernet remains the only main default route |
+| Home Assistant becomes unreachable | Stop the app and collect diagnostics; do not edit HAOS networking manually |
 | The entities do not appear | Confirm the MQTT integration and broker are running, then restart the add-on |
 
 ## Pre-1.0 live acceptance

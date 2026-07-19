@@ -15,6 +15,7 @@ class StubEngine:
     def status(self) -> dict[str, object]:
         return {"state": "waiting"}
 
+
 class ApiServerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.engine = StubEngine()
@@ -59,12 +60,23 @@ class ApiServerTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def _get_status(self, token: str | None = "token") -> int:
+        connection = http.client.HTTPConnection(self.host, self.port, timeout=5)
+        try:
+            headers = {"Authorization": f"Bearer {token}"} if token else {}
+            connection.request("GET", "/v2/status", headers=headers)
+            response = connection.getresponse()
+            response.read()
+            return response.status
+        finally:
+            connection.close()
+
     def test_request_logging_uses_debug_level(self) -> None:
         with self.assertLogs(api_server.__name__, level="DEBUG") as captured:
-            self._get_health()
+            self.assertEqual(self._get_status(), 200)
 
         self.assertTrue(
-            any("/health" in record.getMessage() for record in captured.records)
+            any("/v2/status" in record.getMessage() for record in captured.records)
         )
         self.assertTrue(
             all(record.levelno == logging.DEBUG for record in captured.records)
@@ -72,12 +84,24 @@ class ApiServerTests(unittest.TestCase):
 
     def test_request_logging_is_hidden_at_info_level(self) -> None:
         with self.assertNoLogs(api_server.__name__, level="INFO"):
-            self._get_health()
+            self.assertEqual(self._get_status(), 200)
+
+    def test_failed_request_logging_uses_warning_level(self) -> None:
+        with self.assertLogs(api_server.__name__, level="WARNING") as captured:
+            self.assertEqual(self._get_status(token=None), 401)
+
+        self.assertTrue(
+            any("/v2/status" in record.getMessage() for record in captured.records)
+        )
+        self.assertTrue(
+            all(record.levelno == logging.WARNING for record in captured.records)
+        )
 
     def test_post_control_endpoints_are_not_available(self) -> None:
         for path in ("/v2/stop", "/v2/reconcile"):
             with self.subTest(path=path):
-                status, body = self._post(path)
+                with self.assertLogs(api_server.__name__, level="WARNING"):
+                    status, body = self._post(path)
                 self.assertEqual(status, 404)
                 self.assertEqual(body, {"error": "not_found"})
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.11.1
+
+- Use Mobile WAN as the Home Assistant app display name and add native app
+  icon and logo assets while retaining HAOS Mobile WAN as the repository and
+  MQTT device name.
+- Show successful Health as OK and align the dashboard example with the live
+  status card.
+- Keep successful API access requests at debug level while retaining warnings
+  for failed requests.
+- Retry MQTT service discovery after a transient Supervisor lookup failure
+  instead of requiring an app restart.
+- Remove obsolete manual HAOS networking and historical upgrade instructions
+  from the commissioning documentation.
+
 ## 0.11.0
 
 - Fix real NetworkManager radio and scan command parsing so the onboard Wi-Fi

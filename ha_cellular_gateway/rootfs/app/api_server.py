@@ -13,8 +13,23 @@ _LOGGER = logging.getLogger(__name__)
 class GatewayHandler(BaseHTTPRequestHandler):
     server: "GatewayServer"
 
+    def log_request(
+        self,
+        code: int | str = "-",
+        size: int | str = "-",
+    ) -> None:
+        try:
+            status = int(code)
+        except (TypeError, ValueError):
+            status = 0
+        level = logging.WARNING if status >= 400 else logging.DEBUG
+        _LOGGER.log(level, '"%s" %s %s', self.requestline, code, size)
+
+    def log_error(self, format: str, *args: object) -> None:
+        _LOGGER.warning(format, *args)
+
     def log_message(self, format: str, *args: object) -> None:
-        _LOGGER.debug("%s", format % args)
+        _LOGGER.debug(format, *args)
 
     def _json(self, status: int, payload: object) -> None:
         body = json.dumps(payload, separators=(",", ":")).encode()

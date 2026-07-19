@@ -23,59 +23,9 @@ fall back through the management network.
 Manual boot means the app does not start automatically after an HAOS reboot.
 Enable start-on-boot only after the complete gateway path has been tested.
 
-## Prepare HAOS networking
-
-The app detects the management interface and its current IPv4 address. It does
-not change that interface or its NetworkManager profile.
-
-Use the Terminal & SSH app or another supported HAOS console.
-
-### Inspect the interfaces
-
-```sh
-ha --raw-json network info
-ha network info end0
-ha network info wlan0
-```
-
-Attach the USB Ethernet adapter that will connect to the router WAN, then run
-the network command again. The app selects the only eligible USB Ethernet
-adapter automatically.
-
-If more than one eligible adapter is attached, set the optional **Router
-adapter MAC address**.
-
-### Keep the management connection unchanged
-
-Confirm that the management Ethernet:
-
-- has one unambiguous IPv4 address;
-- remains reachable;
-- is the only interface with a main default route.
-
-The app detects this baseline at startup and removes gateway service if it
-changes unexpectedly.
-
-### Prepare the router-facing adapter
-
-Replace `enp1s0u1` with the detected USB Ethernet interface:
-
-```sh
-ha network update enp1s0u1 \
-  --ipv4-method disabled \
-  --ipv6-method disabled
-```
-
-Do not configure an address, gateway or DNS server on this interface. While
-running, the app owns one exact address and removes it on stop, failure or
-shutdown.
-
-The default router WAN transit address is `192.168.80.1/24`. The app leases
-`192.168.80.2` to the router and advertises `.1` as its gateway.
-
-This subnet is not detected from the phone or router. It is a private default
-that must not overlap the Home Assistant management network, the phone network
-or the router LAN. If it does, set the optional **Router WAN address**.
+Do not create, edit or delete HAOS network profiles. The app detects the
+management connection, owns only its temporary mobile profiles and the
+router-facing address, and fails closed if the host network is unsafe.
 
 ## Choose the mobile connection
 
@@ -83,7 +33,7 @@ or the router LAN. If it does, set the optional **Router WAN address**.
 
 HAOS connects to the phone over Wi-Fi.
 
-Provide a Wi-Fi adapter dedicated to HAOS Mobile WAN. It must not be the
+Provide a Wi-Fi adapter dedicated to Mobile WAN. It must not be the
 management interface. Enter the hotspot name and password in the app options.
 
 The default Wi-Fi settings are:
@@ -211,43 +161,13 @@ Start or stop the add-on to control the gateway. The Home Assistant entities
 published over MQTT are status-only monitoring; they do not change app options
 or control the gateway.
 
-## Upgrade to 0.9.0
-
-Version 0.9.0 is a breaking NetworkManager ownership update.
-
-1. Keep the add-on stopped during the update.
-2. Reserve a dedicated Wi-Fi adapter if the selected strategy uses Wi-Fi.
-3. Re-enter the hotspot name and password if Wi-Fi is selected.
-4. Start the add-on only after **Health** reports no ownership conflict.
-
-Existing Wi-Fi profiles on the dedicated adapter are left unchanged; the app
-reserves the adapter at runtime while it runs and restores it when the add-on
-stops. Legacy `Supervisor <interface>` profiles created by an earlier version of
-this app are removed automatically. The old fixed iPhone USB profile is removed
-automatically only when its complete fingerprint matches the known legacy app
-profile. Drifted or foreign iPhone USB profiles are left untouched and reported.
-
-## Upgrade to 0.4.0
-
-Version 0.4.0 is a breaking app update. The old option names, mode API and
-select entities are not retained.
-
-1. Stop the 0.3 gateway and let cleanup finish.
-2. Update the HAOS app.
-3. Select the required **Mobile connection** again.
-4. Re-enter **Router WAN address** only if the default
-   `192.168.80.1/24` is unsuitable.
-5. Confirm the Wi-Fi hotspot fields, then restart the app.
-6. Remove any unavailable legacy mode entities from the entity registry.
-7. Repeat the commissioning checks after you start the add-on.
-
 ## Commission the gateway
 
 1. Start the add-on with the router WAN cable still disconnected.
-2. Review the logs and confirm **Health** is healthy.
+2. Review the logs and confirm **Health** is OK.
 3. Resolve every host or ownership issue. The app keeps running and fails
    closed until they clear.
-4. Connect the prepared USB Ethernet adapter only to the intended router WAN
+4. Connect the USB Ethernet adapter only to the intended router WAN
    port.
 5. If using USB, connect and trust the iPhone. If using Wi-Fi, enable the phone
    hotspot.
@@ -290,22 +210,18 @@ add-on before uninstalling so cleanup completes.
 The router can retain its five-minute DHCP lease after gateway service stops,
 but the lease has no usable gateway during that time.
 
-To recover manually:
+To recover:
 
 1. Keep Home Assistant connected through management Ethernet.
 2. Stop the add-on.
 3. Disconnect the router WAN cable.
-4. Correct the HAOS interface profile or app options.
+4. Correct the hardware or app option reported by **Health**.
 5. Restart the app and repeat commissioning.
 
-Before uninstalling, stop the add-on and let cleanup finish. Restore the
-USB Ethernet profile if the adapter will return to ordinary networking:
-
-```sh
-ha network update enp1s0u1 \
-  --ipv4-method auto \
-  --ipv6-method auto
-```
+Before uninstalling, stop the add-on and let cleanup finish. The app restores
+the prior adapter runtime state. If cleanup does not restore the stopped
+baseline, collect diagnostics and report the defect instead of editing HAOS
+networking manually.
 
 ## Home Assistant entities (MQTT)
 
@@ -315,18 +231,23 @@ broker add-on. Enable both before starting the add-on.
 
 The **HAOS Mobile WAN** device and its entities then appear automatically. The
 add-on refreshes their state while it runs, so no reload is needed after an
-add-on update. The entities are status-only for monitoring; there are no Home
-Assistant controls, so continue to control the gateway by starting and stopping
-the add-on. They include **Gateway state**, **Connection
+add-on update. The MQTT entities are status-only for monitoring. Start and stop
+the app through **Settings > Apps**, or use Home Assistant's standard
+`hassio.addon_start` and `hassio.addon_stop` dashboard actions. The entities
+include **Gateway state**, **Connection
 method**, **Connected via**, **USB status**, **Internet available**,
 **Health**, interface and diagnostic sensors. Statuses read in plain language:
 **Public IP** and **Connected via** show "Not connected" when no path is active,
 and the downstream interface shows "Not present" when no adapter is bound.
 
 Normal source absence reads "Waiting for iPhone", "Waiting for hotspot" or
-"Waiting", depending on the configured method. **Health** remains "Healthy"
+"Waiting", depending on the configured method. **Health** remains "OK"
 during normal waiting and changes to "Attention needed" only for actionable
 issues, which are included in its attributes.
+
+When the app is stopped, its MQTT entities are unavailable by design. A
+dashboard can hide the running status card in that state and show a standard
+button action that starts the app.
 
 For iPhone USB mode, **USB status** reads "Waiting for Personal Hotspot" when
 the phone is trusted and attached but has not presented USB tethering carrier.
@@ -338,14 +259,14 @@ Add the entities to a dashboard with any built-in card, for example an
 
 ```yaml
 type: entities
-title: HAOS Mobile WAN
+title: Mobile WAN
+icon: mdi:wan
+show_header_toggle: false
 entities:
   - entity: sensor.haos_mobile_wan_gateway_state
     name: Gateway state
   - entity: sensor.haos_mobile_wan_health
     name: Health
-  - entity: sensor.haos_mobile_wan_connection_method
-    name: Connection method
   - entity: sensor.haos_mobile_wan_connected_via
     name: Connected via
   - entity: binary_sensor.haos_mobile_wan_internet_available
@@ -374,15 +295,15 @@ passes. Keep the add-on stopped before, between and after scenarios.
    no gateway data plane, the downstream host guard, and an unchanged
    management default route.
 2. **iPhone USB:** require trust, `ipheth` carrier, the app profile,
-   NetworkManager lease/table 202, Connected, Healthy, Internet available,
+   NetworkManager lease/table 202, Connected, OK, Internet available,
    public IP, router WAN lease and LAN DNS/HTTPS.
 3. **USB stability:** sustain the path, then lock/unlock the phone, toggle
    Personal Hotspot and reconnect the cable. Recovery must not require an app
    restart.
 4. **Generic USB:** require the expected RNDIS/CDC driver, app profile,
-   NetworkManager lease/table 202, Connected, Healthy, Internet available and
+   NetworkManager lease/table 202, Connected, OK, Internet available and
    exact cleanup. Verify the router-facing adapter is never selected upstream.
-5. **Wi-Fi:** require the dedicated app profile, table 203, Connected, Healthy,
+5. **Wi-Fi:** require the dedicated app profile, table 203, Connected, OK,
    Internet available, router WAN lease and LAN HTTPS. Stop the add-on and
    confirm the profile is deleted and the adapter's prior runtime state is
    restored.

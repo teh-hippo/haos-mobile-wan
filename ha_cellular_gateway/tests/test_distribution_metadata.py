@@ -98,6 +98,22 @@ class DistributionMetadataTests(unittest.TestCase):
         ):
             self.assertNotIn(obsolete, text)
 
+    def test_docs_describe_interrupted_shutdown_repair(self) -> None:
+        readme = README.read_text(encoding="utf-8")
+        docs = DOCS.read_text(encoding="utf-8")
+        self.assertIn(
+            "Restart the add-on to run startup cleanup",
+            readme,
+        )
+        self.assertIn(
+            "Startup cleanup runs before new gateway state is applied",
+            docs,
+        )
+        self.assertIn(
+            "wait for the first reconciliation, then stop it",
+            docs,
+        )
+
     def test_readme_keeps_ci_as_source_of_truth(self) -> None:
         text = README.read_text(encoding="utf-8")
         workflow = WORKFLOW.read_text(encoding="utf-8")

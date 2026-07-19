@@ -13,6 +13,10 @@
   instead of requiring an app restart.
 - Remove obsolete manual HAOS networking and historical upgrade instructions
   from the commissioning documentation.
+- Stop reconciliation as soon as termination is requested, prioritise gateway
+  cleanup before MQTT shutdown and allow 90 seconds for graceful cleanup.
+- Log interrupted startup recovery and document restart or start-then-stop as
+  the repair path after a forced termination.
 
 ## 0.11.0
 

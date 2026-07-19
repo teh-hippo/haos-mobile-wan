@@ -212,6 +212,12 @@ host rules can remain until the app next starts, when startup cleanup removes
 the state recorded in `/data/state.json`, or until HAOS reboots. Stop the
 add-on before uninstalling so cleanup completes.
 
+Restarting the add-on is the repair path after an interrupted shutdown.
+Startup cleanup runs before new gateway state is applied and logs whether
+interrupted ownership was recovered. To repair the host while leaving the
+add-on stopped, start it, wait for the first reconciliation, then stop it
+cleanly.
+
 The router can retain its five-minute DHCP lease after gateway service stops,
 but the lease has no usable gateway during that time.
 

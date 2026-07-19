@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import subprocess
 import time
 from typing import TYPE_CHECKING
@@ -13,6 +14,8 @@ from .lifecycle import log_upstream_transitions, wifi_interface_status
 if TYPE_CHECKING:
     from .gateway import GatewayEngine
     from .upstream_models import ResolvedUpstream
+
+_LOGGER = logging.getLogger(__name__)
 
 OPERATION_ERRORS = (GatewayError, OSError, subprocess.SubprocessError, ValueError)
 
@@ -106,6 +109,8 @@ def apply(
 def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
     try:
         with engine.operation_lock:
+            if engine.stop_event.is_set():
+                return
             with engine.lock:
                 engine.last_reconcile = time.time()
                 startup_cleanup_pending = engine.startup_cleanup_pending
@@ -118,16 +123,36 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
             management = engine._resolve_management()
 
             if startup_cleanup_pending:
-                cleanup(
-                    engine,
-                    preserve_host_protection=(
-                        not engine.config_error and management is not None
-                    ),
-                    force=bool(owned_state),
-                    owned_only=bool(
-                        engine.config_error or management is None
-                    ),
+                recovery_pending = bool(
+                    owned_state
+                    or engine.upstream_lifecycle.state()
+                    or engine.wifi.state()
                 )
+                recovery_started = time.monotonic()
+                if recovery_pending:
+                    _LOGGER.warning(
+                        "Interrupted gateway state detected; recovering before "
+                        "reconciliation"
+                    )
+                try:
+                    cleanup(
+                        engine,
+                        preserve_host_protection=(
+                            not engine.config_error and management is not None
+                        ),
+                        force=bool(owned_state),
+                        owned_only=bool(
+                            engine.config_error or management is None
+                        ),
+                    )
+                except OPERATION_ERRORS:
+                    if recovery_pending:
+                        _LOGGER.exception(
+                            "Interrupted gateway recovery failed after %.1f seconds",
+                            time.monotonic() - recovery_started,
+                        )
+                    raise
+                recovery: list[str] = []
                 if not engine.config_error:
                     recovery = engine.upstream_lifecycle.recover(management)
                     engine._persist_state()
@@ -139,6 +164,17 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                     if not engine.config_error:
                         engine.state_load_error = None
                         state_load_error = None
+                if recovery:
+                    _LOGGER.warning(
+                        "Startup recovery remains incomplete after %.1f seconds: %s",
+                        time.monotonic() - recovery_started,
+                        "; ".join(recovery),
+                    )
+                elif recovery_pending and not engine.config_error:
+                    _LOGGER.info(
+                        "Interrupted gateway recovery completed in %.1f seconds",
+                        time.monotonic() - recovery_started,
+                    )
             if engine.config_error:
                 with engine.lock:
                     engine.last_downstream = None
@@ -208,5 +244,5 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                     upstream_errors=upstream_errors,
                 )
     finally:
-        if refresh_health:
+        if refresh_health and not engine.stop_event.is_set():
             engine._refresh_health_if_due()

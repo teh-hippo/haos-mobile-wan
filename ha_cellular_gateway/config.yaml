@@ -30,7 +30,7 @@ privileged:
   - NET_ADMIN
   - NET_RAW
 apparmor: true
-timeout: 30
+timeout: 90
 backup_exclude:
   - dnsmasq.leases
 options:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import subprocess
 import time
 from typing import TYPE_CHECKING
@@ -9,6 +10,8 @@ from .status_issues import build_status_issues
 
 if TYPE_CHECKING:
     from .gateway import GatewayEngine
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def refresh_health_if_due(engine: GatewayEngine) -> None:
@@ -154,14 +157,18 @@ def run_loop(engine: GatewayEngine) -> None:
             ValueError,
         ) as err:
             engine._fail_closed(err)
+        if engine.stop_event.is_set():
+            break
         engine.auto_disable.reconcile(engine)
         if engine.stop_event.wait(engine.config.reconcile_seconds):
             break
 
 
 def stop(engine: GatewayEngine) -> None:
+    started = time.monotonic()
+    _LOGGER.info("Graceful shutdown cleanup started")
+    engine.stop_event.set()
     with engine.operation_lock:
-        engine.stop_event.set()
         with engine.lock:
             force = bool(engine.owned_state or engine.applied)
         cleanup_error: Exception | None = None
@@ -180,13 +187,30 @@ def stop(engine: GatewayEngine) -> None:
         engine._persist_state()
         lifecycle_error = engine.upstream_lifecycle.error
         if lifecycle_error:
+            message = (
+                f"{cleanup_error}; {lifecycle_error}"
+                if cleanup_error
+                else lifecycle_error
+            )
+            _LOGGER.error(
+                "Graceful shutdown cleanup failed after %.1f seconds: %s",
+                time.monotonic() - started,
+                message,
+            )
             if cleanup_error:
-                raise engine.gateway_error(
-                    f"{cleanup_error}; {lifecycle_error}"
-                )
+                raise engine.gateway_error(message)
             raise engine.gateway_error(lifecycle_error)
         if cleanup_error:
+            _LOGGER.error(
+                "Graceful shutdown cleanup failed after %.1f seconds: %s",
+                time.monotonic() - started,
+                cleanup_error,
+            )
             raise cleanup_error
+    _LOGGER.info(
+        "Graceful shutdown cleanup completed in %.1f seconds",
+        time.monotonic() - started,
+    )
 
 
 def _status_config(engine: GatewayEngine) -> dict[str, object]:

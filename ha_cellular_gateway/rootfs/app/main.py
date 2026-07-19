@@ -27,6 +27,31 @@ def configure_logging() -> None:
     )
 
 
+def _request_shutdown(engine: GatewayEngine, server: GatewayServer) -> None:
+    engine.stop_event.set()
+    threading.Thread(
+        target=server.shutdown,
+        name="gateway-api-shutdown",
+        daemon=True,
+    ).start()
+
+
+def _shutdown(
+    engine: GatewayEngine,
+    publisher: MqttPublisher,
+    server: GatewayServer,
+    worker: threading.Thread,
+) -> None:
+    try:
+        engine.stop()
+    finally:
+        try:
+            publisher.stop()
+        finally:
+            server.server_close()
+            worker.join(timeout=10)
+
+
 def main() -> None:
     configure_logging()
     runner = CommandRunner()
@@ -51,21 +76,14 @@ def main() -> None:
     publisher.start()
 
     def stop(*_: object) -> None:
-        threading.Thread(
-            target=server.shutdown,
-            name="gateway-api-shutdown",
-            daemon=True,
-        ).start()
+        _request_shutdown(engine, server)
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     try:
         server.serve_forever(poll_interval=0.5)
     finally:
-        publisher.stop()
-        engine.stop()
-        server.server_close()
-        worker.join(timeout=10)
+        _shutdown(engine, publisher, server, worker)
 
 
 if __name__ == "__main__":

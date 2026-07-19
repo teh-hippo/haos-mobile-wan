@@ -28,7 +28,7 @@ class AddonSecurityTests(unittest.TestCase):
         self.assertEqual(self.config["hassio_role"], "manager")
         self.assertTrue(self.config["usb"])
         self.assertTrue(self.config["apparmor"])
-        self.assertEqual(self.config["timeout"], 30)
+        self.assertEqual(self.config["timeout"], 90)
         self.assertEqual(self.config["privileged"], ["NET_ADMIN", "NET_RAW"])
         self.assertNotIn("full_access", self.config)
         self.assertTrue(self.config["host_dbus"])

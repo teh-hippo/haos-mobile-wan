@@ -135,6 +135,62 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertTrue(engine.dhcp.running)
         self.assertNotEqual(engine.status()["state"], "disabled")
 
+    def test_restart_logs_interrupted_state_recovery(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply()
+        restarted = self._restart_engine()
+
+        with self.assertLogs(
+            "rootfs.app.gateway_reconcile",
+            level="INFO",
+        ) as captured:
+            restarted.reconcile()
+
+        messages = "\n".join(captured.output)
+        self.assertIn("Interrupted gateway state detected", messages)
+        self.assertIn("Interrupted gateway recovery completed", messages)
+
+    def test_config_error_does_not_log_recovery_complete(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply()
+        restarted = self._restart_engine()
+        restarted.config_error = "Invalid app configuration"
+
+        with self.assertLogs(
+            "rootfs.app.gateway_reconcile",
+            level="WARNING",
+        ) as captured:
+            restarted.reconcile()
+
+        messages = "\n".join(captured.output)
+        self.assertIn("Interrupted gateway state detected", messages)
+        self.assertNotIn("Interrupted gateway recovery completed", messages)
+
+    def test_reconcile_skips_work_after_stop_requested(self) -> None:
+        self.engine.stop_event.set()
+        self.engine._resolve_management = lambda: (_ for _ in ()).throw(
+            AssertionError("management resolution must be skipped")
+        )
+        self.engine._refresh_health_if_due = lambda: (_ for _ in ()).throw(
+            AssertionError("health refresh must be skipped")
+        )
+
+        self.engine.reconcile(refresh_health=True)
+
+        self.assertIsNone(self.engine.last_reconcile)
+
+    def test_run_loop_skips_auto_disable_after_stop_request(self) -> None:
+        def request_stop(*, refresh_health: bool = False) -> None:
+            self.engine.stop_event.set()
+
+        def fail_auto_disable(_engine: GatewayEngine) -> None:
+            raise AssertionError("auto-disable must be skipped")
+
+        self.engine.reconcile = request_stop
+        self.engine.auto_disable.reconcile = fail_auto_disable
+
+        self.engine.run_loop()
+
     def test_config_error_still_cleans_owned_host_state(self) -> None:
         active = self._prepare_active_engine()
         active.apply()
@@ -1268,10 +1324,18 @@ class GatewayEngineTests(unittest.TestCase):
         engine.cleanup = fail_cleanup
         engine.upstream.cleanup = cleanup_upstream
 
-        with self.assertRaisesRegex(GatewayError, "host cleanup failed"):
-            engine.stop()
+        with self.assertLogs(
+            "rootfs.app.gateway_runtime",
+            level="INFO",
+        ) as captured:
+            with self.assertRaisesRegex(GatewayError, "host cleanup failed"):
+                engine.stop()
 
         self.assertTrue(upstream_cleaned)
+        self.assertIn(
+            "Graceful shutdown cleanup failed",
+            "\n".join(captured.output),
+        )
 
     def test_stop_deletes_app_owned_wifi_profile(self) -> None:
         values = sysctl_values()
@@ -1289,9 +1353,17 @@ class GatewayEngineTests(unittest.TestCase):
         engine.upstream_lifecycle.activate(engine.management)
         self.assertTrue(engine.runner.nm_profiles)
 
-        engine.stop()
+        with self.assertLogs(
+            "rootfs.app.gateway_runtime",
+            level="INFO",
+        ) as captured:
+            engine.stop()
 
         self.assertEqual(engine.runner.nm_profiles, {})
+        self.assertIn(
+            "Graceful shutdown cleanup completed",
+            "\n".join(captured.output),
+        )
 
     def test_stop_after_detected_usb_does_not_flush_external_interface(self) -> None:
         values = sysctl_values()

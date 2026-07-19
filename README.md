@@ -222,6 +222,7 @@ addressing, interface names and iPhone identifiers.
 | More than one USB Ethernet adapter is attached | Set the optional router adapter MAC address |
 | Home Assistant becomes unreachable | Stop the app and collect diagnostics; do not edit HAOS networking manually |
 | The entities do not appear | Confirm the MQTT integration and broker are running, then restart the add-on |
+| An interrupted shutdown is suspected | Restart the add-on to run startup cleanup; to leave it stopped, wait for the first reconciliation and then stop it cleanly |
 
 ## Pre-1.0 live acceptance
 

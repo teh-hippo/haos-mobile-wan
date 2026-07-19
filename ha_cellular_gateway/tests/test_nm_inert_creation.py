@@ -16,6 +16,7 @@ from rootfs.app.nm_profile import (
 )
 from rootfs.app.nm_profile_specs import (
     USB_ROUTE_TABLE,
+    generic_usb_profile_spec,
     usb_profile_spec,
     wifi_profile_spec,
 )
@@ -66,6 +67,11 @@ class InertCreateArgvTests(unittest.TestCase):
             make_config(hotspot_ssid="Phone", hotspot_password="supersecret")
         )
         NmProfile(adapter(runner), spec).create()
+        self._assert_single_inert_pair(add_command(runner))
+
+    def test_generic_usb_add_argv_carries_both_inert_settings(self) -> None:
+        runner = FakeRunner()
+        NmProfile(adapter(runner), generic_usb_profile_spec()).create()
         self._assert_single_inert_pair(add_command(runner))
 
     def test_inert_args_replace_conflicting_autoconnect_without_duplicates(

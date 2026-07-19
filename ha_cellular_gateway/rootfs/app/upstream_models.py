@@ -42,6 +42,9 @@ def validate_dynamic_lease(
     address: str,
     gateway: str,
     management: ManagementBaseline | None = None,
+    *,
+    connection: str = IPHONE_USB,
+    label: str = "iPhone USB",
 ) -> tuple[ResolvedUpstream | None, str | None]:
     try:
         upstream = ipaddress.ip_interface(address)
@@ -53,30 +56,30 @@ def validate_dynamic_lease(
             else None
         )
     except ValueError as err:
-        return None, f"iPhone USB lease is invalid: {err}"
+        return None, f"{label} lease is invalid: {err}"
     if upstream.version != 4 or peer.version != 4:
-        return None, "iPhone USB lease must use IPv4"
+        return None, f"{label} lease must use IPv4"
     if upstream.ip in {
         upstream.network.network_address,
         upstream.network.broadcast_address,
     }:
-        return None, "iPhone USB lease address is not a usable host address"
+        return None, f"{label} lease address is not a usable host address"
     if peer not in upstream.network:
-        return None, "iPhone USB lease gateway is outside the lease subnet"
+        return None, f"{label} lease gateway is outside the lease subnet"
     if peer in {
         upstream.ip,
         upstream.network.network_address,
         upstream.network.broadcast_address,
     }:
-        return None, "iPhone USB lease gateway is not a usable peer address"
+        return None, f"{label} lease gateway is not a usable peer address"
     if management_network is not None and upstream.network.overlaps(
         management_network
     ):
-        return None, "iPhone USB lease overlaps the management network"
+        return None, f"{label} lease overlaps the management network"
     if upstream.network.overlaps(downstream.network):
-        return None, "iPhone USB lease overlaps the downstream network"
+        return None, f"{label} lease overlaps the downstream network"
     return ResolvedUpstream(
-        connection=IPHONE_USB,
+        connection=connection,
         interface=interface,
         address=str(upstream),
         gateway=str(peer),

@@ -723,6 +723,68 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertFalse(engine.status()["fallback_active"])
         self.assertIsNone(engine.fallback_reason)
 
+    def test_combined_connection_reports_unavailable_fallback_truthfully(
+        self,
+    ) -> None:
+        values = sysctl_values()
+        runner = FakeRunner()
+        runner.nm_radio_query_fail = True
+        engine = build_engine(
+            make_config(
+                mobile_connection=IPHONE_USB_WIFI_FALLBACK,
+                hotspot_ssid="Phone",
+                hotspot_password="supersecret",
+            ),
+            runner=runner,
+            read_text=lambda path: values[path],
+            state_path=self.state_path,
+        )
+        engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
+
+        def safety_errors(
+            *args,
+            upstream=None,
+            upstream_errors=None,
+            **kwargs,
+        ):
+            if upstream is None and upstream_errors:
+                return list(upstream_errors)
+            return []
+
+        engine.safety.errors = safety_errors
+        engine.dhcp.start = lambda downstream: setattr(
+            engine.dhcp,
+            "process",
+            FakeProcess(),
+        )
+        usb = ResolvedUpstream(
+            connection=IPHONE_USB,
+            interface="eth0",
+            address="172.20.10.2/28",
+            gateway="172.20.10.1",
+        )
+        results = [
+            (usb, []),
+            (None, ["waiting for device"]),
+        ]
+        engine.upstream.resolve = lambda *_a, **_k: results.pop(0)
+
+        engine.reconcile()
+        status = engine.status()
+        self.assertEqual(status["state"], "connected")
+        self.assertEqual(status["health"], "attention")
+        self.assertEqual(
+            status["health_issues"],
+            ["NetworkManager Wi-Fi radio inspection is unavailable"],
+        )
+        self.assertTrue(engine.applied)
+
+        engine.reconcile()
+        status = engine.status()
+        self.assertEqual(status["state"], "error")
+        self.assertEqual(status["health"], "attention")
+        self.assertFalse(engine.applied)
+
     def _switch_upstream_commands(
         self,
         old: ResolvedUpstream,

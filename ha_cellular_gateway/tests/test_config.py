@@ -5,6 +5,8 @@ from pathlib import Path
 
 from rootfs.app.config import GatewayConfig
 from rootfs.app.const import (
+    GENERIC_USB,
+    GENERIC_USB_WIFI_FALLBACK,
     IPHONE_USB,
     IPHONE_USB_WIFI_FALLBACK,
     WIFI_HOTSPOT,
@@ -111,6 +113,8 @@ class GatewayConfigTests(unittest.TestCase):
             "Wi-Fi hotspot": WIFI_HOTSPOT,
             "USB (iPhone)": IPHONE_USB,
             "USB (iPhone), Wi-Fi fallback": IPHONE_USB_WIFI_FALLBACK,
+            "USB (generic)": GENERIC_USB,
+            "USB (generic), Wi-Fi fallback": GENERIC_USB_WIFI_FALLBACK,
         }
         for option, connection in expected.items():
             with self.subTest(option=option):

@@ -78,20 +78,22 @@ class NmcliHarnessRunnerTests(unittest.TestCase):
             [(path_read, False, 8), (mutation, True, 20)],
         )
 
-    def test_only_exact_radio_read_is_synthetic(self) -> None:
-        radio = ["nmcli", "-g", "WIFI-HW,WIFI", "radio"]
+    def test_only_exact_single_field_radio_reads_are_synthetic(self) -> None:
+        hardware = ["nmcli", "-g", "WIFI-HW", "radio"]
         delegate = RecordingCommandRunner(
-            subprocess.CompletedProcess(radio, 1, "", "no wireless hardware")
+            subprocess.CompletedProcess(hardware, 1, "", "no wireless hardware")
         )
         runner = NmcliHarnessRunner(delegate)
 
-        result = runner.run(radio)
+        hardware_result = runner.run(hardware)
+        software_result = runner.run(["nmcli", "-g", "WIFI", "radio"])
 
-        self.assertEqual(result.returncode, 0)
-        self.assertEqual(result.stdout, "enabled\nenabled\n")
+        self.assertEqual(hardware_result.returncode, 0)
+        self.assertEqual(hardware_result.stdout, "enabled\n")
+        self.assertEqual(software_result.stdout, "enabled\n")
         self.assertEqual(delegate.calls, [])
 
-        nearby_read = ["nmcli", "-g", "WIFI-HW,WIFI", "radio", "all"]
+        nearby_read = ["nmcli", "-g", "WIFI-HW,WIFI", "radio"]
         delegate.result = subprocess.CompletedProcess(
             nearby_read,
             1,

@@ -18,6 +18,7 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertEqual(issue["translation_key"], "downstream_configuration")
         self.assertTrue(issue["repairable"])
         self.assertFalse(issue["transient"])
+        self.assertTrue(issue["blocking"])
 
     def test_downstream_ownership_errors_are_repairable(self) -> None:
         expected = {
@@ -272,6 +273,19 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertEqual(issue["id"], "hotspot_configuration_failed")
         self.assertTrue(issue["repairable"])
         self.assertFalse(issue["transient"])
+        self.assertFalse(issue["blocking"])
+
+    def test_radio_inspection_warning_is_actionable_but_non_blocking(self) -> None:
+        result = build_status_issues(
+            [],
+            None,
+            {},
+            ["NetworkManager Wi-Fi radio inspection is unavailable"],
+        )
+
+        self.assertEqual(result[0]["id"], "wifi_radio_inspection_unavailable")
+        self.assertFalse(result[0]["transient"])
+        self.assertFalse(result[0]["blocking"])
 
     def test_required_command_unavailable_is_repairable(self) -> None:
         result = build_status_issues(

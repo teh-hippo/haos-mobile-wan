@@ -2,6 +2,8 @@ import unittest
 
 from helpers import make_config
 from rootfs.app.const import (
+    GENERIC_USB,
+    GENERIC_USB_WIFI_FALLBACK,
     IPHONE_USB,
     IPHONE_USB_WIFI_FALLBACK,
     WIFI_HOTSPOT,
@@ -24,7 +26,9 @@ class StubIPhone:
     def resolve(
         self,
         management: object = None,
+        downstream_interface: str | None = None,
     ) -> tuple[ResolvedUpstream | None, list[str]]:
+        del downstream_interface
         result = self.results[min(self.calls, len(self.results) - 1)]
         self.calls += 1
         return result
@@ -59,6 +63,15 @@ def wifi_upstream() -> ResolvedUpstream:
         interface="wlan0",
         address="172.20.10.4/28",
         gateway="172.20.10.1",
+    )
+
+
+def generic_usb_upstream() -> ResolvedUpstream:
+    return ResolvedUpstream(
+        connection=GENERIC_USB,
+        interface="usb0",
+        address="10.42.0.15/24",
+        gateway="10.42.0.2",
     )
 
 
@@ -134,6 +147,37 @@ class MobileConnectionResolverTests(unittest.TestCase):
         self.assertTrue(resolution.fallback_active)
         self.assertEqual(resolution.fallback_reason, "waiting for device")
 
+    def test_generic_usb_only_uses_selected_usb_transport(self) -> None:
+        resolution = MobileConnectionResolver(
+            make_config(mobile_connection=GENERIC_USB),
+            StubIPhone([(generic_usb_upstream(), [])]),
+            StubWifi([wifi_waiting()]),
+        ).resolve()
+
+        self.assertEqual(resolution.upstream, generic_usb_upstream())
+        self.assertFalse(resolution.fallback_active)
+
+    def test_generic_usb_fallback_prefers_usb_then_wifi(self) -> None:
+        usb = StubIPhone(
+            [
+                (generic_usb_upstream(), []),
+                (None, ["waiting for generic USB"]),
+            ]
+        )
+        resolver = MobileConnectionResolver(
+            make_config(mobile_connection=GENERIC_USB_WIFI_FALLBACK),
+            usb,
+            StubWifi([wifi_active(), wifi_active()]),
+        )
+
+        preferred = resolver.resolve()
+        fallback = resolver.resolve()
+
+        self.assertEqual(preferred.upstream, generic_usb_upstream())
+        assert fallback.upstream is not None
+        self.assertEqual(fallback.upstream.connection, WIFI_HOTSPOT)
+        self.assertTrue(fallback.fallback_active)
+
     def test_safely_unavailable_wifi_does_not_block_ready_usb(self) -> None:
         wifi = StubWifi([wifi_safely_unavailable()])
         resolution = MobileConnectionResolver(
@@ -144,6 +188,10 @@ class MobileConnectionResolverTests(unittest.TestCase):
 
         self.assertEqual(resolution.upstream, usb_upstream())
         self.assertEqual(resolution.errors, ())
+        self.assertEqual(
+            resolution.warnings,
+            ("The Wi-Fi radio is hardware-blocked",),
+        )
         self.assertFalse(resolution.fallback_active)
 
     def test_combined_connection_blocks_unsafe_usb_state(self) -> None:

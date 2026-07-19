@@ -5,11 +5,19 @@ import unittest
 from pathlib import Path
 
 from helpers import FakeRunner, build_engine, make_config, sysctl_values
-from rootfs.app.const import IPHONE_USB_WIFI_FALLBACK
+from rootfs.app.const import (
+    GENERIC_USB,
+    GENERIC_USB_WIFI_FALLBACK,
+    IPHONE_USB_WIFI_FALLBACK,
+)
 from rootfs.app.gateway import GatewayEngine
 from rootfs.app.management import ManagementBaseline
 from rootfs.app.nm_migration import LINEAGE_WIFI_DELETE_ERROR
-from rootfs.app.nm_profile_specs import USB_PROFILE_UUID, WIFI_PROFILE_UUID
+from rootfs.app.nm_profile_specs import (
+    GENERIC_USB_PROFILE_UUID,
+    USB_PROFILE_UUID,
+    WIFI_PROFILE_UUID,
+)
 
 
 def _legacy_profile(uuid: str, interface: str) -> dict[str, str]:
@@ -83,6 +91,26 @@ class UpstreamLifecycleTests(unittest.TestCase):
         self.assertIsNone(engine.upstream_lifecycle.error)
         self.assertIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
         self.assertIn(USB_PROFILE_UUID, engine.runner.nm_profiles)
+
+    def test_generic_usb_claim_reuses_usb_profile_lifecycle(self) -> None:
+        engine = self._engine(mobile_connection=GENERIC_USB)
+
+        engine.upstream_lifecycle.activate(self._management())
+
+        self.assertIsNone(engine.upstream_lifecycle.error)
+        self.assertIn(GENERIC_USB_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertNotIn(USB_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertNotIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
+
+    def test_generic_usb_fallback_claims_usb_and_wifi(self) -> None:
+        engine = self._engine(mobile_connection=GENERIC_USB_WIFI_FALLBACK)
+
+        engine.upstream_lifecycle.activate(self._management())
+
+        self.assertIsNone(engine.upstream_lifecycle.error)
+        self.assertIn(GENERIC_USB_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertNotIn(USB_PROFILE_UUID, engine.runner.nm_profiles)
 
     def test_deactivate_removes_profile_and_restores_autoconnect(self) -> None:
         engine = self._engine()

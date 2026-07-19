@@ -11,6 +11,7 @@ WAITING_ISSUE_IDS = {
     "upstream_interface_unavailable",
     "upstream_not_ready",
     "upstream_waiting_for_device",
+    "upstream_waiting_for_carrier",
     "upstream_waiting_for_hotspot",
 }
 
@@ -19,7 +20,7 @@ def derive_gateway_state(
     applied: bool,
     issues: list[dict[str, Any]],
 ) -> str:
-    if actionable_messages(issues):
+    if actionable_messages(issues, blocking_only=True):
         return "error"
     if applied:
         return "connected"
@@ -33,11 +34,16 @@ def derive_health(issues: list[dict[str, Any]]) -> tuple[str, list[str]]:
     return ("attention" if messages else "healthy", messages)
 
 
-def actionable_messages(issues: list[dict[str, Any]]) -> list[str]:
+def actionable_messages(
+    issues: list[dict[str, Any]],
+    *,
+    blocking_only: bool = False,
+) -> list[str]:
     return list(
         dict.fromkeys(
             str(issue["message"])
             for issue in issues
             if not issue["transient"]
+            and (not blocking_only or issue.get("blocking", True))
         )
     )

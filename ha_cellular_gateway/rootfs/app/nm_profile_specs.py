@@ -8,6 +8,9 @@ USB_PROFILE_UUID = "69fc469b-e2b9-52ba-8f8d-20e5a353735b"
 LEGACY_USB_PROFILE_UUID = "795b0402-f4b8-571b-91b0-2ab6816add52"
 USB_ROUTE_TABLE = 202
 USB_DHCP_TIMEOUT_SECONDS = 45
+GENERIC_USB_PROFILE_NAME = "haos-mobile-wan-generic-usb"
+GENERIC_USB_PROFILE_UUID = "9fa59daf-83d4-512a-8324-5caadc830fb8"
+GENERIC_USB_DRIVERS = ("rndis_host", "cdc_ether", "cdc_ncm")
 
 WIFI_PROFILE_NAME = "haos-mobile-wan-hotspot"
 WIFI_PROFILE_UUID = "463ad2a4-3a0b-56a2-9b86-ec5470d95eb0"
@@ -41,6 +44,36 @@ def usb_profile_spec() -> ProfileSpec:
             USB_PROFILE_NAME,
             "connection.uuid",
             USB_PROFILE_UUID,
+            "ifname",
+            "*",
+        ),
+        settings=settings,
+    )
+
+
+def generic_usb_profile_spec() -> ProfileSpec:
+    current = usb_profile_spec()
+    settings = tuple(
+        (
+            "match.driver",
+            ",".join(GENERIC_USB_DRIVERS),
+        )
+        if field == "match.driver"
+        else (field, value)
+        for field, value in current.settings
+    )
+    return ProfileSpec(
+        key="generic_usb",
+        uuid=GENERIC_USB_PROFILE_UUID,
+        name=GENERIC_USB_PROFILE_NAME,
+        connection_type=current.connection_type,
+        create_args=(
+            "type",
+            "ethernet",
+            "con-name",
+            GENERIC_USB_PROFILE_NAME,
+            "connection.uuid",
+            GENERIC_USB_PROFILE_UUID,
             "ifname",
             "*",
         ),

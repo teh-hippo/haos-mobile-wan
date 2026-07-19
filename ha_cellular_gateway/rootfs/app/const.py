@@ -1,12 +1,21 @@
 WIFI_HOTSPOT = "wifi_hotspot"
 IPHONE_USB = "iphone_usb"
 IPHONE_USB_WIFI_FALLBACK = "iphone_usb_wifi_fallback"
+GENERIC_USB = "generic_usb"
+GENERIC_USB_WIFI_FALLBACK = "generic_usb_wifi_fallback"
+
+USB_CONNECTIONS = frozenset({IPHONE_USB, GENERIC_USB})
+USB_WIFI_FALLBACK_CONNECTIONS = frozenset(
+    {IPHONE_USB_WIFI_FALLBACK, GENERIC_USB_WIFI_FALLBACK}
+)
 
 MOBILE_CONNECTIONS = frozenset(
     {
         WIFI_HOTSPOT,
         IPHONE_USB,
         IPHONE_USB_WIFI_FALLBACK,
+        GENERIC_USB,
+        GENERIC_USB_WIFI_FALLBACK,
     }
 )
 
@@ -15,4 +24,6 @@ MOBILE_CONNECTION_OPTIONS = {
     DEFAULT_MOBILE_CONNECTION_OPTION: WIFI_HOTSPOT,
     "USB (iPhone)": IPHONE_USB,
     "USB (iPhone), Wi-Fi fallback": IPHONE_USB_WIFI_FALLBACK,
+    "USB (generic)": GENERIC_USB,
+    "USB (generic), Wi-Fi fallback": GENERIC_USB_WIFI_FALLBACK,
 }

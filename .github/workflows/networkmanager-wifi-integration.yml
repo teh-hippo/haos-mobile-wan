@@ -1,0 +1,52 @@
+name: NetworkManager Wi-Fi integration
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable KVM
+        run: |
+          test -c /dev/kvm
+          sudo chmod 0666 /dev/kvm
+
+      - name: Install QEMU dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            genisoimage \
+            qemu-system-x86 \
+            qemu-utils \
+            rsync
+
+      - name: Cache Debian cloud image
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/haos-mobile-wan-qemu
+          key: debian-13-generic-amd64-78f658893d7aecb5
+
+      - name: Run QEMU Wi-Fi and generic USB lab
+        timeout-minutes: 28
+        run: ./ha_cellular_gateway/integration/networkmanager_wifi/run.sh
+
+      - name: Print QEMU lab logs
+        if: always()
+        run: |
+          find ha_cellular_gateway/integration/networkmanager_wifi/logs \
+            -maxdepth 3 -type f -print -exec tail -n 120 {} \; || true
+
+      - name: Upload QEMU lab logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: networkmanager-wifi-integration-logs
+          path: ha_cellular_gateway/integration/networkmanager_wifi/logs
+          if-no-files-found: warn

@@ -11,6 +11,7 @@ class NmOwnershipJournal:
         self.owned: dict[str, dict[str, object]] = {}
         self.profile_states = {
             "iphone_usb": "unknown",
+            "generic_usb": "unknown",
             "wifi_hotspot": "unknown",
         }
         self.persist: Callable[[], None] | None = None

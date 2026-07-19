@@ -35,7 +35,7 @@ from .nm_metadata import WifiProfileMetadata
 from .policy import PolicyRouting
 from .safety import SafetyInspector
 from .state import StateStore
-from .upstream_iphone import IPhoneUsbUpstream
+from .usb_upstream_factory import build_usb_upstreams
 from .upstream_lifecycle import UpstreamLifecycle
 from .upstream_models import ResolvedUpstream
 
@@ -75,7 +75,7 @@ class GatewayEngine:
             self.downstream,
         )
         self.state_store = StateStore(state_path or STATE_PATH)
-        self.upstream = IPhoneUsbUpstream(config, self._run)
+        self.upstream, usb_upstreams = build_usb_upstreams(config, self._run)
         self.wifi = NetworkManagerWifi(config, self._run, metadata=wifi_metadata)
         self.connection = MobileConnectionResolver(
             config,
@@ -85,6 +85,7 @@ class GatewayEngine:
         self.upstream_lifecycle = UpstreamLifecycle(
             config,
             self.upstream,
+            usb_upstreams,
             self.wifi,
         )
         self.config_error = config_error
@@ -95,7 +96,7 @@ class GatewayEngine:
         self.last_downstream: str | None = None
         self.last_upstream: ResolvedUpstream | None = None
         self.active_connection: str | None = None
-        self._prev_iphone_present = False
+        self._prev_usb_present = False
         self._prev_wifi_connected = False
         self.health_generation = 0
         self.connection_warnings: list[str] = []
@@ -167,7 +168,7 @@ class GatewayEngine:
         upstream_interface = (
             self.last_upstream.interface
             if self.last_upstream
-            else self.config.upstream_interface
+            else (self.config.upstream_interface if self.config.uses_wifi else None)
         )
         management_interface = (
             self.management.interface if self.management else None
@@ -180,8 +181,14 @@ class GatewayEngine:
     def _resolve_management(self) -> ManagementBaseline | None:
         return resolve_pinned_management(self)
 
-    def _resolve_upstream(self) -> tuple[ResolvedUpstream | None, list[str]]:
-        resolution = self.connection.resolve(self.management)
+    def _resolve_upstream(
+        self,
+        downstream_interface: str | None = None,
+    ) -> tuple[ResolvedUpstream | None, list[str]]:
+        resolution = self.connection.resolve(
+            self.management,
+            downstream_interface,
+        )
         with self.lock:
             self.connection_warnings = list(resolution.warnings)
             self.fallback_selected = resolution.fallback_active

@@ -7,7 +7,8 @@ from typing import Protocol
 
 DEVICE = "nmwan0"
 SYNTHETIC_DEVICE_IDENTITY = "nm-lab-veth:nmwan0"
-WIFI_RADIO_QUERY = ("nmcli", "-g", "WIFI-HW,WIFI", "radio")
+WIFI_HARDWARE_QUERY = ("nmcli", "-g", "WIFI-HW", "radio")
+WIFI_SOFTWARE_QUERY = ("nmcli", "-g", "WIFI", "radio")
 
 
 class CommandRunner(Protocol):
@@ -33,11 +34,11 @@ class NmcliHarnessRunner:
         check: bool = True,
         timeout: int = 20,
     ) -> subprocess.CompletedProcess[str]:
-        if tuple(args) == WIFI_RADIO_QUERY:
+        if tuple(args) in {WIFI_HARDWARE_QUERY, WIFI_SOFTWARE_QUERY}:
             return subprocess.CompletedProcess(
                 args,
                 0,
-                stdout="enabled\nenabled\n",
+                stdout="enabled\n",
                 stderr="",
             )
 

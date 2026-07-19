@@ -101,6 +101,7 @@ class FakeRunner:
         self.nm_device_reason = {"end0": "", "wlan0": ""}
         self.nm_radio_software = True
         self.nm_radio_hardware = True
+        self.nm_radio_query_fail = False
         self.nm_wifi_cache: dict[str, set[str]] = {}
 
     def run(
@@ -400,9 +401,17 @@ class FakeRunner:
         if args == ["nmcli", "-g", "DEVICE", "device", "status"]:
             return Result(stdout="\n".join(self.nm_path) + "\n")
         if args == ["nmcli", "-g", "WIFI-HW,WIFI", "radio"]:
-            hardware = "enabled" if self.nm_radio_hardware else "disabled"
-            software = "enabled" if self.nm_radio_software else "disabled"
-            return Result(stdout=f"{hardware}\n{software}\n")
+            return Result(returncode=2, stderr="unsupported combined radio query")
+        if args == ["nmcli", "-g", "WIFI-HW", "radio"]:
+            if self.nm_radio_query_fail:
+                return Result(returncode=1)
+            value = "enabled" if self.nm_radio_hardware else "disabled"
+            return Result(stdout=f"{value}\n")
+        if args == ["nmcli", "-g", "WIFI", "radio"]:
+            if self.nm_radio_query_fail:
+                return Result(returncode=1)
+            value = "enabled" if self.nm_radio_software else "disabled"
+            return Result(stdout=f"{value}\n")
         if args[:3] == ["nmcli", "device", "set"] and "autoconnect" in args:
             iface = args[3]
             value = args[args.index("autoconnect") + 1]
@@ -419,7 +428,10 @@ class FakeRunner:
             and args[3:6] == ["connection", "up", "uuid"]
         ):
             return self._nm_connection_up(args[6])
-        if args[:5] == ["nmcli", "--rescan", "no", "-g", "SSID"] and "list" in args:
+        if (
+            args[:6] == ["nmcli", "-g", "SSID", "device", "wifi", "list"]
+            and args[-2:] == ["--rescan", "no"]
+        ):
             iface = args[args.index("ifname") + 1]
             ssids = self.nm_wifi_cache.get(iface, set())
             return Result(

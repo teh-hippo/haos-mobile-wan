@@ -130,6 +130,7 @@ class DistributionMetadataTests(unittest.TestCase):
             "uv run coverage run -m unittest discover",
             "uv run ruff check .",
             "uv run mypy ha_cellular_gateway/rootfs/app tools",
+            "uv run python tools/structure_contract.py",
             'uv run python -c "import app.main"',
         ):
             self.assertIn(snippet, text)
@@ -137,6 +138,7 @@ class DistributionMetadataTests(unittest.TestCase):
             "uv run coverage run -m unittest discover",
             "uv run ruff format --check .",
             "uv run mypy ha_cellular_gateway/rootfs/app tools",
+            "uv run python tools/structure_contract.py",
             'uv run python -c "import app.main"',
             "apparmor_parser -QK ha_cellular_gateway/apparmor.txt",
             "docker buildx build",

@@ -103,11 +103,6 @@ jobs:
           assert Path("ha_cellular_gateway/DOCS.md").exists()
           assert Path("ha_cellular_gateway/translations/en.yaml").exists()
 
-          app_dir = Path("ha_cellular_gateway/rootfs/app")
-          for path in app_dir.glob("*.py"):
-              line_count = len(path.read_text(encoding="utf-8").splitlines())
-              assert line_count <= 250, f"{path} has {line_count} lines"
-
           dockerfile = Path(
               "ha_cellular_gateway/Dockerfile"
           ).read_text(encoding="utf-8")
@@ -153,6 +148,9 @@ jobs:
           assert "/sbin/udhcpc" not in profile
           assert "udhcpc.script" not in profile
           PY
+
+      - name: Validate source structure
+        run: uv run python tools/structure_contract.py
 
       - name: Parse AppArmor profile
         run: apparmor_parser -QK ha_cellular_gateway/apparmor.txt

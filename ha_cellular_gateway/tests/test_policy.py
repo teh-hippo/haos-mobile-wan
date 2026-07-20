@@ -2,7 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helpers import FakeRunner, build_engine, make_config, sysctl_values
+from test_support.engine_fixtures import build_engine, make_config, sysctl_values
+from test_support.runner import FakeRunner
 
 
 class PolicyRoutingTests(unittest.TestCase):
@@ -56,7 +57,7 @@ class PolicyRoutingTests(unittest.TestCase):
         )
 
     def test_foreign_priority_is_reported_without_mutation(self) -> None:
-        self.runner.policy_rules = [
+        self.runner.routes.policy_rules = [
             {
                 "priority": 20100,
                 "iifname": "wg0",
@@ -72,7 +73,7 @@ class PolicyRoutingTests(unittest.TestCase):
         )
 
     def test_foreign_rule_using_owned_table_is_reported(self) -> None:
-        self.runner.policy_rules = [
+        self.runner.routes.policy_rules = [
             {
                 "priority": 10000,
                 "src": "10.0.0.0",
@@ -86,7 +87,7 @@ class PolicyRoutingTests(unittest.TestCase):
         )
 
     def test_owned_rules_from_iproute_json_are_accepted(self) -> None:
-        self.runner.policy_rules = [
+        self.runner.routes.policy_rules = [
             {
                 "priority": 20100,
                 "src": "all",

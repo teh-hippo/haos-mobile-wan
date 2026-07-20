@@ -1,11 +1,13 @@
 import unittest
 
 from gateway_support import GatewayTestCase
-from helpers import FakeProcess, FakeRunner, build_engine, make_config, sysctl_values
 from rootfs.app.const import IPHONE_USB, IPHONE_USB_WIFI_FALLBACK, WIFI_HOTSPOT
 from rootfs.app.gateway_reconcile import apply as apply_gateway
 from rootfs.app.management import ManagementBaseline
 from rootfs.app.upstream_models import ResolvedUpstream
+from test_support.engine_fixtures import build_engine, make_config, sysctl_values
+from test_support.process import FakeProcess
+from test_support.runner import FakeRunner
 
 
 class GatewayFailoverTests(GatewayTestCase):
@@ -40,7 +42,7 @@ class GatewayFailoverTests(GatewayTestCase):
             return []
 
         engine.safety.errors = safety_errors
-        engine.runner.nm_wifi_cache["wlan0"] = {"Phone"}
+        engine.runner.networkmanager.nm_wifi_cache["wlan0"] = {"Phone"}
         engine.dhcp.start = lambda downstream: setattr(
             engine.dhcp,
             "process",
@@ -78,7 +80,7 @@ class GatewayFailoverTests(GatewayTestCase):
     ) -> None:
         values = sysctl_values()
         runner = FakeRunner()
-        runner.nm_radio_query_fail = True
+        runner.networkmanager.nm_radio_query_fail = True
         engine = build_engine(
             make_config(
                 mobile_connection=IPHONE_USB_WIFI_FALLBACK,

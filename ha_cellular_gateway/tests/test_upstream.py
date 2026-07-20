@@ -5,7 +5,6 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from helpers import FakeProcess, FakeRunner, Result, make_config
 from rootfs.app.const import IPHONE_USB
 from rootfs.app.errors import GatewayError
 from rootfs.app.management import ManagementBaseline
@@ -31,6 +30,9 @@ from rootfs.app.nm_profile_specs import (
 from rootfs.app.nm_profile_specs import usb_profile_spec
 from rootfs.app.upstream_iphone import IPhoneUsbUpstream
 from rootfs.app.upstream_models import ResolvedUpstream
+from test_support.engine_fixtures import make_config
+from test_support.process import FakeProcess, Result
+from test_support.runner import FakeRunner
 
 EXPECTED_SETTINGS = usb_profile_spec().expected
 
@@ -450,9 +452,9 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
 
     def _paired_runner(self) -> FakeRunner:
         runner = FakeRunner()
-        runner.idevice_udids = ["iphone-udid"]
-        runner.idevice_paired_udids = ["iphone-udid"]
-        runner.idevice_validate_result.returncode = 0
+        runner.usb.idevice_udids = ["iphone-udid"]
+        runner.usb.idevice_paired_udids = ["iphone-udid"]
+        runner.usb.idevice_validate_result.returncode = 0
         return runner
 
     def test_reports_networkmanager_lease_owner(self) -> None:
@@ -524,7 +526,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
 
     def test_pairing_is_still_required(self) -> None:
         runner = FakeRunner()
-        runner.idevice_udids = ["iphone-udid"]
+        runner.usb.idevice_udids = ["iphone-udid"]
         self._add_apple_usb_device()
         manager = self._manager(runner, FakeNetworkManager())
 
@@ -566,7 +568,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
 
     def test_pairing_prompt_is_rate_limited(self) -> None:
         runner = FakeRunner()
-        runner.idevice_udids = ["iphone-udid"]
+        runner.usb.idevice_udids = ["iphone-udid"]
         self._add_apple_usb_device()
         manager = self._manager(runner, FakeNetworkManager())
 
@@ -587,7 +589,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
 
     def test_multiple_devices_block_fallback(self) -> None:
         runner = FakeRunner()
-        runner.idevice_udids = ["one", "two"]
+        runner.usb.idevice_udids = ["one", "two"]
         self._add_apple_usb_device()
         manager = self._manager(runner, FakeNetworkManager())
 
@@ -764,7 +766,7 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
 
     def test_usbmuxd_startup_failure_surfaces_output(self) -> None:
         runner = FakeRunner()
-        runner.idevice_udids = ["iphone-udid"]
+        runner.usb.idevice_udids = ["iphone-udid"]
         self._add_ipheth_interface()
         self._add_apple_usb_device()
 

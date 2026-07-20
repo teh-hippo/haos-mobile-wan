@@ -4,13 +4,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helpers import (
-    FakeProcess,
-    FakeRunner,
-    build_engine,
-    make_config,
-    sysctl_values,
-)
 from rootfs.app.const import IPHONE_USB, IPHONE_USB_WIFI_FALLBACK
 from rootfs.app.gateway import GatewayEngine
 from rootfs.app.management import ManagementBaseline
@@ -19,6 +12,9 @@ from rootfs.app.nm_profile_specs import (
     USB_ROUTE_TABLE,
     WIFI_PROFILE_UUID,
 )
+from test_support.engine_fixtures import build_engine, make_config, sysctl_values
+from test_support.process import FakeProcess
+from test_support.runner import FakeRunner
 
 IPHONE_IFACE = "eth0"
 DHCP_OFFER = {"address": "172.20.10.6", "prefix": 28, "gateway": "172.20.10.1"}
@@ -97,7 +93,7 @@ class UsbRestartRegressionTests(unittest.TestCase):
     def _iphone_main_defaults(self, runner: FakeRunner) -> list:
         return [
             route
-            for route in runner.main_default_routes
+            for route in runner.routes.main_default_routes
             if route.get("dev") == IPHONE_IFACE
         ]
 
@@ -106,36 +102,38 @@ class UsbRestartRegressionTests(unittest.TestCase):
             route.get("dst") == "default"
             and route.get("dev") == IPHONE_IFACE
             and route.get("gateway") == DHCP_OFFER["gateway"]
-            for route in runner.nm_routes.get(USB_ROUTE_TABLE, [])
+            for route in runner.networkmanager.nm_routes.get(USB_ROUTE_TABLE, [])
         )
 
     def test_options_restart_recreates_usb_once_without_oscillation(
         self,
     ) -> None:
         runner = FakeRunner()
-        runner.nm_dhcp[IPHONE_IFACE] = dict(DHCP_OFFER)
-        runner.nm_wildcard_bind = IPHONE_IFACE
-        runner.nm_wifi_cache["wlan0"] = {"Phone"}
+        runner.networkmanager.nm_dhcp[IPHONE_IFACE] = dict(DHCP_OFFER)
+        runner.networkmanager.nm_wildcard_bind = IPHONE_IFACE
+        runner.networkmanager.nm_wifi_cache["wlan0"] = {"Phone"}
 
         # A live USB-only gateway: the inert profile is created, explicitly
         # activated, and takes its DHCP lease isolated in table 202.
         live = self._engine(IPHONE_USB, runner)
         live.reconcile()
         self.assertEqual(live.active_connection, IPHONE_USB)
-        self.assertEqual(runner.nm_active.get(IPHONE_IFACE), USB_PROFILE_UUID)
+        self.assertEqual(
+            runner.networkmanager.nm_active.get(IPHONE_IFACE), USB_PROFILE_UUID
+        )
         self.assertTrue(self._table_202_ready(runner))
 
         # Changing options restarts the add-on: the old engine stops gracefully
         # and deletes/deactivates its USB profile and lease. The physical ipheth
         # device, carrier and DHCP peer stay available across the restart.
         live.stop()
-        self.assertNotIn(USB_PROFILE_UUID, runner.nm_profiles)
-        self.assertNotIn(IPHONE_IFACE, runner.nm_active)
-        self.assertNotIn(IPHONE_IFACE, runner.interface_addresses)
-        self.assertEqual(runner.nm_routes.get(USB_ROUTE_TABLE, []), [])
+        self.assertNotIn(USB_PROFILE_UUID, runner.networkmanager.nm_profiles)
+        self.assertNotIn(IPHONE_IFACE, runner.networkmanager.nm_active)
+        self.assertNotIn(IPHONE_IFACE, runner.routes.interface_addresses)
+        self.assertEqual(runner.networkmanager.nm_routes.get(USB_ROUTE_TABLE, []), [])
         self.assertEqual(self._iphone_main_defaults(runner), [])
-        self.assertIn(IPHONE_IFACE, runner.nm_dhcp)
-        self.assertEqual(runner.nm_wildcard_bind, IPHONE_IFACE)
+        self.assertIn(IPHONE_IFACE, runner.networkmanager.nm_dhcp)
+        self.assertEqual(runner.networkmanager.nm_wildcard_bind, IPHONE_IFACE)
 
         # A fresh engine starts in USB-preferred Wi-Fi fallback.
         restarted = self._engine(IPHONE_USB_WIFI_FALLBACK, runner)
@@ -159,10 +157,12 @@ class UsbRestartRegressionTests(unittest.TestCase):
         self.assertEqual(self._iphone_main_defaults(runner), [])
         self.assertTrue(self._table_202_ready(runner))
         self.assertEqual(restarted.active_connection, IPHONE_USB)
-        self.assertEqual(runner.nm_active.get(IPHONE_IFACE), USB_PROFILE_UUID)
+        self.assertEqual(
+            runner.networkmanager.nm_active.get(IPHONE_IFACE), USB_PROFILE_UUID
+        )
 
         # Wi-Fi ownership prepares exactly once as stable warm standby.
-        self.assertIn(WIFI_PROFILE_UUID, runner.nm_profiles)
+        self.assertIn(WIFI_PROFILE_UUID, runner.networkmanager.nm_profiles)
         self.assertEqual(_adds(commands, WIFI_PROFILE_UUID), 1)
         self.assertEqual(_connection_verbs(commands, "delete", WIFI_PROFILE_UUID), 0)
 

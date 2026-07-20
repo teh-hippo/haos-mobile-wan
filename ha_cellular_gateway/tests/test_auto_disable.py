@@ -3,8 +3,8 @@ from __future__ import annotations
 import threading
 import unittest
 
-from helpers import make_config
 from rootfs.app.auto_disable import RETRY_SECONDS, AutoDisable
+from test_support.engine_fixtures import make_config
 
 
 class FakeLifecycle:

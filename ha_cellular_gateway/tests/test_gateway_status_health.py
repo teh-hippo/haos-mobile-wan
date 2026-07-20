@@ -4,9 +4,10 @@ import time
 import unittest
 
 from gateway_support import GatewayTestCase
-from helpers import FakeRunner, build_engine, make_config, sysctl_values
 from rootfs.app.const import IPHONE_USB, WIFI_HOTSPOT
 from rootfs.app.upstream_models import ResolvedUpstream
+from test_support.engine_fixtures import build_engine, make_config, sysctl_values
+from test_support.runner import FakeRunner
 
 
 class GatewayStatusHealthTests(GatewayTestCase):

@@ -1,6 +1,5 @@
 import unittest
 
-from helpers import make_config
 from rootfs.app.const import (
     GENERIC_USB,
     GENERIC_USB_WIFI_FALLBACK,
@@ -11,6 +10,7 @@ from rootfs.app.const import (
 from rootfs.app.mobile_connection import MobileConnectionResolver
 from rootfs.app.networkmanager import NetworkManagerResult
 from rootfs.app.upstream_models import ResolvedUpstream
+from test_support.engine_fixtures import make_config
 
 
 class StubIPhone:

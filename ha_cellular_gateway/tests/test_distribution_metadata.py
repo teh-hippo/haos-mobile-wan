@@ -50,6 +50,9 @@ class DistributionMetadataTests(unittest.TestCase):
         self.assertIn("previous_version=", workflow)
         self.assertIn("push: ${{ needs.init.outputs.publish }}", workflow)
         self.assertIn("if: needs.init.outputs.publish == 'true'", workflow)
+        self.assertIn("- beta", workflow)
+        self.assertIn('if [ "$REF_NAME" = main ]; then', workflow)
+        self.assertIn("image-tags: ${{ needs.init.outputs.tags }}", workflow)
         self.assertNotIn("- pyproject.toml", workflow)
         self.assertNotIn("- uv.lock", workflow)
 
@@ -75,16 +78,20 @@ class DistributionMetadataTests(unittest.TestCase):
         self.assertIn("pull_request:", nm_workflow)
         self.assertNotIn("pull_request:", wifi_workflow)
 
-    def test_release_workflow_is_manual_and_gates_on_main(self) -> None:
+    def test_release_workflow_is_manual_and_gates_each_channel(self) -> None:
         workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
         for snippet in (
             "workflow_dispatch:",
+            "channel:",
             "version:",
             "acceptance_reference:",
-            "required: true",
-            "Require dispatch from main",
-            'test "$REF" = "refs/heads/main"',
-            "environment: release",
+            "Require matching release branch",
+            "refs/heads/main",
+            "refs/heads/beta",
+            "Beta releases require a -beta.N version",
+            "Stable releases require an acceptance reference",
+            "prerelease",
+            "release",
         ):
             self.assertIn(snippet, workflow)
         self.assertNotIn("pull_request:", workflow)
@@ -110,6 +117,7 @@ class DistributionMetadataTests(unittest.TestCase):
             "tools/release_notes.py",
             "ACCEPTANCE_REFERENCE",
             "gh release create",
+            "--prerelease",
             "--target",
         ):
             self.assertIn(snippet, workflow)
@@ -133,6 +141,7 @@ class DistributionMetadataTests(unittest.TestCase):
         for snippet in (
             "tools/release_notes.py",
             "acceptance_reference",
+            "beta",
             "release",
             "v<version>",
         ):

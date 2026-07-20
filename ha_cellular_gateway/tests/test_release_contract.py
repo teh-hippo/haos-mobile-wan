@@ -5,6 +5,7 @@ import unittest
 from tools.release_contract import (
     ContractError,
     config_version,
+    is_beta_version,
     is_release_file,
     parse_version,
     stable_release_errors,
@@ -95,17 +96,40 @@ class ReleaseContractTests(unittest.TestCase):
 
     def test_config_version_requires_semver_string(self) -> None:
         self.assertEqual(config_version('version: "0.11.3"\n'), "0.11.3")
+        self.assertTrue(is_beta_version("1.0.0-beta.1"))
+        self.assertLess(
+            parse_version("1.0.0-beta.1"),
+            parse_version("1.0.0"),
+        )
+        self.assertGreater(
+            parse_version("1.0.0-beta.2"),
+            parse_version("1.0.0-beta.1"),
+        )
         with self.assertRaises(ContractError):
             config_version("version: 12\n")
         with self.assertRaises(ContractError):
             parse_version("0.11")
+        with self.assertRaises(ContractError):
+            parse_version("1.0.0-rc.1")
 
-    def test_pre_release_does_not_require_stable_metadata(self) -> None:
+    def test_pre_1_0_release_does_not_require_stable_metadata(self) -> None:
         self.assertEqual(
             stable_release_errors(
                 {
                     "version": "0.12.0",
                     "stage": "experimental",
+                }
+            ),
+            [],
+        )
+
+    def test_beta_release_does_not_require_stable_metadata(self) -> None:
+        self.assertEqual(
+            stable_release_errors(
+                {
+                    "version": "1.0.0-beta.1",
+                    "stage": "experimental",
+                    "image": "ghcr.io/teh-hippo/haos-mobile-wan",
                 }
             ),
             [],

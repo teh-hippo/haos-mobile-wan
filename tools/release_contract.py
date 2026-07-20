@@ -19,22 +19,32 @@ RELEASE_PREFIXES = (
     "ha_cellular_gateway/rootfs/",
     "ha_cellular_gateway/translations/",
 )
-VERSION_PATTERN = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+VERSION_PATTERN = re.compile(
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(?:-beta\.(0|[1-9]\d*))?$"
+)
 
 
 class ContractError(ValueError):
     pass
 
 
-def parse_version(value: str) -> tuple[int, int, int]:
+def parse_version(value: str) -> tuple[int, int, int, int, int]:
     match = VERSION_PATTERN.fullmatch(value)
     if match is None:
         raise ContractError(f"Invalid semantic version: {value}")
+    beta = match.group(4)
     return (
         int(match.group(1)),
         int(match.group(2)),
         int(match.group(3)),
+        1 if beta is None else 0,
+        int(beta or 0),
     )
+
+
+def is_beta_version(value: str) -> bool:
+    return parse_version(value)[3] == 0
 
 
 def config_data(text: str) -> dict[str, object]:
@@ -55,7 +65,8 @@ def stable_release_errors(config: dict[str, object]) -> list[str]:
     version = config.get("version")
     if not isinstance(version, str):
         raise ContractError(f"{CONFIG_PATH} must contain a string version")
-    if parse_version(version)[0] < 1:
+    parsed = parse_version(version)
+    if parsed[0] < 1 or parsed[3] == 0:
         return []
 
     errors: list[str] = []

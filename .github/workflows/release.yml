@@ -1,0 +1,234 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >-
+          Release version without a leading v (must match
+          ha_cellular_gateway/config.yaml and be valid semver)
+        required: true
+        type: string
+      acceptance_reference:
+        description: >-
+          URL or concise evidence reference for the live acceptance checklist
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify release candidate
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Require dispatch from main
+        env:
+          REF: ${{ github.ref }}
+        run: test "$REF" = "refs/heads/main"
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          python-version: "3.13"
+
+      - run: uv sync --frozen
+
+      - name: Validate version
+        id: version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          uv run python - <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+
+          from tools.release_contract import (
+              ContractError,
+              config_version,
+              parse_version,
+          )
+
+          version = os.environ["VERSION"]
+          try:
+              parse_version(version)
+          except ContractError as error:
+              print(error, file=sys.stderr)
+              raise SystemExit(1)
+
+          config = config_version(
+              Path("ha_cellular_gateway/config.yaml").read_text(encoding="utf-8")
+          )
+          if config != version:
+              print(
+                  f"Input version {version} does not match "
+                  f"ha_cellular_gateway/config.yaml version {config}",
+                  file=sys.stderr,
+              )
+              raise SystemExit(1)
+          PY
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag and release are unused
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ steps.version.outputs.version }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" \
+            >/dev/null 2>&1; then
+            echo "Tag $TAG already exists" >&2
+            exit 1
+          fi
+          if gh release view "$TAG" --repo "${{ github.repository }}" \
+            >/dev/null 2>&1; then
+            echo "Release $TAG already exists" >&2
+            exit 1
+          fi
+
+  candidate:
+    name: verify published candidate
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+    env:
+      IMAGE: ghcr.io/teh-hippo/haos-mobile-wan:${{ needs.verify.outputs.version }}
+      VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          python-version: "3.13"
+
+      - run: uv sync --frozen
+
+      - name: Find successful Builder push run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          run_id=$(gh api \
+            "repos/${{ github.repository }}/actions/workflows/builder.yml/runs?head_sha=${{ github.sha }}&event=push&status=success" \
+            --jq '.workflow_runs[0].id // empty')
+          if [ -z "$run_id" ]; then
+            echo "No successful Builder push run found for ${{ github.sha }}" >&2
+            exit 1
+          fi
+
+      - name: Find successful Validate push run
+        id: validate_run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          run_id=$(gh api \
+            "repos/${{ github.repository }}/actions/workflows/validate.yml/runs?head_sha=${{ github.sha }}&event=push&status=success" \
+            --jq '.workflow_runs[0].id // empty')
+          if [ -z "$run_id" ]; then
+            echo "No successful Validate push run found for ${{ github.sha }}" >&2
+            exit 1
+          fi
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Verify published image signature
+        uses: home-assistant/builder/actions/cosign-verify@4de35182ce1e329181bffcbcc84d33db5e2c7e10 # 2026.06.0
+        with:
+          image: ${{ env.IMAGE }}
+          cosign-identity: ^https://github\.com/teh-hippo/haos-mobile-wan/\.github/workflows/builder\.yml@refs/heads/main$
+
+      - name: Download image SBOM
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh run download "${{ steps.validate_run.outputs.run_id }}" \
+            --repo "${{ github.repository }}" \
+            --name "haos-mobile-wan-sbom-${{ github.sha }}" \
+            --dir sbom
+
+      - name: Extract release notes
+        run: uv run python tools/release_notes.py "$VERSION" > release-notes.md
+
+      - name: Preserve release candidate assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-candidate-${{ github.sha }}
+          path: |
+            release-notes.md
+            sbom/trivy-sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 1
+
+  networkmanager-integration:
+    name: NetworkManager integration lab
+    needs: verify
+    uses: ./.github/workflows/networkmanager-integration.yml
+
+  networkmanager-wifi-integration:
+    name: NetworkManager Wi-Fi integration lab
+    needs: verify
+    uses: ./.github/workflows/networkmanager-wifi-integration.yml
+
+  release:
+    name: publish release
+    needs:
+      - verify
+      - candidate
+      - networkmanager-integration
+      - networkmanager-wifi-integration
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      actions: read
+      contents: write
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - name: Download verified release candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "release-candidate-$GITHUB_SHA" \
+            --dir release-candidate
+
+      - name: Append acceptance reference
+        env:
+          ACCEPTANCE_REFERENCE: ${{ inputs.acceptance_reference }}
+        run: |
+          {
+            printf '\n## Acceptance reference\n\n'
+            printf '%s\n' "$ACCEPTANCE_REFERENCE"
+          } >> release-candidate/release-notes.md
+
+      - name: Create release tag and GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ env.VERSION }}
+        run: |
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$TAG" \
+            --notes-file release-candidate/release-notes.md \
+            --target "$GITHUB_SHA" \
+            "release-candidate/sbom/trivy-sbom.cdx.json#haos-mobile-wan-sbom-$VERSION.cdx.json"

@@ -275,15 +275,18 @@ Source-size guardrails are category-specific rather than one repository-wide
 number: runtime modules are limited to 250 lines, unit and support modules to
 400, the live NetworkManager lab to 350 and QEMU guest modules to 300.
 
-The on-demand [NetworkManager integration
-lab](ha_cellular_gateway/integration/networkmanager/README.md) runs only by
-manual workflow dispatch or its local rootful Docker command. It is separate
-from unit discovery and does not replace HAOS hardware acceptance.
+The [NetworkManager integration
+lab](ha_cellular_gateway/integration/networkmanager/README.md) runs on pull
+requests that touch runtime networking or NetworkManager integration files, on
+a weekly schedule, by manual workflow dispatch, or through its local rootful
+Docker command. It is separate from unit discovery and does not replace HAOS
+hardware acceptance.
 
-The manual-only [QEMU Wi-Fi integration
+The [QEMU Wi-Fi integration
 lab](ha_cellular_gateway/integration/networkmanager_wifi/README.md) boots a
 disposable KVM guest and validates real hwsim WPA plus QEMU CDC generic USB.
-It runs locally on a KVM host or through its `workflow_dispatch` workflow.
+It is too heavy to run on every pull request, so it runs on a weekly schedule,
+by manual workflow dispatch, or locally on a KVM host.
 
 The primary local checks are:
 
@@ -310,3 +313,25 @@ PYTHONPATH=ha_cellular_gateway \
 PYTHONPATH=ha_cellular_gateway/rootfs \
   uv run python -c "import app.main"
 ```
+
+## Release process
+
+Releases are exact-commit release candidates: nothing is rebuilt, only what
+already passed on `main` is verified and tagged.
+[`.github/workflows/release.yml`](.github/workflows/release.yml) is the
+authoritative source of truth and only runs by manual `workflow_dispatch` from
+`main` with a `version` (matching `ha_cellular_gateway/config.yaml`, without a
+leading `v`) and an `acceptance_reference` input. It calls both integration
+labs at the exact commit under release using the reusable-workflow relative
+path, which always resolves to that commit rather than a branch that could
+drift; validates the version against `ha_cellular_gateway/config.yaml` and
+semver; confirms the tag and GitHub release do not already exist; locates the
+successful Builder and Validate push runs for that commit; verifies the public
+signed `ghcr.io/teh-hippo/haos-mobile-wan` image with Cosign; downloads that
+run's CycloneDX SBOM; and extracts the matching
+[`ha_cellular_gateway/CHANGELOG.md`](ha_cellular_gateway/CHANGELOG.md)
+section with [`tools/release_notes.py`](tools/release_notes.py) instead of
+using generated release notes. After those checks and both labs pass, a final
+job gated on the `release` environment downloads the verified candidate,
+appends the acceptance reference and creates the `v<version>` tag and release
+at that commit with the SBOM attached.

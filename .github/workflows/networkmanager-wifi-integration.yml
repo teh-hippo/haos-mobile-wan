@@ -1,7 +1,10 @@
 name: NetworkManager Wi-Fi integration
 
 on:
+  workflow_call:
   workflow_dispatch:
+  schedule:
+    - cron: '32 3 * * 1'
 
 permissions:
   contents: read

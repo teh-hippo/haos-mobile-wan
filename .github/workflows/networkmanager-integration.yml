@@ -1,7 +1,27 @@
 name: NetworkManager integration
 
 on:
+  workflow_call:
   workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * 1'
+  pull_request:
+    paths:
+      - .github/workflows/networkmanager-integration.yml
+      - ha_cellular_gateway/integration/networkmanager/**
+      - ha_cellular_gateway/rootfs/app/dhcp.py
+      - ha_cellular_gateway/rootfs/app/downstream.py
+      - ha_cellular_gateway/rootfs/app/firewall*.py
+      - ha_cellular_gateway/rootfs/app/netfilter*.py
+      - ha_cellular_gateway/rootfs/app/networkmanager*.py
+      - ha_cellular_gateway/rootfs/app/nm_*.py
+      - ha_cellular_gateway/rootfs/app/policy*.py
+      - ha_cellular_gateway/rootfs/app/mobile_connection.py
+      - ha_cellular_gateway/rootfs/app/upstream*.py
+      - ha_cellular_gateway/rootfs/app/usb_network.py
+      - ha_cellular_gateway/rootfs/app/usb_upstream_factory.py
+      - ha_cellular_gateway/rootfs/app/wifi_activation.py
+      - ha_cellular_gateway/rootfs/app/wifi_custody*.py
 
 permissions:
   contents: read

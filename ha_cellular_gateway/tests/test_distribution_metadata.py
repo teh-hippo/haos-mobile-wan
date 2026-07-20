@@ -12,6 +12,13 @@ README = REPO_ROOT / "README.md"
 DOCS = APP_DIR / "DOCS.md"
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "validate.yml"
 BUILDER_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "builder.yml"
+RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release.yml"
+NM_INTEGRATION_WORKFLOW = (
+    REPO_ROOT / ".github" / "workflows" / "networkmanager-integration.yml"
+)
+NM_WIFI_INTEGRATION_WORKFLOW = (
+    REPO_ROOT / ".github" / "workflows" / "networkmanager-wifi-integration.yml"
+)
 CONFIG = APP_DIR / "config.yaml"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 PYTHON_VERSION = REPO_ROOT / ".python-version"
@@ -34,6 +41,80 @@ class DistributionMetadataTests(unittest.TestCase):
             "published-image-ok",
         ):
             self.assertIn(snippet, workflow)
+
+    def test_integration_labs_are_reusable_and_scheduled(self) -> None:
+        nm_workflow = NM_INTEGRATION_WORKFLOW.read_text(encoding="utf-8")
+        wifi_workflow = NM_WIFI_INTEGRATION_WORKFLOW.read_text(encoding="utf-8")
+        for workflow in (nm_workflow, wifi_workflow):
+            self.assertIn("workflow_call:", workflow)
+            self.assertIn("workflow_dispatch:", workflow)
+            self.assertIn("schedule:", workflow)
+            self.assertIn("permissions:\n  contents: read", workflow)
+        self.assertIn("pull_request:", nm_workflow)
+        self.assertNotIn("pull_request:", wifi_workflow)
+
+    def test_release_workflow_is_manual_and_gates_on_main(self) -> None:
+        workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        for snippet in (
+            "workflow_dispatch:",
+            "version:",
+            "acceptance_reference:",
+            "required: true",
+            "Require dispatch from main",
+            'test "$REF" = "refs/heads/main"',
+            "environment: release",
+        ):
+            self.assertIn(snippet, workflow)
+        self.assertNotIn("pull_request:", workflow)
+        self.assertNotIn("push:", workflow)
+
+    def test_release_workflow_calls_integration_labs_at_exact_commit(self) -> None:
+        workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn(
+            "uses: ./.github/workflows/networkmanager-integration.yml", workflow
+        )
+        self.assertIn(
+            "uses: ./.github/workflows/networkmanager-wifi-integration.yml",
+            workflow,
+        )
+
+    def test_release_workflow_verifies_exact_sha_and_signed_image(self) -> None:
+        workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        for snippet in (
+            "workflows/builder.yml/runs?head_sha=",
+            "workflows/validate.yml/runs?head_sha=",
+            "home-assistant/builder/actions/cosign-verify@",
+            "haos-mobile-wan-sbom-${{ github.sha }}",
+            "tools/release_notes.py",
+            "ACCEPTANCE_REFERENCE",
+            "gh release create",
+            "--target",
+        ):
+            self.assertIn(snippet, workflow)
+        self.assertNotIn("--generate-notes", workflow)
+
+    def test_release_workflow_final_job_has_minimal_permissions(self) -> None:
+        workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        release_job = workflow.split("  release:", 1)[1]
+        permissions_block = release_job.split("permissions:", 1)[1].split("env:", 1)[0]
+        self.assertIn("contents: write", permissions_block)
+        self.assertIn("actions: read", permissions_block)
+        self.assertNotIn("packages: read", permissions_block)
+        self.assertIn("packages: read", workflow.split("  candidate:", 1)[1])
+
+    def test_readme_documents_release_process_as_source_of_truth(self) -> None:
+        text = README.read_text(encoding="utf-8")
+        self.assertIn(
+            "[`.github/workflows/release.yml`](.github/workflows/release.yml)",
+            text,
+        )
+        for snippet in (
+            "tools/release_notes.py",
+            "acceptance_reference",
+            "release",
+            "v<version>",
+        ):
+            self.assertIn(snippet, text)
 
     def test_addon_includes_native_artwork(self) -> None:
         for name in ("icon.svg", "logo.svg"):

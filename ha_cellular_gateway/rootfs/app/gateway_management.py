@@ -18,12 +18,11 @@ def reconcile_without_management(
     cleanup(
         engine,
         preserve_host_protection=True,
-        force=bool(engine.owned_state or engine.applied),
         owned_only=True,
     )
     with engine.lock:
-        engine.last_downstream = None
-        error = engine.management_error or MANAGEMENT_ERROR
-        engine.last_safety_errors = [error]
-        engine.last_error = error
+        engine.selection_state.downstream = None
+        error = engine.lifecycle_state.management_error or MANAGEMENT_ERROR
+        engine.selection_state.safety_errors = [error]
+        engine.lifecycle_state.last_error = error
     engine._record_upstream(None)

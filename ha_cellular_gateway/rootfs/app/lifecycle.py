@@ -45,10 +45,10 @@ def log_upstream_transitions(
     }
     wifi = wifi_status is not None and wifi_status.get("connected") is True
     with engine.lock:
-        previous_usb = engine._prev_usb_present
-        previous_wifi = engine._prev_wifi_connected
-        engine._prev_usb_present = usb
-        engine._prev_wifi_connected = wifi
+        previous_usb = engine.selection_state.prev_usb_present
+        previous_wifi = engine.selection_state.prev_wifi_connected
+        engine.selection_state.prev_usb_present = usb
+        engine.selection_state.prev_wifi_connected = wifi
     if usb and not previous_usb:
         assert upstream is not None
         _LOGGER.info(

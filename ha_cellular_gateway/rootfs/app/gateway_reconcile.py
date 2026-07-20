@@ -1,31 +1,27 @@
 from __future__ import annotations
 
-import logging
 import subprocess
 import time
 from typing import TYPE_CHECKING
 
 from .errors import GatewayError, SafetyError
 from .gateway_cleanup import cleanup
+from .gateway_config_failure import handle_config_error
 from .gateway_management import reconcile_without_management
+from .gateway_safety_evaluation import (
+    evaluate_safety,
+    handle_unsafe_state,
+    record_evaluation,
+)
+from .gateway_startup import recover_from_restart
 from .gateway_transition import cleanup_changed_ownership
-from .lifecycle import log_upstream_transitions, wifi_interface_status
 
 if TYPE_CHECKING:
     from .gateway import GatewayEngine
+    from .management import ManagementBaseline
     from .upstream_models import ResolvedUpstream
 
-_LOGGER = logging.getLogger(__name__)
-
 OPERATION_ERRORS = (GatewayError, OSError, subprocess.SubprocessError, ValueError)
-
-
-def _protect_host(engine: GatewayEngine, downstream: str | None) -> None:
-    if engine._protectable_downstream(
-        downstream
-    ) and not engine.firewall.host_protection_installed(downstream):
-        assert downstream is not None
-        engine.firewall.protect_host(downstream)
 
 
 def apply(
@@ -34,8 +30,8 @@ def apply(
     upstream: ResolvedUpstream | None = None,
     upstream_errors: list[str] | None = None,
 ) -> None:
-    if engine.config_error:
-        raise GatewayError(engine.config_error)
+    if engine.lifecycle_state.config_error:
+        raise GatewayError(engine.lifecycle_state.config_error)
 
     with engine.operation_lock:
         management = engine._resolve_management()
@@ -46,7 +42,7 @@ def apply(
             upstream, upstream_errors = engine._resolve_upstream(downstream)
         cleanup_changed_ownership(engine, downstream, upstream)
         address_owned = engine.downstream.owns_address(
-            engine.owned_state,
+            engine.lifecycle_state.owned_state,
             downstream,
         )
         errors = engine.safety.errors(
@@ -54,22 +50,15 @@ def apply(
             management=management,
             upstream=upstream,
             upstream_errors=upstream_errors,
-            state_error=engine.state_load_error,
+            state_error=engine.lifecycle_state.state_load_error,
             downstream_address_owned=address_owned,
         )
         with engine.lock:
-            engine.last_downstream = downstream
-            engine.last_safety_errors = errors
+            engine.selection_state.downstream = downstream
+            engine.selection_state.safety_errors = errors
         engine._record_upstream(upstream)
         if errors:
-            cleanup(
-                engine,
-                preserve_host_protection=True,
-            )
-            _protect_host(engine, downstream)
-            message = "; ".join(errors)
-            with engine.lock:
-                engine.last_error = message
+            message = handle_unsafe_state(engine, downstream, errors)
             raise SafetyError(message)
         assert downstream is not None
         assert upstream is not None
@@ -79,8 +68,10 @@ def apply(
             preserve_host_protection=True,
         )
         with engine.lock:
-            engine.owned_state = engine.policy.ownership(downstream, upstream)
-            engine.owned_state["downstream_address_owned"] = True
+            engine.lifecycle_state.owned_state = engine.policy.ownership(
+                downstream, upstream
+            )
+            engine.lifecycle_state.owned_state["downstream_address_owned"] = True
             engine._persist_state()
         try:
             engine.firewall.protect_host(downstream)
@@ -95,14 +86,49 @@ def apply(
             )
             message = f"Activation failed: {err}"
             with engine.lock:
-                engine.last_error = message
+                engine.lifecycle_state.last_error = message
             raise GatewayError(message) from err
 
         with engine.lock:
-            engine.applied = True
-            engine.active_connection = upstream.connection
-            engine.last_error = None
+            engine.lifecycle_state.applied = True
+            engine.selection_state.active_connection = upstream.connection
+            engine.lifecycle_state.last_error = None
             engine._persist_state()
+
+
+def _needs_apply(
+    engine: GatewayEngine,
+    downstream: str | None,
+    upstream: ResolvedUpstream | None,
+) -> bool:
+    return (
+        not engine.lifecycle_state.applied
+        or not engine.policy.installed(downstream, upstream)
+        or not engine.firewall.installed(
+            downstream,
+            upstream.interface if upstream else None,
+        )
+        or not engine.dhcp.running
+    )
+
+
+def _reconcile_with_management(
+    engine: GatewayEngine,
+    management: ManagementBaseline,
+) -> None:
+    evaluation = evaluate_safety(engine, management)
+    record_evaluation(engine, evaluation)
+
+    if evaluation.errors:
+        handle_unsafe_state(engine, evaluation.downstream, evaluation.errors)
+        return
+
+    if _needs_apply(engine, evaluation.downstream, evaluation.upstream):
+        apply(
+            engine,
+            upstream=evaluation.upstream,
+            upstream_errors=evaluation.upstream_errors,
+        )
 
 
 def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
@@ -111,10 +137,8 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
             if engine.stop_event.is_set():
                 return
             with engine.lock:
-                engine.last_reconcile = time.time()
-                startup_cleanup_pending = engine.startup_cleanup_pending
-                owned_state = engine.owned_state
-                state_load_error = engine.state_load_error
+                engine.lifecycle_state.last_reconcile = time.time()
+                startup_cleanup_pending = engine.lifecycle_state.startup_cleanup_pending
 
             if engine.auto_disable.pending:
                 return
@@ -122,121 +146,16 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
             management = engine._resolve_management()
 
             if startup_cleanup_pending:
-                recovery_pending = bool(
-                    owned_state
-                    or engine.upstream_lifecycle.state()
-                    or engine.wifi.state()
-                )
-                recovery_started = time.monotonic()
-                if recovery_pending:
-                    _LOGGER.warning(
-                        "Interrupted gateway state detected; recovering before reconciliation"
-                    )
-                try:
-                    cleanup(
-                        engine,
-                        preserve_host_protection=(
-                            not engine.config_error and management is not None
-                        ),
-                        force=bool(owned_state),
-                        owned_only=bool(engine.config_error or management is None),
-                    )
-                except OPERATION_ERRORS:
-                    if recovery_pending:
-                        _LOGGER.exception(
-                            "Interrupted gateway recovery failed after %.1f seconds",
-                            time.monotonic() - recovery_started,
-                        )
-                    raise
-                recovery: list[str] = []
-                if not engine.config_error:
-                    recovery = engine.upstream_lifecycle.recover(management)
-                    engine._persist_state()
-                    if recovery:
-                        with engine.lock:
-                            engine.last_error = "; ".join(recovery)
-                with engine.lock:
-                    engine.startup_cleanup_pending = False
-                    if not engine.config_error:
-                        engine.state_load_error = None
-                        state_load_error = None
-                if recovery:
-                    _LOGGER.warning(
-                        "Startup recovery remains incomplete after %.1f seconds: %s",
-                        time.monotonic() - recovery_started,
-                        "; ".join(recovery),
-                    )
-                elif recovery_pending and not engine.config_error:
-                    _LOGGER.info(
-                        "Interrupted gateway recovery completed in %.1f seconds",
-                        time.monotonic() - recovery_started,
-                    )
-            if engine.config_error:
-                with engine.lock:
-                    engine.last_downstream = None
-                    engine.last_safety_errors = [engine.config_error]
-                    engine.last_error = engine.config_error
-                engine._record_upstream(None)
+                recover_from_restart(engine, management)
+
+            if engine.lifecycle_state.config_error:
+                handle_config_error(engine)
                 return
             if management is None:
                 reconcile_without_management(engine)
                 return
-            downstream = engine.safety.find_downstream(management.interface)
 
-            engine.upstream_lifecycle.activate(management)
-            engine._persist_state()
-            engine.connection.wifi_error = engine.upstream_lifecycle.error
-            upstream, upstream_errors = engine._resolve_upstream(downstream)
-            cleanup_changed_ownership(
-                engine,
-                downstream,
-                upstream,
-            )
-            try:
-                errors = engine.safety.errors(
-                    downstream,
-                    management=management,
-                    upstream=upstream,
-                    upstream_errors=upstream_errors,
-                    state_error=state_load_error,
-                    downstream_address_owned=engine.downstream.owns_address(
-                        engine.owned_state,
-                        downstream,
-                    ),
-                )
-            except OPERATION_ERRORS as err:
-                errors = [f"Safety inspection failed: {err}"]
-            wifi_status = wifi_interface_status(engine)
-            with engine.lock:
-                engine.last_downstream = downstream
-                engine.last_safety_errors = errors
-            engine._record_upstream(upstream)
-            log_upstream_transitions(engine, upstream, wifi_status)
-
-            if errors:
-                cleanup(
-                    engine,
-                    preserve_host_protection=True,
-                )
-                _protect_host(engine, downstream)
-                with engine.lock:
-                    engine.last_error = "; ".join(errors)
-                return
-
-            if (
-                not engine.applied
-                or not engine.policy.installed(downstream, upstream)
-                or not engine.firewall.installed(
-                    downstream,
-                    upstream.interface if upstream else None,
-                )
-                or not engine.dhcp.running
-            ):
-                apply(
-                    engine,
-                    upstream=upstream,
-                    upstream_errors=upstream_errors,
-                )
+            _reconcile_with_management(engine, management)
     finally:
         if refresh_health and not engine.stop_event.is_set():
             engine._refresh_health_if_due()

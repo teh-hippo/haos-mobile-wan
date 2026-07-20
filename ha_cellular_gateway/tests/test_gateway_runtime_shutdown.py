@@ -22,7 +22,7 @@ class GatewayRuntimeShutdownTests(GatewayTestCase):
             state_path=self.state_path,
         )
         engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
-        engine.startup_cleanup_pending = False
+        engine.lifecycle_state.startup_cleanup_pending = False
         engine.auto_disable.pending = True
         engine.upstream.resolve = lambda *_a, **_k: (_ for _ in ()).throw(
             AssertionError("upstream resolution must be skipped while stopping")
@@ -33,8 +33,8 @@ class GatewayRuntimeShutdownTests(GatewayTestCase):
 
         engine.reconcile(refresh_health=True)
 
-        self.assertIsNone(engine.last_upstream)
-        self.assertIsNone(engine.last_health_probe)
+        self.assertIsNone(engine.selection_state.upstream)
+        self.assertIsNone(engine.health_state.last_health_probe)
 
     def test_stop_cleans_upstream_after_gateway_cleanup_failure(self) -> None:
         engine = self._prepare_active_engine()

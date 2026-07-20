@@ -25,6 +25,7 @@ from .gateway_runtime import (
     status,
     stop,
 )
+from .gateway_state import HealthState, LifecycleState, SelectionState
 from .management import ManagementBaseline
 from .management_state import (
     resolve_pinned_management,
@@ -89,33 +90,20 @@ class GatewayEngine:
             usb_upstreams,
             self.wifi,
         )
-        self.config_error = config_error
-        self.last_error: str | None = None
-        self.last_reconcile: float | None = None
-        self.last_health_probe: float | None = None
-        self.last_safety_errors = ["Safety checks have not run yet"]
-        self.last_downstream: str | None = None
-        self.last_upstream: ResolvedUpstream | None = None
-        self.active_connection: str | None = None
-        self._prev_usb_present = False
-        self._prev_wifi_connected = False
-        self.health_generation = 0
-        self.connection_warnings: list[str] = []
-        self.fallback_selected = False
-        self.fallback_reason: str | None = None
-        self.upstream_healthy = False
-        self.public_ip: str | None = None
         self.dhcp = DnsmasqService(config, self._run)
         self.stop_event = threading.Event()
-        self.applied = False
-        self.started_at = time.time()
-        self.startup_cleanup_pending = True
         self.gateway_error = GatewayError
+        self.auto_disable = AutoDisable(config)
+        self.lifecycle_state = LifecycleState(
+            config_error=config_error,
+            started_at=time.time(),
+        )
+        self.selection_state = SelectionState()
+        self.health_state = HealthState()
         state, state_error = self.state_store.load()
         management = restore_management_identity(state)
-        self.management_interface, management_state_error = management
-        self.management_error: str | None = None
-        self.auto_disable = AutoDisable(config)
+        management_interface, management_state_error = management
+        self.lifecycle_state.management_interface = management_interface
         startup_errors = [
             error
             for error in (
@@ -128,17 +116,18 @@ class GatewayEngine:
             if error
         ]
         owned = state.get("owned")
-        self.owned_state = owned if isinstance(owned, dict) else None
-        if self.owned_state:
+        owned_state = owned if isinstance(owned, dict) else None
+        if owned_state:
             try:
-                self.policy.rule_args(self.owned_state)
-                self.policy.route_args(self.owned_state)
+                self.policy.rule_args(owned_state)
+                self.policy.route_args(owned_state)
             except (GatewayError, TypeError, ValueError):
-                self.owned_state = None
+                owned_state = None
                 startup_errors.append("Persistent ownership state is invalid")
-        self.state_load_error = "; ".join(startup_errors) or None
-        if self.state_load_error:
-            self.last_error = self.state_load_error
+        self.lifecycle_state.owned_state = owned_state
+        self.lifecycle_state.state_load_error = "; ".join(startup_errors) or None
+        if self.lifecycle_state.state_load_error:
+            self.lifecycle_state.last_error = self.lifecycle_state.state_load_error
         self.upstream_lifecycle.set_persist(self._persist_state)
         self.wifi.set_persist(self._persist_state)
 
@@ -149,30 +138,28 @@ class GatewayEngine:
 
     def _persist_state(self) -> None:
         self.state_store.save(
-            owned=self.owned_state,
+            owned=self.lifecycle_state.owned_state,
             profiles=self.upstream_lifecycle.state(),
             wifi_custody=self.wifi.state(),
-            management_interface=self.management_interface,
+            management_interface=self.lifecycle_state.management_interface,
         )
 
     def cleanup(
         self,
         *,
         preserve_host_protection: bool = False,
-        force: bool = False,
         owned_only: bool = False,
     ) -> None:
         cleanup_gateway(
             self,
             preserve_host_protection=preserve_host_protection,
-            force=force,
             owned_only=owned_only,
         )
 
     def _protectable_downstream(self, downstream: str | None) -> bool:
         upstream_interface = (
-            self.last_upstream.interface
-            if self.last_upstream
+            self.selection_state.upstream.interface
+            if self.selection_state.upstream
             else (self.config.upstream_interface if self.config.uses_wifi else None)
         )
         management_interface = self.management.interface if self.management else None
@@ -193,19 +180,19 @@ class GatewayEngine:
             downstream_interface,
         )
         with self.lock:
-            self.connection_warnings = list(resolution.warnings)
-            self.fallback_selected = resolution.fallback_active
-            self.fallback_reason = resolution.fallback_reason
+            self.selection_state.warnings = list(resolution.warnings)
+            self.selection_state.fallback_selected = resolution.fallback_active
+            self.selection_state.fallback_reason = resolution.fallback_reason
         return resolution.upstream, list(resolution.errors)
 
     def _record_upstream(self, upstream: ResolvedUpstream | None) -> None:
         with self.lock:
-            if upstream != self.last_upstream:
-                self.health_generation += 1
-                self.upstream_healthy = False
-                self.public_ip = None
-                self.last_health_probe = None
-            self.last_upstream = upstream
+            if upstream != self.selection_state.upstream:
+                self.health_state.generation += 1
+                self.health_state.upstream_healthy = False
+                self.health_state.public_ip = None
+                self.health_state.last_health_probe = None
+            self.selection_state.upstream = upstream
 
     def _health_probe(
         self, upstream: ResolvedUpstream | None

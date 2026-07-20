@@ -24,17 +24,21 @@ def resolve_pinned_management(
 ) -> ManagementBaseline | None:
     baseline = resolve_management(engine._run)
     error = None
+    pinned_interface = engine.lifecycle_state.management_interface
     if (
         baseline is not None
-        and engine.management_interface is not None
-        and baseline.interface != engine.management_interface
+        and pinned_interface is not None
+        and baseline.interface != pinned_interface
     ):
-        error = f"Management interface changed from {engine.management_interface} to {baseline.interface}"
+        error = (
+            f"Management interface changed from {pinned_interface} "
+            f"to {baseline.interface}"
+        )
         baseline = None
-    elif baseline is not None and engine.management_interface is None:
-        engine.management_interface = baseline.interface
+    elif baseline is not None and pinned_interface is None:
+        engine.lifecycle_state.management_interface = baseline.interface
         engine._persist_state()
     with engine.lock:
         engine.management = baseline
-        engine.management_error = error
+        engine.lifecycle_state.management_error = error
     return baseline

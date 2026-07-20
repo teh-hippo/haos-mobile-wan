@@ -82,7 +82,7 @@ class UsbRestartRegressionTests(unittest.TestCase):
         )
         engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
         engine.safety.errors = _safety_errors
-        engine.management_interface = "end0"
+        engine.lifecycle_state.management_interface = "end0"
         engine.management = ManagementBaseline("end0", "192.168.1.2/24")
         engine.dhcp.start = lambda downstream: setattr(
             engine.dhcp, "process", FakeProcess()
@@ -117,7 +117,7 @@ class UsbRestartRegressionTests(unittest.TestCase):
         # activated, and takes its DHCP lease isolated in table 202.
         live = self._engine(IPHONE_USB, runner)
         live.reconcile()
-        self.assertEqual(live.active_connection, IPHONE_USB)
+        self.assertEqual(live.selection_state.active_connection, IPHONE_USB)
         self.assertEqual(
             runner.networkmanager.nm_active.get(IPHONE_IFACE), USB_PROFILE_UUID
         )
@@ -156,7 +156,7 @@ class UsbRestartRegressionTests(unittest.TestCase):
         # Kernel truth: main clean, lease isolated in table 202, USB preferred.
         self.assertEqual(self._iphone_main_defaults(runner), [])
         self.assertTrue(self._table_202_ready(runner))
-        self.assertEqual(restarted.active_connection, IPHONE_USB)
+        self.assertEqual(restarted.selection_state.active_connection, IPHONE_USB)
         self.assertEqual(
             runner.networkmanager.nm_active.get(IPHONE_IFACE), USB_PROFILE_UUID
         )

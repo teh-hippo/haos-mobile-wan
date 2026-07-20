@@ -41,6 +41,31 @@ class GatewayCleanupHostProtectionTests(GatewayTestCase):
             restarted.runner.routes.interface_addresses,
         )
 
+    def test_cleanup_warns_and_continues_when_downstream_discovery_fails(
+        self,
+    ) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply()
+        persisted_ownership = dict(engine.lifecycle_state.owned_state or {})
+        engine.safety.find_downstream = lambda *_a, **_k: (_ for _ in ()).throw(
+            OSError("adapter probe failed")
+        )
+
+        with self.assertLogs(
+            "rootfs.app.gateway_cleanup",
+            level="WARNING",
+        ) as captured:
+            engine.cleanup()
+
+        messages = "\n".join(captured.output)
+        self.assertIn("Downstream discovery failed during cleanup", messages)
+        self.assertIn("adapter probe failed", messages)
+        self.assertFalse(engine.lifecycle_state.applied)
+        self.assertNotIn(
+            persisted_ownership["downstream"],
+            engine.runner.routes.interface_addresses,
+        )
+
     def test_cleanup_removes_host_protection_when_adapter_probe_fails(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply()
@@ -77,7 +102,7 @@ class GatewayCleanupHostProtectionTests(GatewayTestCase):
         with self.assertRaisesRegex(GatewayError, "address still present"):
             engine.cleanup()
 
-        self.assertIsNotNone(engine.owned_state)
+        self.assertIsNotNone(engine.lifecycle_state.owned_state)
         self.assertTrue(engine.firewall.host_protection_installed("enx001122334455"))
 
     def test_usb_cleanup_ignores_unused_invalid_wifi_settings(self) -> None:
@@ -98,8 +123,8 @@ class GatewayCleanupHostProtectionTests(GatewayTestCase):
 
         engine.cleanup()
 
-        self.assertFalse(engine.applied)
-        self.assertIsNone(engine.owned_state)
+        self.assertFalse(engine.lifecycle_state.applied)
+        self.assertIsNone(engine.lifecycle_state.owned_state)
 
     def test_waiting_reconcile_preserves_host_guard(self) -> None:
         values = sysctl_values()
@@ -118,7 +143,7 @@ class GatewayCleanupHostProtectionTests(GatewayTestCase):
             engine.firewall,
             "enx001122334455",
         )
-        engine.startup_cleanup_pending = False
+        engine.lifecycle_state.startup_cleanup_pending = False
         before = len(engine.runner.commands)
 
         engine.reconcile()
@@ -185,13 +210,13 @@ class GatewayCleanupHostProtectionTests(GatewayTestCase):
             state_path=self.state_path,
         )
         engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
-        engine.startup_cleanup_pending = False
+        engine.lifecycle_state.startup_cleanup_pending = False
         install_realistic_firewall_state(
             runner,
             engine.firewall,
             "enx001122334455",
         )
-        engine.last_downstream = "enx001122334455"
+        engine.selection_state.downstream = "enx001122334455"
         runner.routes.main_default_routes = []
 
         engine.reconcile()
@@ -247,7 +272,7 @@ class GatewayCleanupHostProtectionTests(GatewayTestCase):
         )
         prepend_chain_rule(engine.runner, "iptables", "INPUT", "-A INPUT -j ACCEPT")
         prepend_chain_rule(engine.runner, "ip6tables", "INPUT", "-A INPUT -j ACCEPT")
-        engine.startup_cleanup_pending = False
+        engine.lifecycle_state.startup_cleanup_pending = False
         before = len(engine.runner.commands)
 
         engine.reconcile()

@@ -12,8 +12,8 @@ from test_support.runner import FakeRunner
 
 class GatewayStatusHealthTests(GatewayTestCase):
     def test_status_uses_cached_health(self) -> None:
-        self.engine.upstream_healthy = True
-        self.engine.public_ip = "203.0.113.10"
+        self.engine.health_state.upstream_healthy = True
+        self.engine.health_state.public_ip = "203.0.113.10"
         before = len(self.runner.commands)
         status = self.engine.status()
         self.assertEqual(len(self.runner.commands), before)
@@ -29,7 +29,7 @@ class GatewayStatusHealthTests(GatewayTestCase):
 
     def test_status_reports_error_and_attention_for_genuine_fault(self) -> None:
         engine = self._prepare_active_engine()
-        engine.last_safety_errors = ["Management interface is unavailable"]
+        engine.selection_state.safety_errors = ["Management interface is unavailable"]
         status = engine.status()
         self.assertEqual(status["state"], "error")
         self.assertEqual(status["health"], "attention")
@@ -40,8 +40,8 @@ class GatewayStatusHealthTests(GatewayTestCase):
 
     def test_status_treats_missing_upstream_as_healthy_waiting(self) -> None:
         engine = self._prepare_active_engine()
-        engine.last_error = None
-        engine.last_safety_errors = ["Upstream interface is unavailable"]
+        engine.lifecycle_state.last_error = None
+        engine.selection_state.safety_errors = ["Upstream interface is unavailable"]
         status = engine.status()
         self.assertEqual(status["state"], "waiting")
         self.assertEqual(status["health"], "healthy")
@@ -56,8 +56,8 @@ class GatewayStatusHealthTests(GatewayTestCase):
         errors = [pairing_message, "Upstream interface is unavailable"]
         engine.upstream.pairing_state = "waiting_for_device"
         engine.upstream.pairing_message = pairing_message
-        engine.last_safety_errors = errors
-        engine.last_error = "; ".join(errors)
+        engine.selection_state.safety_errors = errors
+        engine.lifecycle_state.last_error = "; ".join(errors)
 
         status = engine.status()
 
@@ -70,14 +70,14 @@ class GatewayStatusHealthTests(GatewayTestCase):
         engine.upstream.pairing_state = "waiting_for_profile"
         self.assertEqual(engine.status()["state"], "connecting")
         engine.apply()
-        self.assertTrue(engine.applied)
-        self.assertFalse(engine.upstream_healthy)
+        self.assertTrue(engine.lifecycle_state.applied)
+        self.assertFalse(engine.health_state.upstream_healthy)
         self.assertEqual(engine.status()["state"], "connected")
 
     def test_status_reports_connected_when_gateway_is_applied(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply()
-        engine.upstream_healthy = False
+        engine.health_state.upstream_healthy = False
         self.assertEqual(engine.status()["state"], "connected")
 
     def test_upstream_change_invalidates_cached_health(self) -> None:
@@ -94,18 +94,18 @@ class GatewayStatusHealthTests(GatewayTestCase):
             gateway="172.20.10.1",
         )
         self.engine._record_upstream(wifi)
-        self.engine.upstream_healthy = True
-        self.engine.public_ip = "203.0.113.10"
-        self.engine.last_health_probe = time.time()
+        self.engine.health_state.upstream_healthy = True
+        self.engine.health_state.public_ip = "203.0.113.10"
+        self.engine.health_state.last_health_probe = time.time()
 
         self.engine._record_upstream(usb)
 
-        self.assertFalse(self.engine.upstream_healthy)
-        self.assertIsNone(self.engine.public_ip)
-        self.assertIsNone(self.engine.last_health_probe)
+        self.assertFalse(self.engine.health_state.upstream_healthy)
+        self.assertIsNone(self.engine.health_state.public_ip)
+        self.assertIsNone(self.engine.health_state.last_health_probe)
 
     def test_stale_health_probe_result_is_discarded(self) -> None:
-        self.engine.applied = True
+        self.engine.lifecycle_state.applied = True
         wifi = ResolvedUpstream(
             connection=WIFI_HOTSPOT,
             interface="wlan0",
@@ -127,13 +127,13 @@ class GatewayStatusHealthTests(GatewayTestCase):
         self.engine._health_probe = stale_probe
         self.engine._refresh_health_if_due()
 
-        self.assertEqual(self.engine.last_upstream, usb)
-        self.assertFalse(self.engine.upstream_healthy)
-        self.assertIsNone(self.engine.public_ip)
-        self.assertIsNone(self.engine.last_health_probe)
+        self.assertEqual(self.engine.selection_state.upstream, usb)
+        self.assertFalse(self.engine.health_state.upstream_healthy)
+        self.assertIsNone(self.engine.health_state.public_ip)
+        self.assertIsNone(self.engine.health_state.last_health_probe)
 
     def test_health_probe_result_is_discarded_after_cleanup(self) -> None:
-        self.engine.applied = True
+        self.engine.lifecycle_state.applied = True
         wifi = ResolvedUpstream(
             connection=WIFI_HOTSPOT,
             interface="wlan0",
@@ -149,14 +149,14 @@ class GatewayStatusHealthTests(GatewayTestCase):
         self.engine._health_probe = stale_probe
         self.engine._refresh_health_if_due()
 
-        self.assertEqual(self.engine.last_upstream, wifi)
-        self.assertFalse(self.engine.upstream_healthy)
-        self.assertIsNone(self.engine.public_ip)
-        self.assertIsNone(self.engine.last_health_probe)
+        self.assertEqual(self.engine.selection_state.upstream, wifi)
+        self.assertFalse(self.engine.health_state.upstream_healthy)
+        self.assertIsNone(self.engine.health_state.public_ip)
+        self.assertIsNone(self.engine.health_state.last_health_probe)
 
     def test_manual_reconcile_does_not_run_external_health_probe(self) -> None:
         engine = self._prepare_active_engine()
-        engine.startup_cleanup_pending = False
+        engine.lifecycle_state.startup_cleanup_pending = False
         before = len(engine.runner.commands)
         engine.reconcile()
         self.assertFalse(
@@ -176,7 +176,7 @@ class GatewayStatusHealthTests(GatewayTestCase):
             read_text=lambda path: sysctl_values()[path],
             state_path=self.state_path,
         )
-        engine.owned_state = {"downstream": "eth1"}
+        engine.lifecycle_state.owned_state = {"downstream": "eth1"}
         engine._persist_state()
 
         status_text = json.dumps(engine.status(), sort_keys=True)

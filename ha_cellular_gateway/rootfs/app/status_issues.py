@@ -4,6 +4,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from .status_issue_host import HOST_ERRORS
+from .status_issue_rules import issue_from_rules
 from .status_issue_upstream import (
     TRANSIENT_EXACT,
     UPSTREAM_ERRORS,
@@ -99,105 +100,10 @@ def _issue_from_error(error: str) -> dict[str, Any] | None:
     if error in EXACT_ERRORS:
         issue_id, key, message = EXACT_ERRORS[error]
         return _issue(issue_id, key, message, transient=error in TRANSIENT_EXACT)
-    if error.startswith("Strict rp_filter is enabled on "):
-        return _issue(
-            "strict_rp_filter_enabled",
-            "host_configuration",
-            "Strict rp_filter is enabled on a required interface",
-        )
-    if error.startswith("Cannot read rp_filter for "):
-        return _issue(
-            "rp_filter_unavailable",
-            "host_configuration",
-            "The gateway could not read rp_filter on a required interface",
-        )
-    if error.startswith("Unexpected main-table default route:"):
-        return _issue(
-            "unexpected_default_route",
-            "host_configuration",
-            "An unexpected main default route is present",
-        )
-    if error.startswith("Policy priority "):
-        return _issue(
-            "policy_priority_conflict",
-            "policy_configuration",
-            "A required policy-routing priority is already in use",
-        )
-    if "already has a foreign policy rule" in error:
-        return _issue(
-            "policy_foreign_rule",
-            "policy_configuration",
-            "A foreign policy rule is using the gateway routing table",
-        )
-    if "contains an unexpected route" in error:
-        return _issue(
-            "policy_unexpected_route",
-            "policy_configuration",
-            "The gateway routing table contains an unexpected route",
-        )
-    if error.startswith("Required command is unavailable: "):
-        return _issue(
-            "upstream_required_command_unavailable",
-            "upstream_configuration",
-            "A required iPhone USB command is not installed",
-        )
-    if error.startswith("Invalid app configuration: Hotspot "):
-        return _issue(
-            "hotspot_configuration_failed",
-            "hotspot_configuration",
-            "The hotspot Wi-Fi profile could not be configured",
-        )
-    if error.startswith(
-        (
-            "Cannot read app configuration:",
-            "Invalid app configuration:",
-        )
-    ):
-        return _issue(
-            "app_configuration_unavailable",
-            "host_configuration",
-            "The app could not load a safe host configuration",
-        )
-    if error.startswith("Hotspot Wi-Fi provisioning failed:"):
-        return _issue(
-            "hotspot_configuration_failed",
-            "hotspot_configuration",
-            "The hotspot Wi-Fi profile could not be configured",
-        )
-    if error.startswith("Safety inspection failed:"):
-        return _issue(
-            "safety_inspection_failed",
-            "host_configuration",
-            "The gateway could not complete its safety inspection",
-        )
-    if error.startswith("Activation failed:"):
-        return _issue(
-            "activation_failed",
-            "host_configuration",
-            "The gateway could not apply the requested network state",
-        )
-    if error.startswith("Auto-disable cleanup failed:"):
-        return _issue("auto_disable_cleanup_failed", None, error)
-    if error.startswith("Auto-stop request failed:"):
-        return _issue("auto_stop_request_failed", None, error)
-    if error.startswith("Auto-disable state persistence failed:"):
-        return _issue("auto_disable_state_failed", None, error)
-    if error.startswith("Hotspot Wi-Fi deactivation failed:"):
-        return _issue("hotspot_deactivation_failed", None, error)
-    if error.startswith("NetworkManager profile operation failed:"):
-        return _issue("networkmanager_profile_failed", None, error)
-    if error.startswith("NetworkManager profile cleanup failed:"):
-        return _issue("networkmanager_cleanup_failed", None, error)
-    if error.startswith("NetworkManager ownership journal failed:"):
-        return _issue("networkmanager_journal_failed", None, error)
-    if error.startswith("Management interface changed from "):
-        return _issue(
-            "management_interface_changed",
-            "host_configuration",
-            error,
-        )
-    if error == "Hotspot Wi-Fi interface is the management interface":
-        return _issue("hotspot_management_overlap", None, error)
+    rule_match = issue_from_rules(error)
+    if rule_match is not None:
+        issue_id, key, message = rule_match
+        return _issue(issue_id, key, message)
     return None
 
 

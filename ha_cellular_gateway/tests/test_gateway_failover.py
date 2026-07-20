@@ -35,8 +35,8 @@ class GatewayFailoverTests(GatewayTestCase):
                 return list(upstream_errors)
             if (
                 upstream is not None
-                and engine.owned_state
-                and engine.active_connection != upstream.connection
+                and engine.lifecycle_state.owned_state
+                and engine.selection_state.active_connection != upstream.connection
             ):
                 return ["Previous connection ownership is still installed"]
             return []
@@ -62,18 +62,18 @@ class GatewayFailoverTests(GatewayTestCase):
         engine.upstream.resolve = lambda *_a, **_k: results.pop(0)
 
         engine.reconcile()
-        self.assertEqual(engine.active_connection, IPHONE_USB)
+        self.assertEqual(engine.selection_state.active_connection, IPHONE_USB)
         self.assertFalse(engine.status()["fallback_active"])
 
         engine.reconcile()
-        self.assertEqual(engine.active_connection, WIFI_HOTSPOT)
+        self.assertEqual(engine.selection_state.active_connection, WIFI_HOTSPOT)
         self.assertTrue(engine.status()["fallback_active"])
-        self.assertEqual(engine.fallback_reason, "waiting for device")
+        self.assertEqual(engine.selection_state.fallback_reason, "waiting for device")
 
         engine.reconcile()
-        self.assertEqual(engine.active_connection, IPHONE_USB)
+        self.assertEqual(engine.selection_state.active_connection, IPHONE_USB)
         self.assertFalse(engine.status()["fallback_active"])
-        self.assertIsNone(engine.fallback_reason)
+        self.assertIsNone(engine.selection_state.fallback_reason)
 
     def test_combined_connection_reports_unavailable_fallback_truthfully(
         self,
@@ -129,13 +129,13 @@ class GatewayFailoverTests(GatewayTestCase):
             status["health_issues"],
             ["NetworkManager Wi-Fi radio inspection is unavailable"],
         )
-        self.assertTrue(engine.applied)
+        self.assertTrue(engine.lifecycle_state.applied)
 
         engine.reconcile()
         status = engine.status()
         self.assertEqual(status["state"], "error")
         self.assertEqual(status["health"], "attention")
-        self.assertFalse(engine.applied)
+        self.assertFalse(engine.lifecycle_state.applied)
 
     def _switch_upstream_commands(
         self,
@@ -166,17 +166,19 @@ class GatewayFailoverTests(GatewayTestCase):
         engine.firewall.protect_host(downstream)
         engine.firewall.apply(downstream, old.interface)
         engine.policy.apply(downstream, old)
-        engine.owned_state = engine.policy.ownership(downstream, old)
-        engine.owned_state["downstream_address_owned"] = True
-        engine.last_upstream = old
-        engine.active_connection = old.connection
-        engine.applied = True
-        engine.startup_cleanup_pending = False
+        engine.lifecycle_state.owned_state = engine.policy.ownership(downstream, old)
+        engine.lifecycle_state.owned_state["downstream_address_owned"] = True
+        engine.selection_state.upstream = old
+        engine.selection_state.active_connection = old.connection
+        engine.lifecycle_state.applied = True
+        engine.lifecycle_state.startup_cleanup_pending = False
         before = len(engine.runner.commands)
 
         apply_gateway(engine, upstream=new, upstream_errors=[])
 
-        self.assertEqual(engine.owned_state["upstream_interface"], new.interface)
+        self.assertEqual(
+            engine.lifecycle_state.owned_state["upstream_interface"], new.interface
+        )
         return engine.runner.commands[before:]
 
     @staticmethod

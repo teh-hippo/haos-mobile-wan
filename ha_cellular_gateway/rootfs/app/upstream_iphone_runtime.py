@@ -105,9 +105,7 @@ class IPhoneUsbRuntime:
     def validate_pairing(self, udid: str) -> bool:
         records = self.run("idevicepair", "list", check=False)
         paired_udids = {
-            line.strip()
-            for line in (records.stdout or "").splitlines()
-            if line.strip()
+            line.strip() for line in (records.stdout or "").splitlines() if line.strip()
         }
         if records.returncode != 0 or udid not in paired_udids:
             return False
@@ -156,8 +154,7 @@ class IPhoneUsbRuntime:
             return PairingResult(
                 False,
                 "waiting_for_unlock",
-                "Unlock the iPhone and leave it on the Home screen while the "
-                "app retries",
+                "Unlock the iPhone and leave it on the Home screen while the app retries",
             )
         return PairingResult(
             False,
@@ -180,9 +177,10 @@ class IPhoneUsbRuntime:
 
     @staticmethod
     def ipheth_driver_active() -> bool:
-        return Path("/sys/module/ipheth").exists() or Path(
-            "/sys/bus/usb/drivers/ipheth"
-        ).exists()
+        return (
+            Path("/sys/module/ipheth").exists()
+            or Path("/sys/bus/usb/drivers/ipheth").exists()
+        )
 
     def ipheth_interfaces(self) -> list[str]:
         return interfaces_by_driver(self.sys_net_root, {"ipheth"})

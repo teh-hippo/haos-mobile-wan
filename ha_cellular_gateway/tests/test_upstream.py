@@ -10,12 +10,12 @@ from rootfs.app.const import IPHONE_USB
 from rootfs.app.errors import GatewayError
 from rootfs.app.management import ManagementBaseline
 from rootfs.app.networkmanager import (
-    ACTIVATION_COOLDOWN_SECONDS,
     LEASE_OWNER,
     MULTIPLE_ADDRESS_MESSAGE,
     NetworkManagerIphone,
     NetworkManagerResult,
 )
+from rootfs.app.nm_profile import ACTIVATION_COOLDOWN_SECONDS
 from rootfs.app.nm_profile_specs import (
     USB_DHCP_TIMEOUT_SECONDS as DHCP_TIMEOUT_SECONDS,
 )
@@ -168,9 +168,9 @@ class NetworkManagerInspectTests(unittest.TestCase):
     def test_continuity_failure_is_non_throwing(self) -> None:
         cli = healthy_cli()
         manager = self._manager(cli)
-        manager.profile.active_uuid = lambda interface: (
-            _ for _ in ()
-        ).throw(GatewayError("NetworkManager unavailable"))
+        manager.profile.active_uuid = lambda interface: (_ for _ in ()).throw(
+            GatewayError("NetworkManager unavailable")
+        )
 
         self.assertFalse(manager.continuity(usb_upstream()))
 
@@ -181,7 +181,11 @@ class NetworkManagerInspectTests(unittest.TestCase):
 
         self.assertEqual(cli.up_calls, 0)
         self.assertEqual(
-            [c for c in cli.commands if c[1:3] in (["connection", "modify"], ["connection", "up"])],
+            [
+                c
+                for c in cli.commands
+                if c[1:3] in (["connection", "modify"], ["connection", "up"])
+            ],
             [],
         )
 
@@ -484,8 +488,9 @@ class IPhoneUsbUpstreamTests(unittest.TestCase):
         manager = self._manager(
             FakeRunner(),
             network_manager,
-            popen=lambda *args, **kwargs: processes.append(FakeProcess())
-            or processes[-1],
+            popen=lambda *args, **kwargs: (
+                processes.append(FakeProcess()) or processes[-1]
+            ),
         )
 
         upstream, errors = manager.resolve()

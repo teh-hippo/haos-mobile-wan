@@ -34,10 +34,12 @@ class DownstreamInterface:
 
     def mac(self, interface: str | Path) -> str | None:
         try:
-            return self.read_text(
-                self.sys_net_root / interface / "address"
-            ).strip().lower()
-        except (KeyError, OSError):
+            return (
+                self.read_text(self.sys_net_root / interface / "address")
+                .strip()
+                .lower()
+            )
+        except KeyError, OSError:
             return None
 
     def candidates(self, management_interface: str | None) -> list[str]:
@@ -49,8 +51,7 @@ class DownstreamInterface:
         return sorted(
             interface.name
             for interface in interfaces
-            if self._is_usb_ethernet(interface)
-            and interface.name not in excluded
+            if self._is_usb_ethernet(interface) and interface.name not in excluded
         )
 
     def find(self, management_interface: str | None) -> str | None:
@@ -89,9 +90,7 @@ class DownstreamInterface:
 
     def apply(self, interface: str) -> None:
         if self.addresses(interface):
-            raise GatewayError(
-                "Downstream interface has host-managed IPv4 addresses"
-            )
+            raise GatewayError("Downstream interface has host-managed IPv4 addresses")
         self.run(
             "ip",
             "-4",
@@ -133,10 +132,7 @@ class DownstreamInterface:
         return bool(
             ownership
             and ownership.get("downstream_address_owned") is True
-            and (
-                interface is None
-                or ownership.get("downstream") == interface
-            )
+            and (interface is None or ownership.get("downstream") == interface)
         )
 
     def _is_usb_ethernet(self, interface: Path) -> bool:
@@ -159,6 +155,4 @@ class DownstreamInterface:
             )
         ):
             return False
-        return any(
-            re.fullmatch(r"usb\d+", part) for part in device_path.parts
-        )
+        return any(re.fullmatch(r"usb\d+", part) for part in device_path.parts)

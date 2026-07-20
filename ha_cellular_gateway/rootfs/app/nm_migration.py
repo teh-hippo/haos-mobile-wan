@@ -9,9 +9,7 @@ from .nm_profile import NmProfile
 from .nm_profile_specs import legacy_usb_profile_spec
 
 LEGACY_USB_DRIFT_ERROR = "The legacy iPhone USB profile has unexpected settings"
-LINEAGE_WIFI_DELETE_ERROR = (
-    "A legacy Supervisor Wi-Fi profile could not be removed"
-)
+LINEAGE_WIFI_DELETE_ERROR = "A legacy Supervisor Wi-Fi profile could not be removed"
 
 
 def migrate_legacy_usb(run: RunCommand) -> list[str]:
@@ -46,15 +44,11 @@ def clean_lineage_wifi(
     run: RunCommand,
     profiles: tuple[ProfileRecord, ...],
 ) -> list[str]:
-    lineage = [
-        profile for profile in profiles if is_lineage_wifi(config, profile)
-    ]
+    lineage = [profile for profile in profiles if is_lineage_wifi(config, profile)]
     if not lineage:
         return []
     for profile in lineage:
-        result = run(
-            "nmcli", "connection", "delete", "uuid", profile.uuid, check=False
-        )
+        result = run("nmcli", "connection", "delete", "uuid", profile.uuid, check=False)
         if result.returncode != 0:
             return [LINEAGE_WIFI_DELETE_ERROR]
     remaining = {profile.uuid for profile in NmInventory(run).profiles()}

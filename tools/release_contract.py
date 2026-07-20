@@ -7,7 +7,6 @@ from pathlib import Path
 
 import yaml
 
-
 CONFIG_PATH = "ha_cellular_gateway/config.yaml"
 CHANGELOG_PATH = Path("ha_cellular_gateway/CHANGELOG.md")
 RELEASE_FILES = {
@@ -38,10 +37,11 @@ def parse_version(value: str) -> tuple[int, int, int]:
 
 
 def config_version(text: str) -> str:
-    data = yaml.safe_load(text)
-    if not isinstance(data, dict) or not isinstance(data.get("version"), str):
+    data: object = yaml.safe_load(text)
+    version = data.get("version") if isinstance(data, dict) else None
+    if not isinstance(version, str):
         raise ContractError(f"{CONFIG_PATH} must contain a string version")
-    return data["version"]
+    return version
 
 
 def is_release_file(path: str) -> bool:
@@ -64,13 +64,10 @@ def validate_contract(
     errors: list[str] = []
 
     if current < base:
-        errors.append(
-            f"App version decreased from {base_version} to {current_version}"
-        )
+        errors.append(f"App version decreased from {base_version} to {current_version}")
     if release_changed and not version_changed:
         errors.append(
-            "Release payload changed without increasing "
-            f"{CONFIG_PATH} from {base_version}"
+            f"Release payload changed without increasing {CONFIG_PATH} from {base_version}"
         )
     if version_increased and f"v{current_version}" in tags:
         errors.append(f"Version v{current_version} already has a Git tag")
@@ -79,9 +76,7 @@ def validate_contract(
         changelog,
         re.MULTILINE,
     ):
-        errors.append(
-            f"{CHANGELOG_PATH} needs a ## {current_version} heading"
-        )
+        errors.append(f"{CHANGELOG_PATH} needs a ## {current_version} heading")
     return errors
 
 
@@ -109,9 +104,7 @@ def main() -> int:
     ).splitlines()
     errors = validate_contract(
         base_version=config_version(_base_file(base, CONFIG_PATH)),
-        current_version=config_version(
-            Path(CONFIG_PATH).read_text(encoding="utf-8")
-        ),
+        current_version=config_version(Path(CONFIG_PATH).read_text(encoding="utf-8")),
         changed_files=changed_files,
         changelog=CHANGELOG_PATH.read_text(encoding="utf-8"),
         tags=set(_git("tag", "--list", "v*").splitlines()),

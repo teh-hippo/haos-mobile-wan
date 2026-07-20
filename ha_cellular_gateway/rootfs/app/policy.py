@@ -131,9 +131,9 @@ class PolicyRouting:
             "table",
             str(self.config.routing_table),
         )
-        return all(rule_present(rules, rule) for rule in self.rule_args(ownership)) and all(
-            route_present(routes, route) for route in self.route_args(ownership)
-        )
+        return all(
+            rule_present(rules, rule) for rule in self.rule_args(ownership)
+        ) and all(route_present(routes, route) for route in self.route_args(ownership))
 
     def _rule_conflicts(
         self,
@@ -149,14 +149,12 @@ class PolicyRouting:
             priority = int(rule.get("priority", -1))
             rule_table = str(rule.get("table", rule.get("lookup", "")))
             if priority in self.RULE_PRIORITIES and not any(
-                rule_matches(rule, expected)
-                for expected in expected_rules
+                rule_matches(rule, expected) for expected in expected_rules
             ):
                 conflicts.append(f"Policy priority {priority} is already in use")
                 continue
             if rule_table == table and not any(
-                rule_matches(rule, expected)
-                for expected in expected_rules
+                rule_matches(rule, expected) for expected in expected_rules
             ):
                 conflicts.append(
                     f"Routing table {self.config.routing_table} already has a foreign policy rule"
@@ -177,7 +175,9 @@ class PolicyRouting:
             "table",
             self._value(ownership, "routing_table"),
         )
-        expected = {route_descriptor_from_args(route) for route in self.route_args(ownership)}
+        expected = {
+            route_descriptor_from_args(route) for route in self.route_args(ownership)
+        }
         conflicts: list[str] = []
         for route in routes if isinstance(routes, list) else []:
             if route_descriptor(route) not in expected:
@@ -206,11 +206,14 @@ class PolicyRouting:
             while self.run("ip", "rule", "del", *rule, check=False).returncode == 0:
                 pass
         for route in reversed(self.route_args(ownership)):
-            while self.run(
-                "ip",
-                "route",
-                "del",
-                *route,
-                check=False,
-            ).returncode == 0:
+            while (
+                self.run(
+                    "ip",
+                    "route",
+                    "del",
+                    *route,
+                    check=False,
+                ).returncode
+                == 0
+            ):
                 pass

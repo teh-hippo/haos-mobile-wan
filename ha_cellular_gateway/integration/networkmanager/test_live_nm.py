@@ -7,20 +7,18 @@ from collections.abc import Callable
 from typing import Any
 
 import dbus
-
 from app.command import CommandRunner
-from app.nm_inventory import NmInventory
-from app.nm_metadata import DbusWifiProfileMetadata
-from app.nm_profile import NmProfile, ProfileSpec
-from app.nm_profile_specs import USB_PROFILE_UUID, usb_profile_spec
 from app.networkmanager_invariants import (
     main_default_present,
     networkmanager_routes,
     rule_selects_table,
 )
+from app.nm_inventory import NmInventory
+from app.nm_metadata import DbusWifiProfileMetadata
+from app.nm_profile import NmProfile, ProfileSpec
+from app.nm_profile_specs import USB_PROFILE_UUID, usb_profile_spec
 from app.wifi_custody import MARKER_KEY, WifiCustodian
 from nmcli_harness import NmcliHarnessRunner
-
 
 DEVICE = "nmwan0"
 PHONE = "phone0"
@@ -334,9 +332,7 @@ def realise_link(run: TracingRun) -> "subprocess.Popen[bytes]":
     return proc
 
 
-def destroy_link(
-    run: TracingRun, proc: "subprocess.Popen[bytes] | None"
-) -> None:
+def destroy_link(run: TracingRun, proc: "subprocess.Popen[bytes] | None") -> None:
     if proc is not None and proc.poll() is None:
         proc.terminate()
         try:
@@ -423,9 +419,7 @@ def test_inert_creation_controls(run: TracingRun) -> None:
 
     # Positive control: the production inert profile is present at realisation,
     # so NM neither generates a default nor activates it.
-    profile = NmProfile(
-        run, veth_spec(INERT_UUID, "nm-lab-inert", autoconnect="no")
-    )
+    profile = NmProfile(run, veth_spec(INERT_UUID, "nm-lab-inert", autoconnect="no"))
     profile.create()
     require(profile.inspect().state == "exact", "inert profile is not exact")
     proc = realise_link(run)
@@ -462,9 +456,7 @@ def test_inert_creation_controls(run: TracingRun) -> None:
         )
         profile.create()
         time.sleep(2)
-        require(
-            active_uuid(run) != INERT_UUID, "recreated inert profile activated"
-        )
+        require(active_uuid(run) != INERT_UUID, "recreated inert profile activated")
         require(
             not main_default_present(run, DEVICE),
             "recreated inert profile leaked a default into the main table",
@@ -691,24 +683,37 @@ def test_custody_dhcp_and_cleanup(run: TracingRun) -> None:
         gate_errors == [],
         f"custodian did not displace foreign: {gate_errors!r}",
     )
-    marker_index = event_index(
-        run.events[events_before_gate:],
-        lambda event: event[0] == "metadata-write" and event[1] == (MARKER_KEY,),
-    ) + events_before_gate
-    persist_index = event_index(
-        run.events[events_before_gate:],
-        lambda event: event[0] == "persist-marker",
-    ) + events_before_gate
-    gate_index = command_index(
-        run.events[events_before_gate:],
-        lambda args: args[:5]
-        == ("nmcli", "device", "set", DEVICE, "autoconnect"),
-    ) + events_before_gate
-    disconnect_index = command_index(
-        run.events[events_before_gate:],
-        lambda args: args[:4] == ("nmcli", "-w", "5", "device")
-        and args[4:] == ("disconnect", DEVICE),
-    ) + events_before_gate
+    marker_index = (
+        event_index(
+            run.events[events_before_gate:],
+            lambda event: event[0] == "metadata-write" and event[1] == (MARKER_KEY,),
+        )
+        + events_before_gate
+    )
+    persist_index = (
+        event_index(
+            run.events[events_before_gate:],
+            lambda event: event[0] == "persist-marker",
+        )
+        + events_before_gate
+    )
+    gate_index = (
+        command_index(
+            run.events[events_before_gate:],
+            lambda args: args[:5] == ("nmcli", "device", "set", DEVICE, "autoconnect"),
+        )
+        + events_before_gate
+    )
+    disconnect_index = (
+        command_index(
+            run.events[events_before_gate:],
+            lambda args: (
+                args[:4] == ("nmcli", "-w", "5", "device")
+                and args[4:] == ("disconnect", DEVICE)
+            ),
+        )
+        + events_before_gate
+    )
     require(
         marker_index < persist_index < gate_index < disconnect_index,
         "recovery marker was not written and persisted before displacement",
@@ -732,7 +737,9 @@ def test_custody_dhcp_and_cleanup(run: TracingRun) -> None:
         "a fresh custodian could not recover the profile marker",
     )
     require(
-        recovered.release(None, marker, lambda: run.events.append(("persist-release", ())))
+        recovered.release(
+            None, marker, lambda: run.events.append(("persist-release", ()))
+        )
         == [],
         "custodian release failed",
     )
@@ -804,7 +811,7 @@ def test_wifi_marker_preserves_secret(run: TracingRun) -> None:
             SYNTHETIC_PSK,
             check=False,
         )
-    except (OSError, subprocess.SubprocessError):
+    except OSError, subprocess.SubprocessError:
         raise AssertionError("synthetic Wi-Fi profile creation failed") from None
     require(
         created.returncode == 0,

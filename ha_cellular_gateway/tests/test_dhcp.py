@@ -24,9 +24,7 @@ class DnsmasqServiceTests(unittest.TestCase):
             lambda *args, **kwargs: self.runner.run(list(args), **kwargs),
             run_dir=self.root / "run",
             lease_path=self.root / "leases",
-            popen=lambda args, **kwargs: (
-                self.popen_args.extend(args) or process
-            ),
+            popen=lambda args, **kwargs: self.popen_args.extend(args) or process,
         )
 
     def test_running_process_is_retained(self) -> None:
@@ -36,9 +34,7 @@ class DnsmasqServiceTests(unittest.TestCase):
         service.start("eth0")
 
         self.assertTrue(service.running)
-        config = (self.root / "run" / "dnsmasq.conf").read_text(
-            encoding="utf-8"
-        )
+        config = (self.root / "run" / "dnsmasq.conf").read_text(encoding="utf-8")
         self.assertIn("log-facility=-\n", config)
         self.assertIn("--no-daemon", self.popen_args)
 

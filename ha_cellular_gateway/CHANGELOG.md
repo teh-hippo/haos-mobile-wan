@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.3
+
+- Add locked Ruff, mypy, branch coverage, ShellCheck and Actionlint validation.
+- Standardise Python formatting and tighten configuration and network-data type
+  handling without changing gateway behaviour.
+- Split status issue definitions, MQTT discovery specifications, Wi-Fi custody
+  markers and the upstream health probe into focused modules.
+
 ## 0.11.2
 
 - Stop reconciliation as soon as termination is requested, prioritise gateway

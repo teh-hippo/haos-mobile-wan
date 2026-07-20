@@ -5,6 +5,16 @@ import time
 import unittest
 from pathlib import Path
 
+from helpers import (
+    FakeProcess,
+    FakeRunner,
+    build_engine,
+    install_realistic_firewall_state,
+    install_realistic_policy_state,
+    make_config,
+    prepend_chain_rule,
+    sysctl_values,
+)
 from rootfs.app.const import (
     IPHONE_USB,
     IPHONE_USB_WIFI_FALLBACK,
@@ -16,17 +26,6 @@ from rootfs.app.gateway_reconcile import apply as apply_gateway
 from rootfs.app.management import ManagementBaseline
 from rootfs.app.upstream_iphone import IPhoneUsbUpstream
 from rootfs.app.upstream_models import ResolvedUpstream
-
-from helpers import (
-    build_engine,
-    FakeProcess,
-    FakeRunner,
-    install_realistic_firewall_state,
-    install_realistic_policy_state,
-    make_config,
-    prepend_chain_rule,
-    sysctl_values,
-)
 
 
 class GatewayEngineTests(unittest.TestCase):
@@ -80,8 +79,8 @@ class GatewayEngineTests(unittest.TestCase):
         engine.runner.nm_wifi_cache["wlan0"] = {"Phone"}
         engine.upstream_lifecycle.activate(engine.management)
         engine._persist_state()
-        engine.firewall.installed = (
-            lambda downstream=None, upstream_interface=None: engine.applied
+        engine.firewall.installed = lambda downstream=None, upstream_interface=None: (
+            engine.applied
         )
         engine.dhcp.start = lambda downstream: setattr(
             engine.dhcp,
@@ -110,16 +109,10 @@ class GatewayEngineTests(unittest.TestCase):
         restarted.runner.chain_listings[("ip6tables", "INPUT")] = "\n".join(
             ipv6_input_rules
         )
-        before = len(restarted.runner.commands)
 
         restarted.reconcile()
 
-        commands = restarted.runner.commands[before:]
-        self.assertTrue(
-            restarted.firewall.host_protection_installed(
-                "enx001122334455"
-            )
-        )
+        self.assertTrue(restarted.firewall.host_protection_installed("enx001122334455"))
         self.assertNotIn(
             "enx001122334455",
             restarted.runner.interface_addresses,
@@ -216,11 +209,7 @@ class GatewayEngineTests(unittest.TestCase):
             "enx001122334455",
             degraded.runner.interface_addresses,
         )
-        self.assertFalse(
-            degraded.firewall.host_protection_installed(
-                "enx001122334455"
-            )
-        )
+        self.assertFalse(degraded.firewall.host_protection_installed("enx001122334455"))
         self.assertIn("Invalid app configuration", degraded.last_error)
 
     def test_config_error_without_owned_state_does_not_mutate_host(self) -> None:
@@ -324,9 +313,7 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertEqual(status["state"], "waiting")
         self.assertEqual(status["health"], "healthy")
         self.assertEqual(status["health_issues"], [])
-        self.assertEqual(
-            status["safety_errors"], ["Upstream interface is unavailable"]
-        )
+        self.assertEqual(status["safety_errors"], ["Upstream interface is unavailable"])
 
     def test_status_keeps_combined_usb_waiting_errors_healthy(self) -> None:
         engine = self._prepare_active_engine()
@@ -478,8 +465,8 @@ class GatewayEngineTests(unittest.TestCase):
             [] if management is not None else ["Management interface is unavailable"]
         )
         runner.nm_wifi_cache["wlan0"] = {"Phone"}
-        engine.firewall.installed = (
-            lambda downstream=None, upstream_interface=None: engine.applied
+        engine.firewall.installed = lambda downstream=None, upstream_interface=None: (
+            engine.applied
         )
         engine.dhcp.start = lambda downstream: setattr(
             engine.dhcp,
@@ -532,7 +519,9 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertIsNone(engine.last_downstream)
         self.assertIn("Management interface is unavailable", engine.last_error)
 
-    def test_management_interface_change_releases_profiles_and_fails_closed(self) -> None:
+    def test_management_interface_change_releases_profiles_and_fails_closed(
+        self,
+    ) -> None:
         engine = self._prepare_active_engine()
         self.assertEqual(engine.management_interface, "end0")
         self.assertTrue(engine.runner.nm_profiles)
@@ -550,20 +539,18 @@ class GatewayEngineTests(unittest.TestCase):
     def test_activation_failure_is_cleaned_and_retried(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply()
-        self.assertTrue(
-            engine.firewall.host_protection_installed("enx001122334455")
-        )
+        self.assertTrue(engine.firewall.host_protection_installed("enx001122334455"))
 
-        def fail_firewall(downstream: str, upstream_interface: str | None = None) -> None:
+        def fail_firewall(
+            downstream: str, upstream_interface: str | None = None
+        ) -> None:
             raise OSError("firewall unavailable")
 
         engine.firewall.apply = fail_firewall
         with self.assertRaisesRegex(GatewayError, "Activation failed"):
             engine.apply()
         self.assertFalse(engine.applied)
-        self.assertTrue(
-            engine.firewall.host_protection_installed("enx001122334455")
-        )
+        self.assertTrue(engine.firewall.host_protection_installed("enx001122334455"))
         self.assertNotIn("enx001122334455", engine.runner.interface_addresses)
 
         engine.firewall.apply = lambda downstream, upstream_interface=None: None
@@ -574,9 +561,7 @@ class GatewayEngineTests(unittest.TestCase):
     def test_apply_safety_failure_cleans_host_state(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply()
-        self.assertTrue(
-            engine.firewall.host_protection_installed("enx001122334455")
-        )
+        self.assertTrue(engine.firewall.host_protection_installed("enx001122334455"))
         self.assertIn("enx001122334455", engine.runner.interface_addresses)
 
         engine.safety.errors = lambda *args, **kwargs: ["Upstream unavailable"]
@@ -585,9 +570,7 @@ class GatewayEngineTests(unittest.TestCase):
             engine.apply()
 
         self.assertFalse(engine.applied)
-        self.assertTrue(
-            engine.firewall.host_protection_installed("enx001122334455")
-        )
+        self.assertTrue(engine.firewall.host_protection_installed("enx001122334455"))
         self.assertNotIn("enx001122334455", engine.runner.interface_addresses)
 
     def test_active_mode_reapplies_when_policy_state_is_missing(self) -> None:
@@ -597,7 +580,9 @@ class GatewayEngineTests(unittest.TestCase):
 
         engine.startup_cleanup_pending = False
         engine.policy.installed = lambda downstream, upstream=None: False
-        engine.firewall.installed = lambda downstream=None, upstream_interface=None: True
+        engine.firewall.installed = lambda downstream=None, upstream_interface=None: (
+            True
+        )
         engine.reconcile()
 
         reapplied = engine.runner.commands[before:]
@@ -608,9 +593,13 @@ class GatewayEngineTests(unittest.TestCase):
             any(command[:3] == ["ip", "route", "replace"] for command in reapplied)
         )
 
-    def test_active_mode_reconcile_does_not_reapply_realistic_firewall_state(self) -> None:
+    def test_active_mode_reconcile_does_not_reapply_realistic_firewall_state(
+        self,
+    ) -> None:
         engine = self._prepare_active_engine()
-        install_realistic_firewall_state(engine.runner, engine.firewall, "enx001122334455")
+        install_realistic_firewall_state(
+            engine.runner, engine.firewall, "enx001122334455"
+        )
         engine.firewall.installed = engine.firewall.__class__.installed.__get__(
             engine.firewall,
             engine.firewall.__class__,
@@ -899,18 +888,24 @@ class GatewayEngineTests(unittest.TestCase):
 
         old_nat_del = self._first_index(
             commands,
-            lambda c: c[:5] == ["iptables", "-t", "nat", "-D", "POSTROUTING"]
-            and old.interface in c,
+            lambda c: (
+                c[:5] == ["iptables", "-t", "nat", "-D", "POSTROUTING"]
+                and old.interface in c
+            ),
         )
         new_nat_add = self._first_index(
             commands,
-            lambda c: c[:5] == ["iptables", "-t", "nat", "-A", "POSTROUTING"]
-            and new.interface in c,
+            lambda c: (
+                c[:5] == ["iptables", "-t", "nat", "-A", "POSTROUTING"]
+                and new.interface in c
+            ),
         )
         old_policy_del = self._first_index(
             commands,
-            lambda c: c[:3] in (["ip", "rule", "del"], ["ip", "route", "del"])
-            and old.interface in c,
+            lambda c: (
+                c[:3] in (["ip", "rule", "del"], ["ip", "route", "del"])
+                and old.interface in c
+            ),
         )
         new_policy_install = self._first_index(
             commands,
@@ -974,9 +969,7 @@ class GatewayEngineTests(unittest.TestCase):
         engine.cleanup()
 
         commands = [" ".join(command) for command in engine.runner.commands[before:]]
-        self.assertTrue(
-            any(command == "iptables -F HA_CELLGW" for command in commands)
-        )
+        self.assertTrue(any(command == "iptables -F HA_CELLGW" for command in commands))
         self.assertTrue(
             any(command == "ip6tables -F HA_CELLGW6" for command in commands)
         )
@@ -1001,11 +994,7 @@ class GatewayEngineTests(unittest.TestCase):
             engine.cleanup()
 
         self.assertIsNotNone(engine.owned_state)
-        self.assertTrue(
-            engine.firewall.host_protection_installed(
-                "enx001122334455"
-            )
-        )
+        self.assertTrue(engine.firewall.host_protection_installed("enx001122334455"))
 
     def test_usb_cleanup_ignores_unused_invalid_wifi_settings(self) -> None:
         values = sysctl_values()
@@ -1053,17 +1042,14 @@ class GatewayEngineTests(unittest.TestCase):
         mutating_commands = [
             command
             for command in engine.runner.commands[before:]
-            if command[0] in {"iptables", "ip6tables"} and any(
+            if command[0] in {"iptables", "ip6tables"}
+            and any(
                 operation in command
                 for operation in ("-A", "-D", "-I", "-N", "-F", "-X")
             )
         ]
         self.assertTrue(mutating_commands)
-        self.assertTrue(
-            engine.firewall.host_protection_installed(
-                "enx001122334455"
-            )
-        )
+        self.assertTrue(engine.firewall.host_protection_installed("enx001122334455"))
         before = len(engine.runner.commands)
 
         engine.reconcile()
@@ -1103,11 +1089,7 @@ class GatewayEngineTests(unittest.TestCase):
                 for command in restarted.runner.commands[before:]
             )
         )
-        self.assertTrue(
-            restarted.firewall.host_protection_installed(
-                "enx001122334455"
-            )
-        )
+        self.assertTrue(restarted.firewall.host_protection_installed("enx001122334455"))
 
     def test_management_loss_preserves_existing_downstream_host_guard(self) -> None:
         values = sysctl_values()
@@ -1130,11 +1112,7 @@ class GatewayEngineTests(unittest.TestCase):
 
         engine.reconcile()
 
-        self.assertTrue(
-            engine.firewall.host_protection_installed(
-                "enx001122334455"
-            )
-        )
+        self.assertTrue(engine.firewall.host_protection_installed("enx001122334455"))
 
     def test_restart_repairs_duplicate_host_guard(
         self,
@@ -1202,11 +1180,7 @@ class GatewayEngineTests(unittest.TestCase):
                 for command in engine.runner.commands[before:]
             )
         )
-        self.assertTrue(
-            engine.firewall.host_protection_installed(
-                "enx001122334455"
-            )
-        )
+        self.assertTrue(engine.firewall.host_protection_installed("enx001122334455"))
 
     def test_persisted_extra_state_key_is_ignored(self) -> None:
         self.state_path.write_text(
@@ -1255,7 +1229,9 @@ class GatewayEngineTests(unittest.TestCase):
         self.assertFalse(engine.applied)
         self.assertIn("Safety inspection failed", engine.last_error)
 
-    def test_status_remains_responsive_during_blocking_upstream_resolution(self) -> None:
+    def test_status_remains_responsive_during_blocking_upstream_resolution(
+        self,
+    ) -> None:
         values = sysctl_values()
         engine = build_engine(
             make_config(mobile_connection=IPHONE_USB),
@@ -1436,10 +1412,8 @@ class GatewayEngineTests(unittest.TestCase):
             state_path=self.state_path,
         )
         engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
-        engine.safety.errors = (
-            lambda *args, upstream_errors=None, **kwargs: list(
-                upstream_errors or []
-            )
+        engine.safety.errors = lambda *args, upstream_errors=None, **kwargs: list(
+            upstream_errors or []
         )
         engine.runner.nm_auto_activate = False
         return engine

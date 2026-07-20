@@ -14,11 +14,7 @@ def cleanup_changed_ownership(
     downstream: str | None,
     upstream: ResolvedUpstream | None,
 ) -> None:
-    if (
-        downstream is None
-        or upstream is None
-        or not engine.owned_state
-    ):
+    if downstream is None or upstream is None or not engine.owned_state:
         return
     expected = engine.policy.ownership(downstream, upstream)
     if all(

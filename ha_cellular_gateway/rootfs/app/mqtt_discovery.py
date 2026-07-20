@@ -2,18 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from .mqtt_discovery_specs import (
+    BINARY_SENSORS,
+    ENUM_SENSORS,
+    REMOVED_COMPONENTS,
+    TEXT_SENSORS,
+)
 from .mqtt_labels import (
-    ACTIVE_CONNECTION_LABELS,
     GATEWAY_STATE_LABELS,
     GATEWAY_WAITING_LABELS,
     HEALTH_LABELS,
-    MOBILE_CONNECTION_DEFAULT_LABEL,
-    MOBILE_CONNECTION_INTERNAL_LABELS,
-    NO_ACTIVE_CONNECTION_LABEL,
-    NO_INTERFACE_LABEL,
-    NOT_CONNECTED_LABEL,
-    UNKNOWN_PAIRING_LABEL,
-    UPSTREAM_PAIRING_STATE_LABELS,
     enum_options,
     enum_value_template,
     fallback_value_template,
@@ -55,59 +53,6 @@ STATE_FIELDS = (
     "rules_installed",
     "dnsmasq_running",
 )
-
-_ENUM_SENSORS = (
-    (
-        "mobile_connection",
-        "Connection method",
-        "mobile_connection",
-        MOBILE_CONNECTION_INTERNAL_LABELS,
-        MOBILE_CONNECTION_DEFAULT_LABEL,
-        "mdi:connection",
-        True,
-    ),
-    (
-        "active_connection",
-        "Connected via",
-        "active_connection",
-        ACTIVE_CONNECTION_LABELS,
-        NO_ACTIVE_CONNECTION_LABEL,
-        "mdi:access-point",
-        True,
-    ),
-    (
-        "upstream_pairing_state",
-        "USB status",
-        "upstream_pairing_state",
-        UPSTREAM_PAIRING_STATE_LABELS,
-        UNKNOWN_PAIRING_LABEL,
-        "mdi:usb-port",
-        True,
-    ),
-)
-
-_TEXT_SENSORS = (
-    ("downstream_interface", "Downstream interface", "mdi:ethernet", False,
-     NO_INTERFACE_LABEL),
-    (
-        "public_ip",
-        "Public IP",
-        "mdi:ip-network-outline",
-        True,
-        NOT_CONNECTED_LABEL,
-    ),
-)
-
-_BINARY_SENSORS = (
-    ("upstream_healthy", "Internet available", "connectivity", None, True),
-    ("downstream_present", "Downstream interface present", None, "mdi:ethernet", False),
-    ("rules_installed", "Gateway rules applied", "running", "mdi:firewall", False),
-    ("dnsmasq_running", "DHCP server running", "running", "mdi:server-network", False),
-)
-
-# Retired entities republished as empty device-discovery components (platform
-# only) so Home Assistant removes any entity retained from an earlier version.
-_REMOVED_COMPONENTS: dict[str, str] = {"enabled": "binary_sensor"}
 
 
 def _uid(key: str) -> str:
@@ -179,8 +124,7 @@ def _health() -> dict[str, Any]:
     )
     component["json_attributes_topic"] = STATE_TOPIC
     component["json_attributes_template"] = (
-        "{{ {'issues': value_json.health_issues, "
-        "'networkmanager': value_json.networkmanager} | tojson }}"
+        "{{ {'issues': value_json.health_issues, 'networkmanager': value_json.networkmanager} | tojson }}"
     )
     component["icon"] = "mdi:heart-pulse"
     return component
@@ -214,13 +158,13 @@ def build_components() -> dict[str, dict[str, Any]]:
         "gateway_state": _gateway_state(),
         "health": _health(),
     }
-    for spec in _ENUM_SENSORS:
-        components[spec[0]] = _enum_sensor(spec)
-    for spec in _TEXT_SENSORS:
-        components[spec[0]] = _text_sensor(spec)
-    for spec in _BINARY_SENSORS:
-        components[spec[0]] = _binary_sensor(spec)
-    for key, platform in _REMOVED_COMPONENTS.items():
+    for enum_spec in ENUM_SENSORS:
+        components[enum_spec[0]] = _enum_sensor(enum_spec)
+    for text_spec in TEXT_SENSORS:
+        components[text_spec[0]] = _text_sensor(text_spec)
+    for binary_spec in BINARY_SENSORS:
+        components[binary_spec[0]] = _binary_sensor(binary_spec)
+    for key, platform in REMOVED_COMPONENTS.items():
         components[key] = {"platform": platform}
     return components
 

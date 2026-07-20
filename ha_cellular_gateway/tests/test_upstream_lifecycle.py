@@ -358,8 +358,7 @@ class UpstreamLifecycleTests(unittest.TestCase):
                     command[:3] == ["nmcli", "connection", "add"]
                     and USB_PROFILE_UUID in command
                 )
-                or command[:4]
-                == ["nmcli", "connection", "delete", "uuid"]
+                or command[:4] == ["nmcli", "connection", "delete", "uuid"]
                 and command[-1] == USB_PROFILE_UUID
             ]
 

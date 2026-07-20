@@ -56,7 +56,9 @@ class AutoDisableTests(unittest.TestCase):
             stop_requester=stop_requester or (lambda: None),
         )
 
-    def _expire(self, controller: AutoDisable, engine: FakeEngine, now: list[float]) -> None:
+    def _expire(
+        self, controller: AutoDisable, engine: FakeEngine, now: list[float]
+    ) -> None:
         controller.reconcile(engine)
         now[0] = (controller.deadline or now[0]) + 1
         controller.reconcile(engine)
@@ -118,7 +120,10 @@ class AutoDisableTests(unittest.TestCase):
         engine = FakeEngine()
         controller = self._controller(
             now,
-            stop_requester=lambda: (attempts.append(now[0]), "Supervisor token is unavailable")[1],
+            stop_requester=lambda: (
+                attempts.append(now[0]),
+                "Supervisor token is unavailable",
+            )[1],
         )
 
         self._expire(controller, engine, now)

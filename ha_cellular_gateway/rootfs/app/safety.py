@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING
 
 from .command import RunCommand, run_json
 from .config import GatewayConfig
+from .downstream import DownstreamInterface
 from .errors import GatewayError
 from .firewall import Firewall
-from .downstream import DownstreamInterface
 from .policy import PolicyRouting
 from .upstream_models import ResolvedUpstream
 
@@ -53,6 +53,8 @@ class SafetyInspector:
             "main",
             "default",
         )
+        if not isinstance(routes, list):
+            return set()
         return {route["dev"] for route in routes if "dev" in route}
 
     def _rp_filter(self, interface: str) -> int:
@@ -60,9 +62,7 @@ class SafetyInspector:
         return int(self.read_text(path).strip())
 
     def _ip_forward(self) -> int:
-        return int(
-            self.read_text(Path("/proc/sys/net/ipv4/ip_forward")).strip()
-        )
+        return int(self.read_text(Path("/proc/sys/net/ipv4/ip_forward")).strip())
 
     def _has_non_link_local_ipv6(self, interface: str) -> bool:
         return any(
@@ -106,13 +106,13 @@ class SafetyInspector:
                     errors.append(
                         "Management interface/address baseline does not match"
                     )
-            except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
+            except GatewayError, OSError, subprocess.SubprocessError, ValueError:
                 errors.append("Management interface is unavailable")
 
         try:
             if self._ip_forward() != 1:
                 errors.append("Host IPv4 forwarding is not enabled")
-        except (OSError, ValueError):
+        except OSError, ValueError:
             errors.append("Cannot verify host IPv4 forwarding")
 
         interfaces = ["all", "default"]
@@ -124,7 +124,7 @@ class SafetyInspector:
             try:
                 if self._rp_filter(interface) == 1:
                     errors.append(f"Strict rp_filter is enabled on {interface}")
-            except (OSError, ValueError):
+            except OSError, ValueError:
                 errors.append(f"Cannot read rp_filter for {interface}")
 
         try:
@@ -132,17 +132,19 @@ class SafetyInspector:
                 errors.append("iptables is not using the nf_tables backend")
             if not self.firewall.chain_exists("iptables", "DOCKER-USER"):
                 errors.append("Docker DOCKER-USER chain is missing")
-        except (GatewayError, OSError, subprocess.SubprocessError):
+        except GatewayError, OSError, subprocess.SubprocessError:
             errors.append("Cannot inspect the host firewall backend")
 
         try:
             if current_upstream is None:
                 errors.append("Upstream interface is unavailable")
             else:
-                upstream_addresses = self.interface_addresses(current_upstream.interface)
+                upstream_addresses = self.interface_addresses(
+                    current_upstream.interface
+                )
                 if current_upstream.address not in upstream_addresses:
                     errors.append("Upstream interface/address is not active")
-        except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
+        except GatewayError, OSError, subprocess.SubprocessError, ValueError:
             errors.append("Upstream interface is unavailable")
 
         try:
@@ -158,7 +160,7 @@ class SafetyInspector:
                     )
             if upstream_interface and upstream_interface in default_interfaces:
                 errors.append("Mobile upstream has a main-table default route")
-        except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
+        except GatewayError, OSError, subprocess.SubprocessError, ValueError:
             errors.append("Cannot inspect main-table default routes")
 
         if downstream is None:
@@ -189,12 +191,9 @@ class SafetyInspector:
                 errors.append("Cannot inspect policy-routing ownership")
 
         try:
-            if (
-                upstream_interface
-                and self._has_non_link_local_ipv6(upstream_interface)
-            ):
+            if upstream_interface and self._has_non_link_local_ipv6(upstream_interface):
                 errors.append("IPv6 is active on mobile upstream")
-        except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
+        except GatewayError, OSError, subprocess.SubprocessError, ValueError:
             errors.append("Cannot verify upstream IPv6 state")
 
         return errors
@@ -221,11 +220,11 @@ class SafetyInspector:
             )
             if self._rp_filter(downstream) == 1:
                 errors.append("Strict rp_filter is enabled on downstream NIC")
-        except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
+        except GatewayError, OSError, subprocess.SubprocessError, ValueError:
             errors.append("Downstream interface is unavailable")
         try:
             if self._has_non_link_local_ipv6(downstream):
                 errors.append("IPv6 is active on downstream NIC")
-        except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
+        except GatewayError, OSError, subprocess.SubprocessError, ValueError:
             errors.append("Cannot verify downstream IPv6 state")
         return errors

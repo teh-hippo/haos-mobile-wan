@@ -29,10 +29,7 @@ def resolve_pinned_management(
         and engine.management_interface is not None
         and baseline.interface != engine.management_interface
     ):
-        error = (
-            "Management interface changed from "
-            f"{engine.management_interface} to {baseline.interface}"
-        )
+        error = f"Management interface changed from {engine.management_interface} to {baseline.interface}"
         baseline = None
     elif baseline is not None and engine.management_interface is None:
         engine.management_interface = baseline.interface

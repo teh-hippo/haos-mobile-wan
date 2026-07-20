@@ -64,8 +64,12 @@ class FakeRunner:
         self.rule_checks: set[tuple[str, tuple[str, ...], tuple[str, ...]]] = set()
         self.idevice_udids: list[str] = []
         self.idevice_paired_udids: list[str] = []
-        self.idevice_pair_result = Result(returncode=1, stdout="ERROR: Please accept the trust dialog\n")
-        self.idevice_validate_result = Result(returncode=1, stdout="ERROR: Device is not paired\n")
+        self.idevice_pair_result = Result(
+            returncode=1, stdout="ERROR: Please accept the trust dialog\n"
+        )
+        self.idevice_validate_result = Result(
+            returncode=1, stdout="ERROR: Device is not paired\n"
+        )
         self.main_default_routes: list[dict[str, object]] = [
             {"dst": "default", "gateway": "192.168.1.1", "dev": "end0"}
         ]
@@ -126,10 +130,10 @@ class FakeRunner:
         ]:
             lines = list(self.nm_profiles)
             return Result(stdout="\n".join(lines) + ("\n" if lines else ""))
-        if (
-            args[:4] == ["nmcli", "--escape", "no", "-g"]
-            and args[5:7] == ["connection", "show"]
-        ):
+        if args[:4] == ["nmcli", "--escape", "no", "-g"] and args[5:7] == [
+            "connection",
+            "show",
+        ]:
             fields = args[4].split(",")
             profile = self.nm_profiles.get(args[-1])
             if profile is None:
@@ -162,9 +166,7 @@ class FakeRunner:
                 "connection.uuid": uuid,
                 "connection.id": add_fields["con-name"],
                 "connection.type": (
-                    "802-3-ethernet"
-                    if kind == "ethernet"
-                    else "802-11-wireless"
+                    "802-3-ethernet" if kind == "ethernet" else "802-11-wireless"
                 ),
             }
             profile.update(
@@ -174,9 +176,7 @@ class FakeRunner:
                 profile["802-11-wireless.ssid"] = add_fields["ssid"]
             ifname = add_fields.get("ifname", "")
             profile["__bind_iface"] = (
-                ifname
-                if ifname not in {"", "*"}
-                else (self.nm_wildcard_bind or "")
+                ifname if ifname not in {"", "*"} else (self.nm_wildcard_bind or "")
             )
             self.nm_profiles[uuid] = profile
             if add_fields.get("connection.autoconnect", "yes") != "no":
@@ -213,9 +213,7 @@ class FakeRunner:
                 return Result(stdout="\n")
             addresses = configured if isinstance(configured, list) else [configured]
             return Result(
-                stdout="\n".join(
-                    f"{address}/{prefix}" for address, prefix in addresses
-                )
+                stdout="\n".join(f"{address}/{prefix}" for address, prefix in addresses)
                 + "\n"
             )
         if args[:2] == ["iptables", "--version"]:
@@ -232,7 +230,8 @@ class FakeRunner:
         if (
             len(args) > action_index + 1
             and args[action_index] == "-S"
-            and (family, args[action_index + 1]) in {
+            and (family, args[action_index + 1])
+            in {
                 ("iptables", "DOCKER-USER"),
                 ("iptables", "INPUT"),
                 ("ip6tables", "DOCKER-USER"),
@@ -251,11 +250,7 @@ class FakeRunner:
             if interface not in self.interface_addresses:
                 return Result(stdout="[]")
             configured = self.interface_addresses[interface]
-            addresses = (
-                configured
-                if isinstance(configured, list)
-                else [configured]
-            )
+            addresses = configured if isinstance(configured, list) else [configured]
             return Result(
                 stdout=json.dumps(
                     [
@@ -298,9 +293,7 @@ class FakeRunner:
             args[:6] == ["ip", "-4", "-j", "route", "show", "table"]
             and args[6].isdigit()
         ):
-            return Result(
-                stdout=json.dumps(self.nm_routes.get(int(args[6]), []))
-            )
+            return Result(stdout=json.dumps(self.nm_routes.get(int(args[6]), [])))
         if args[:4] == ["ip", "-j", "rule", "show"]:
             return Result(stdout=json.dumps(self.policy_rules))
         if args[:4] in (
@@ -339,7 +332,11 @@ class FakeRunner:
                 removed = False
                 remaining = []
                 for route in self.main_default_routes:
-                    if route.get("dev") == interface and route.get("dst") == "default" and not removed:
+                    if (
+                        route.get("dev") == interface
+                        and route.get("dst") == "default"
+                        and not removed
+                    ):
                         removed = True
                         continue
                     remaining.append(route)
@@ -347,7 +344,10 @@ class FakeRunner:
                 return Result(returncode=0 if removed else 1)
             return Result(returncode=1)
         if args[:2] == ["idevice_id", "--list"]:
-            return Result(stdout="\n".join(self.idevice_udids) + ("\n" if self.idevice_udids else ""))
+            return Result(
+                stdout="\n".join(self.idevice_udids)
+                + ("\n" if self.idevice_udids else "")
+            )
         if args[:2] == ["idevicepair", "list"]:
             return Result(
                 stdout="\n".join(self.idevice_paired_udids)
@@ -428,15 +428,15 @@ class FakeRunner:
             and args[3:6] == ["connection", "up", "uuid"]
         ):
             return self._nm_connection_up(args[6])
-        if (
-            args[:6] == ["nmcli", "-g", "SSID", "device", "wifi", "list"]
-            and args[-2:] == ["--rescan", "no"]
-        ):
+        if args[:6] == ["nmcli", "-g", "SSID", "device", "wifi", "list"] and args[
+            -2:
+        ] == [
+            "--rescan",
+            "no",
+        ]:
             iface = args[args.index("ifname") + 1]
             ssids = self.nm_wifi_cache.get(iface, set())
-            return Result(
-                stdout="\n".join(sorted(ssids)) + ("\n" if ssids else "")
-            )
+            return Result(stdout="\n".join(sorted(ssids)) + ("\n" if ssids else ""))
         return None
 
     def _nm_device_show(self, fields: list[str], iface: str) -> Result:
@@ -450,7 +450,9 @@ class FakeRunner:
                 "yes" if self.nm_device_autoconnect.get(iface, True) else "no"
             ),
         }
-        return Result(stdout="\n".join(values.get(field, "") for field in fields) + "\n")
+        return Result(
+            stdout="\n".join(values.get(field, "") for field in fields) + "\n"
+        )
 
     def _nm_connection_up(self, uuid: str) -> Result:
         if uuid in self.nm_up_failures:
@@ -461,8 +463,7 @@ class FakeRunner:
         if self.nm_auth_failure:
             return Result(
                 returncode=4,
-                stderr="Error: Connection activation failed: "
-                "Secrets were required, but not provided",
+                stderr="Error: Connection activation failed: Secrets were required, but not provided",
             )
         profile = self.nm_profiles.get(uuid, {})
         interface = profile.get("connection.interface-name") or profile.get(
@@ -563,10 +564,7 @@ class FakeRunner:
             self.main_default_routes = [
                 route
                 for route in self.main_default_routes
-                if not (
-                    route.get("dev") == interface
-                    and route.get("dst") == "default"
-                )
+                if not (route.get("dev") == interface and route.get("dst") == "default")
             ]
         else:
             self.nm_routes.pop(int(str(table_id)), None)
@@ -599,9 +597,7 @@ class FakeRunner:
     def _delete_rule(self, family: str, chain: str, spec: list[str]) -> None:
         lines = self._chain_lines(family, chain)
         rule_indexes = [
-            index
-            for index, line in enumerate(lines)
-            if line.startswith(f"-A {chain} ")
+            index for index, line in enumerate(lines) if line.startswith(f"-A {chain} ")
         ]
         if not rule_indexes:
             return
@@ -748,9 +744,7 @@ def install_realistic_firewall_state(
                 "INPUT",
             ): "\n".join(
                 (
-                    "-A INPUT "
-                    f"-i {downstream} -m comment --comment ha-cellgw:local-jump "
-                    f"-j {firewall.INPUT_CHAIN}",
+                    f"-A INPUT -i {downstream} -m comment --comment ha-cellgw:local-jump -j {firewall.INPUT_CHAIN}",
                 )
             ),
             (
@@ -758,8 +752,7 @@ def install_realistic_firewall_state(
                 "DOCKER-USER",
             ): "\n".join(
                 (
-                    "-A DOCKER-USER -m comment --comment ha-cellgw:jump "
-                    f"-j {firewall.FORWARD_CHAIN}",
+                    f"-A DOCKER-USER -m comment --comment ha-cellgw:jump -j {firewall.FORWARD_CHAIN}",
                 )
             ),
             (
@@ -772,8 +765,7 @@ def install_realistic_firewall_state(
                     "-m comment --comment ha-cellgw:local-established -j ACCEPT",
                     "-A HA_CELLGW_LOCAL -p udp -m udp --sport 68 --dport 67 "
                     "-m comment --comment ha-cellgw:dhcp-in -j ACCEPT",
-                    "-A HA_CELLGW_LOCAL -p icmp -m comment --comment ha-cellgw:icmp-in "
-                    "-j ACCEPT",
+                    "-A HA_CELLGW_LOCAL -p icmp -m comment --comment ha-cellgw:icmp-in -j ACCEPT",
                     "-A HA_CELLGW_LOCAL -m comment --comment ha-cellgw:local-drop -j DROP",
                 )
             ),
@@ -789,10 +781,8 @@ def install_realistic_firewall_state(
                     f"-A HA_CELLGW -i {upstream} -o {downstream} -d {subnet} "
                     "-m conntrack --ctstate RELATED,ESTABLISHED -m comment "
                     "--comment ha-cellgw:in -j ACCEPT",
-                    f"-A HA_CELLGW -i {downstream} ! -o {upstream} -m comment "
-                    "--comment ha-cellgw:drop-out -j DROP",
-                    f"-A HA_CELLGW ! -i {upstream} -o {downstream} -m comment "
-                    "--comment ha-cellgw:drop-in -j DROP",
+                    f"-A HA_CELLGW -i {downstream} ! -o {upstream} -m comment --comment ha-cellgw:drop-out -j DROP",
+                    f"-A HA_CELLGW ! -i {upstream} -o {downstream} -m comment --comment ha-cellgw:drop-in -j DROP",
                     "-A HA_CELLGW -j RETURN",
                 )
             ),
@@ -801,9 +791,7 @@ def install_realistic_firewall_state(
                 "INPUT",
             ): "\n".join(
                 (
-                    "-A INPUT "
-                    f"-i {downstream} -m comment --comment ha-cellgw:v6-local-jump "
-                    f"-j {firewall.INPUT6_CHAIN}",
+                    f"-A INPUT -i {downstream} -m comment --comment ha-cellgw:v6-local-jump -j {firewall.INPUT6_CHAIN}",
                 )
             ),
             (
@@ -811,8 +799,7 @@ def install_realistic_firewall_state(
                 "DOCKER-USER",
             ): "\n".join(
                 (
-                    "-A DOCKER-USER -m comment --comment ha-cellgw:v6-jump "
-                    f"-j {firewall.FORWARD6_CHAIN}",
+                    f"-A DOCKER-USER -m comment --comment ha-cellgw:v6-jump -j {firewall.FORWARD6_CHAIN}",
                 )
             ),
             (
@@ -868,11 +855,7 @@ def install_realistic_policy_state(
             "dst": route[0],
             "dev": route[route.index("dev") + 1],
             "prefsrc": route[route.index("src") + 1],
-            **(
-                {"gateway": route[route.index("via") + 1]}
-                if "via" in route
-                else {}
-            ),
+            **({"gateway": route[route.index("via") + 1]} if "via" in route else {}),
         }
         for route in policy.route_args(ownership)
     ]
@@ -885,9 +868,7 @@ def prepend_chain_rule(
     rule: str,
 ) -> None:
     listing = runner.chain_listings.get((family, chain), "")
-    runner.chain_listings[(family, chain)] = (
-        f"{rule}\n{listing}" if listing else rule
-    )
+    runner.chain_listings[(family, chain)] = f"{rule}\n{listing}" if listing else rule
 
 
 def sysctl_values() -> dict[Path, str]:

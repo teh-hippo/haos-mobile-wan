@@ -247,9 +247,10 @@ Supervisor-side host address.
 
 ## Development
 
-The validation workflow runs the add-on unit tests, Python compilation, an
-`import app.main` smoke check, metadata validation, AppArmor parsing and an
-`aarch64` image build. See
+The validation workflow runs locked Ruff and mypy checks, branch-aware unit
+coverage, ShellCheck, Actionlint, Python compilation, an `import app.main`
+smoke check, metadata validation, AppArmor parsing and an `aarch64` image
+build. See
 [`.github/workflows/validate.yml`](.github/workflows/validate.yml) for the
 authoritative commands.
 
@@ -274,11 +275,22 @@ It runs locally on a KVM host or through its `workflow_dispatch` workflow.
 The primary local checks are:
 
 ```sh
-PYTHONPATH=ha_cellular_gateway \
-  python -m unittest discover -s ha_cellular_gateway/tests -v
+uv sync --frozen
 
 PYTHONPATH=ha_cellular_gateway \
-  python -m py_compile ha_cellular_gateway/rootfs/app/*.py
+  uv run coverage run -m unittest discover \
+    -s ha_cellular_gateway/tests -v
 
-PYTHONPATH=ha_cellular_gateway/rootfs python -c "import app.main"
+uv run coverage report
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy ha_cellular_gateway/rootfs/app tools
+git ls-files -z '*.sh' | xargs -0 uv run shellcheck -x
+uv run actionlint
+
+PYTHONPATH=ha_cellular_gateway \
+  uv run python -m py_compile ha_cellular_gateway/rootfs/app/*.py
+
+PYTHONPATH=ha_cellular_gateway/rootfs \
+  uv run python -c "import app.main"
 ```

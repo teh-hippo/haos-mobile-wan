@@ -5,13 +5,13 @@ import unittest
 
 from helpers import Result, make_config
 from rootfs.app.management import ManagementBaseline
+from rootfs.app.networkmanager_wifi import NetworkManagerWifi
 from rootfs.app.nm_inventory import NmInventory
 from rootfs.app.nm_preflight import (
     MANAGEMENT_REQUIRED,
     USB_FOREIGN_PROFILE,
     inspect_nm_ownership,
 )
-from rootfs.app.networkmanager_wifi import NetworkManagerWifi
 from rootfs.app.nm_profile import NmProfile
 from rootfs.app.nm_profile_specs import (
     WIFI_PROFILE_UUID,
@@ -51,9 +51,7 @@ class FakeNmcli:
                 return Result(stdout=json.dumps(self.main_default))
             if argv[:6] == ["ip", "-4", "-j", "route", "show", "table"]:
                 return Result(
-                    stdout=json.dumps(
-                        self.table_routes.get(int(argv[6]), [])
-                    )
+                    stdout=json.dumps(self.table_routes.get(int(argv[6]), []))
                 )
             if argv[:4] == ["ip", "-j", "rule", "show"]:
                 return Result(stdout=json.dumps(self.rules))
@@ -71,10 +69,10 @@ class FakeNmcli:
         ]:
             lines = list(self.profiles)
             return Result(stdout="\n".join(lines) + ("\n" if lines else ""))
-        if (
-            command[:3] == ["--escape", "no", "-g"]
-            and command[4:6] == ["connection", "show"]
-        ):
+        if command[:3] == ["--escape", "no", "-g"] and command[4:6] == [
+            "connection",
+            "show",
+        ]:
             fields = command[3].split(",")
             profile = self.profiles.get(command[-1])
             if profile is None:
@@ -140,9 +138,7 @@ class FakeNmcli:
             return Result(stdout=self.active.get(interface, "") + "\n")
         if command[:3] == ["-g", "IP4.ADDRESS", "device"]:
             interface = command[-1]
-            return Result(
-                stdout="\n".join(self.addresses.get(interface, [])) + "\n"
-            )
+            return Result(stdout="\n".join(self.addresses.get(interface, [])) + "\n")
         return Result()
 
 
@@ -296,9 +292,7 @@ class NmProfileTests(unittest.TestCase):
             ],
             cli.commands,
         )
-        self.assertFalse(
-            any("--separator" in command for command in cli.commands)
-        )
+        self.assertFalse(any("--separator" in command for command in cli.commands))
 
     def test_preflight_requires_management_and_keeps_usb_strict(self) -> None:
         cli = FakeNmcli()

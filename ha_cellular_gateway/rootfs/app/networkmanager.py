@@ -10,18 +10,18 @@ from .command import RunCommand
 from .config import GatewayConfig
 from .const import GENERIC_USB, IPHONE_USB
 from .errors import GatewayError
-from .nm_profile import ACTIVATION_COOLDOWN_SECONDS, NmProfile, ProfileSpec
-from .nm_profile_specs import (
-    USB_ROUTE_TABLE,
-    generic_usb_profile_spec,
-    usb_profile_spec,
-)
 from .networkmanager_invariants import (
     main_default_present,
     networkmanager_routes,
     rule_selects_table,
     table_gateway,
     table_routes_state,
+)
+from .nm_profile import NmProfile, ProfileSpec
+from .nm_profile_specs import (
+    USB_ROUTE_TABLE,
+    generic_usb_profile_spec,
+    usb_profile_spec,
 )
 from .upstream_models import ResolvedUpstream, validate_dynamic_lease
 
@@ -30,12 +30,8 @@ if TYPE_CHECKING:
 
 LEASE_OWNER = "networkmanager"
 
-RULE_MESSAGE = (
-    f"A policy rule selects the NetworkManager USB table {USB_ROUTE_TABLE}"
-)
-MULTIPLE_ADDRESS_MESSAGE = (
-    "The iPhone USB interface has more than one IPv4 address"
-)
+RULE_MESSAGE = f"A policy rule selects the NetworkManager USB table {USB_ROUTE_TABLE}"
+MULTIPLE_ADDRESS_MESSAGE = "The iPhone USB interface has more than one IPv4 address"
 
 
 @dataclass(frozen=True)
@@ -114,8 +110,7 @@ class NetworkManagerUsb:
         routes = networkmanager_routes(self.run, USB_ROUTE_TABLE)
         gateway, gateway_state = table_gateway(routes, interface)
         table_message = (
-            f"NetworkManager {self.label} table {USB_ROUTE_TABLE} "
-            "has unexpected routes"
+            f"NetworkManager {self.label} table {USB_ROUTE_TABLE} has unexpected routes"
         )
         if gateway_state == "invalid":
             return NetworkManagerResult(None, "invalid", table_message, False)
@@ -164,10 +159,7 @@ class NetworkManagerUsb:
             ) != [upstream.address]:
                 return False
             routes = networkmanager_routes(self.run, USB_ROUTE_TABLE)
-            return (
-                table_routes_state(routes, upstream.interface, upstream)
-                == "ready"
-            )
+            return table_routes_state(routes, upstream.interface, upstream) == "ready"
         except (
             GatewayError,
             OSError,

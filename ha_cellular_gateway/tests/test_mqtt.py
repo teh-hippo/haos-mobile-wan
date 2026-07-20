@@ -258,9 +258,7 @@ class DiscoveryPayloadTests(unittest.TestCase):
         self.assertNotIn("waiting_for_device", pairing["options"])
 
     def test_binary_sensor_device_classes(self) -> None:
-        self.assertEqual(
-            self.cmps["upstream_healthy"]["device_class"], "connectivity"
-        )
+        self.assertEqual(self.cmps["upstream_healthy"]["device_class"], "connectivity")
         self.assertEqual(self.cmps["rules_installed"]["device_class"], "running")
         self.assertEqual(self.cmps["dnsmasq_running"]["device_class"], "running")
         self.assertNotIn("device_class", self.cmps["downstream_present"])
@@ -309,9 +307,7 @@ class FriendlyLabelTests(unittest.TestCase):
 
     def test_relabelled_names(self) -> None:
         self.assertEqual(self.cmps["upstream_healthy"]["name"], "Internet available")
-        self.assertEqual(
-            self.cmps["upstream_healthy"]["device_class"], "connectivity"
-        )
+        self.assertEqual(self.cmps["upstream_healthy"]["device_class"], "connectivity")
         self.assertEqual(self.cmps["active_connection"]["name"], "Connected via")
         self.assertEqual(self.cmps["gateway_state"]["name"], "Gateway state")
         self.assertEqual(self.cmps["mobile_connection"]["name"], "Connection method")
@@ -321,9 +317,7 @@ class FriendlyLabelTests(unittest.TestCase):
         template = self.cmps["upstream_pairing_state"]["value_template"]
         self.assertIn("'waiting_for_device': 'Waiting for device'", template)
         self.assertIn("'daemon_failed': 'Pairing helper failed'", template)
-        self.assertIn(
-            ".get(value_json.upstream_pairing_state, 'Not active')", template
-        )
+        self.assertIn(".get(value_json.upstream_pairing_state, 'Not active')", template)
 
     def test_mobile_connection_template_embeds_internal_to_label(self) -> None:
         template = self.cmps["mobile_connection"]["value_template"]
@@ -341,8 +335,7 @@ class FriendlyLabelTests(unittest.TestCase):
     def test_downstream_interface_not_present_fallback(self) -> None:
         self.assertEqual(
             self.cmps["downstream_interface"]["value_template"],
-            "{{ value_json.downstream_interface"
-            " if value_json.downstream_interface else 'Not present' }}",
+            "{{ value_json.downstream_interface if value_json.downstream_interface else 'Not present' }}",
         )
 
     @unittest.skipUnless(_HAS_JINJA, "jinja2 not installed")
@@ -504,9 +497,7 @@ class PublisherLifecycleTests(unittest.TestCase):
         state = json.loads(client.last_payload(STATE_TOPIC))
         self.assertEqual(state, build_state_payload(dict(STATUS)))
 
-        retained = {
-            topic: retain for topic, _p, _q, retain in client.published
-        }
+        retained = {topic: retain for topic, _p, _q, retain in client.published}
         self.assertTrue(retained[DISCOVERY_TOPIC])
         self.assertTrue(retained[STATE_TOPIC])
         publisher.stop()

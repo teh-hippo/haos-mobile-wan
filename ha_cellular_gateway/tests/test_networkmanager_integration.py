@@ -30,15 +30,12 @@ class NetworkManagerIntegrationTests(unittest.TestCase):
         self.assertIn("\n    networkmanager \\", lab)
         self.assertIn("COPY rootfs /", lab)
         self.assertIn(
-            "COPY integration/networkmanager/nmcli_harness.py "
-            "/integration/nmcli_harness.py",
+            "COPY integration/networkmanager/nmcli_harness.py /integration/nmcli_harness.py",
             lab,
         )
 
     def test_compose_lab_is_single_service_and_host_isolated(self) -> None:
-        compose = yaml.safe_load(
-            (LAB_DIR / "compose.yaml").read_text(encoding="utf-8")
-        )
+        compose = yaml.safe_load((LAB_DIR / "compose.yaml").read_text(encoding="utf-8"))
         self.assertEqual(set(compose["services"]), {"networkmanager"})
         service = compose["services"]["networkmanager"]
         self.assertEqual(service["network_mode"], "none")
@@ -53,10 +50,7 @@ class NetworkManagerIntegrationTests(unittest.TestCase):
         livetest = (LAB_DIR / "test_live_nm.py").read_text(encoding="utf-8")
         runner = (LAB_DIR / "run.sh").read_text(encoding="utf-8")
         workflow = (
-            REPO_ROOT
-            / ".github"
-            / "workflows"
-            / "networkmanager-integration.yml"
+            REPO_ROOT / ".github" / "workflows" / "networkmanager-integration.yml"
         ).read_text(encoding="utf-8")
 
         self.assertIn("plugins=keyfile", config)

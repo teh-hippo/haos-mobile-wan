@@ -7,10 +7,16 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Protocol
 
 _LOGGER = logging.getLogger(__name__)
 
-UrlOpen = Callable[..., object]
+
+class ReadResponse(Protocol):
+    def read(self) -> bytes: ...
+
+
+UrlOpen = Callable[..., ReadResponse]
 
 MQTT_SERVICE_URL = "http://supervisor/services/mqtt"
 
@@ -62,7 +68,7 @@ def _parse(payload: object, *, warn: bool) -> MqttCredentials | None:
         return None
     try:
         port = int(data["port"])
-    except (KeyError, TypeError, ValueError):
+    except KeyError, TypeError, ValueError:
         _log_failure(warn, "MQTT service response has an invalid broker port")
         return None
     return MqttCredentials(

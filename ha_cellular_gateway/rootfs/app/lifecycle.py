@@ -4,8 +4,8 @@ import logging
 import subprocess
 from typing import TYPE_CHECKING
 
-from .errors import GatewayError
 from .const import GENERIC_USB, IPHONE_USB
+from .errors import GatewayError
 
 if TYPE_CHECKING:
     from .gateway import GatewayEngine

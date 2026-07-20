@@ -8,8 +8,8 @@ from rootfs.app.nm_profile_specs import WIFI_PROFILE_UUID
 from rootfs.app.wifi_custody import (
     MARKER_KEY,
     RADIO_INSPECTION_UNAVAILABLE,
-    parse_marker,
 )
+from rootfs.app.wifi_custody_marker import parse_marker
 
 
 def _up_commands(runner: FakeRunner) -> list[list[str]]:
@@ -22,9 +22,7 @@ def _up_commands(runner: FakeRunner) -> list[list[str]]:
 
 def _device_set_commands(commands: list[list[str]]) -> list[list[str]]:
     return [
-        command
-        for command in commands
-        if command[:3] == ["nmcli", "device", "set"]
+        command for command in commands if command[:3] == ["nmcli", "device", "set"]
     ]
 
 
@@ -89,7 +87,8 @@ class WifiCustodianTests(unittest.TestCase):
         write_index = events.index(("metadata-write", MARKER_KEY))
         persist_index = events.index(("persist", ""))
         device_index = next(
-            index for index, event in enumerate(events)
+            index
+            for index, event in enumerate(events)
             if event[0] == "device-autoconnect"
         )
         self.assertLess(write_index, persist_index)

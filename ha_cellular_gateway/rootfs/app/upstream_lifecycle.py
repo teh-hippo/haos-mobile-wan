@@ -23,6 +23,7 @@ PROFILE_ERRORS = (
     ValueError,
 )
 
+
 class UpstreamLifecycle:
     def __init__(
         self,
@@ -68,9 +69,7 @@ class UpstreamLifecycle:
         if journal_error:
             errors.append(journal_error)
         try:
-            preflight = inspect_nm_ownership(
-                self.config, self.inventory, management
-            )
+            preflight = inspect_nm_ownership(self.config, self.inventory, management)
             self.lineage_wifi_profiles = preflight.lineage_wifi_profiles
             errors.extend(preflight.errors)
             if management is not None and WIFI_MANAGEMENT_CONFLICT not in errors:
@@ -138,9 +137,7 @@ class UpstreamLifecycle:
             # Combined/fallback mode: a safely unavailable Wi-Fi adapter must not
             # fail closed or churn the healthy USB source. The blocker is still
             # recorded on the Wi-Fi controller for diagnostics.
-            errors = [
-                error for error in errors if not safe_wifi_unavailable(error)
-            ]
+            errors = [error for error in errors if not safe_wifi_unavailable(error)]
         return errors
 
     def _ensure_usb_profile(self) -> list[str]:
@@ -158,9 +155,7 @@ class UpstreamLifecycle:
             self.journal.set_profile_state(key, "exact")
         return []
 
-    def _release_unselected(
-        self, management: ManagementBaseline | None
-    ) -> list[str]:
+    def _release_unselected(self, management: ManagementBaseline | None) -> list[str]:
         errors: list[str] = []
         for upstream in self.usb_upstreams:
             if not self.config.uses_usb or upstream is not self.usb:

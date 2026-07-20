@@ -3,7 +3,11 @@ from __future__ import annotations
 from .command import RunCommand
 from .config import GatewayConfig
 from .firewall_rules import FirewallRules
-from .firewall_state import firewall_installed, host_protection_installed, jump_installed
+from .firewall_state import (
+    firewall_installed,
+    host_protection_installed,
+    jump_installed,
+)
 from .netfilter import Netfilter
 
 

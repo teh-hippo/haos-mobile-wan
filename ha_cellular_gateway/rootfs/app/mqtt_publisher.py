@@ -150,9 +150,7 @@ class MqttPublisher:
     def _publish_loop(self) -> None:
         while True:
             interval = (
-                self._interval
-                if self._connection is not None
-                else self._retry_interval
+                self._interval if self._connection is not None else self._retry_interval
             )
             if self._stop.wait(interval):
                 return

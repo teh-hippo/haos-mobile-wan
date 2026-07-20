@@ -23,10 +23,13 @@ UpstreamResolution = tuple[ResolvedUpstream | None, list[str]]
 
 
 class UsbNetworkUpstream:
-    LEASE_GRACE_SECONDS = max(
-        ACTIVATION_COOLDOWN_SECONDS,
-        USB_DHCP_TIMEOUT_SECONDS,
-    ) + 5
+    LEASE_GRACE_SECONDS = (
+        max(
+            ACTIVATION_COOLDOWN_SECONDS,
+            USB_DHCP_TIMEOUT_SECONDS,
+        )
+        + 5
+    )
 
     def __init__(
         self,
@@ -165,9 +168,8 @@ class UsbNetworkUpstream:
         if self._last_lease is None:
             return None
         upstream, seen = self._last_lease
-        if (
-            self._monotonic() - seen < self.LEASE_GRACE_SECONDS
-            and self.nm.continuity(upstream)
+        if self._monotonic() - seen < self.LEASE_GRACE_SECONDS and self.nm.continuity(
+            upstream
         ):
             return upstream
         self._last_lease = None

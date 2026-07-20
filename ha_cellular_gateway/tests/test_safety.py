@@ -2,9 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from rootfs.app.management import ManagementBaseline
-
 from helpers import FakeRunner, build_engine, make_config, sysctl_values
+from rootfs.app.management import ManagementBaseline
 
 
 class SafetyManagementTests(unittest.TestCase):

@@ -16,6 +16,7 @@ from .upstream_usb import UpstreamResolution, UsbNetworkUpstream
 if TYPE_CHECKING:
     from .management import ManagementBaseline
 
+
 class IPhoneUsbUpstream(UsbNetworkUpstream):
     def __init__(
         self,
@@ -45,8 +46,7 @@ class IPhoneUsbUpstream(UsbNetworkUpstream):
         )
         super().__init__(
             run,
-            network_manager
-            or NetworkManagerIphone(config, run, monotonic=monotonic),
+            network_manager or NetworkManagerIphone(config, run, monotonic=monotonic),
             label="iPhone USB",
             ready_state="paired",
             monotonic=monotonic,
@@ -90,12 +90,11 @@ class IPhoneUsbUpstream(UsbNetworkUpstream):
         if not udids:
             self._forget_lease()
             if apple_present and not self.runtime.ipheth_driver_active():
-                message = (
-                    "Apple USB device is present but the host ipheth driver "
-                    "is not active"
-                )
+                message = "Apple USB device is present but the host ipheth driver is not active"
             else:
-                message = "Connect a single trusted iPhone with Personal Hotspot enabled"
+                message = (
+                    "Connect a single trusted iPhone with Personal Hotspot enabled"
+                )
             return self._fail("waiting_for_device", message)
         if len(udids) > 1:
             self._forget_lease()

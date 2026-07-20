@@ -7,6 +7,7 @@ from tools.release_contract import (
     config_version,
     is_release_file,
     parse_version,
+    stable_release_errors,
     validate_contract,
 )
 
@@ -98,6 +99,41 @@ class ReleaseContractTests(unittest.TestCase):
             config_version("version: 12\n")
         with self.assertRaises(ContractError):
             parse_version("0.11")
+
+    def test_pre_release_does_not_require_stable_metadata(self) -> None:
+        self.assertEqual(
+            stable_release_errors(
+                {
+                    "version": "0.12.0",
+                    "stage": "experimental",
+                }
+            ),
+            [],
+        )
+
+    def test_stable_release_requires_stable_stage_and_signed_image(self) -> None:
+        self.assertEqual(
+            stable_release_errors(
+                {
+                    "version": "1.0.0",
+                    "stage": "experimental",
+                }
+            ),
+            [
+                "Stable releases require stage: stable",
+                "Stable releases require image: ghcr.io/teh-hippo/haos-mobile-wan",
+            ],
+        )
+        self.assertEqual(
+            stable_release_errors(
+                {
+                    "version": "1.0.0",
+                    "stage": "stable",
+                    "image": "ghcr.io/teh-hippo/haos-mobile-wan",
+                }
+            ),
+            [],
+        )
 
 
 if __name__ == "__main__":

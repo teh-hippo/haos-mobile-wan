@@ -271,6 +271,9 @@ documentation can change without an app release when the payload is unchanged.
 Renovate does not auto-merge runtime base-image updates because those changes
 need the same version and changelog treatment.
 
+Versions from `1.0.0` onwards are rejected unless app metadata uses
+`stage: stable` and the signed `ghcr.io/teh-hippo/haos-mobile-wan` image.
+
 Source-size guardrails are category-specific rather than one repository-wide
 number: runtime modules are limited to 250 lines, unit and support modules to
 400, the live NetworkManager lab to 350 and QEMU guest modules to 300.

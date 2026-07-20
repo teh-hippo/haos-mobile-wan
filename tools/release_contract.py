@@ -9,6 +9,7 @@ import yaml
 
 CONFIG_PATH = "ha_cellular_gateway/config.yaml"
 CHANGELOG_PATH = Path("ha_cellular_gateway/CHANGELOG.md")
+STABLE_IMAGE = "ghcr.io/teh-hippo/haos-mobile-wan"
 RELEASE_FILES = {
     CONFIG_PATH,
     "ha_cellular_gateway/Dockerfile",
@@ -36,12 +37,33 @@ def parse_version(value: str) -> tuple[int, int, int]:
     )
 
 
-def config_version(text: str) -> str:
+def config_data(text: str) -> dict[str, object]:
     data: object = yaml.safe_load(text)
-    version = data.get("version") if isinstance(data, dict) else None
+    if not isinstance(data, dict) or not all(isinstance(key, str) for key in data):
+        raise ContractError(f"{CONFIG_PATH} must contain an object")
+    return {key: value for key, value in data.items() if isinstance(key, str)}
+
+
+def config_version(text: str) -> str:
+    version = config_data(text).get("version")
     if not isinstance(version, str):
         raise ContractError(f"{CONFIG_PATH} must contain a string version")
     return version
+
+
+def stable_release_errors(config: dict[str, object]) -> list[str]:
+    version = config.get("version")
+    if not isinstance(version, str):
+        raise ContractError(f"{CONFIG_PATH} must contain a string version")
+    if parse_version(version)[0] < 1:
+        return []
+
+    errors: list[str] = []
+    if config.get("stage") != "stable":
+        errors.append("Stable releases require stage: stable")
+    if config.get("image") != STABLE_IMAGE:
+        errors.append(f"Stable releases require image: {STABLE_IMAGE}")
+    return errors
 
 
 def is_release_file(path: str) -> bool:
@@ -97,6 +119,8 @@ def main() -> int:
     if len(sys.argv) != 2:
         raise ContractError("Usage: release_contract.py BASE_COMMIT")
     base = sys.argv[1]
+    current_text = Path(CONFIG_PATH).read_text(encoding="utf-8")
+    current_config = config_data(current_text)
     changed_files = _git(
         "diff",
         "--name-only",
@@ -104,11 +128,12 @@ def main() -> int:
     ).splitlines()
     errors = validate_contract(
         base_version=config_version(_base_file(base, CONFIG_PATH)),
-        current_version=config_version(Path(CONFIG_PATH).read_text(encoding="utf-8")),
+        current_version=config_version(current_text),
         changed_files=changed_files,
         changelog=CHANGELOG_PATH.read_text(encoding="utf-8"),
         tags=set(_git("tag", "--list", "v*").splitlines()),
     )
+    errors.extend(stable_release_errors(current_config))
     if errors:
         for error in errors:
             print(error, file=sys.stderr)

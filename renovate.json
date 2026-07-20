@@ -7,6 +7,12 @@
       "matchManagers": ["dockerfile"],
       "matchFileNames": ["ha_cellular_gateway/Dockerfile"],
       "automerge": false
+    },
+    {
+      "description": "Keep validation on the supported Python 3.13 floor",
+      "matchPackageNames": ["python"],
+      "matchFileNames": [".python-version"],
+      "allowedVersions": "3.13"
     }
   ]
 }

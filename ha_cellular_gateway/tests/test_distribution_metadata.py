@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tomllib
 import unittest
 from pathlib import Path
@@ -13,6 +14,7 @@ DOCS = APP_DIR / "DOCS.md"
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "validate.yml"
 BUILDER_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "builder.yml"
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release.yml"
+RENOVATE = REPO_ROOT / "renovate.json"
 NM_INTEGRATION_WORKFLOW = (
     REPO_ROOT / ".github" / "workflows" / "networkmanager-integration.yml"
 )
@@ -41,6 +43,17 @@ class DistributionMetadataTests(unittest.TestCase):
             "published-image-ok",
         ):
             self.assertIn(snippet, workflow)
+
+    def test_renovate_keeps_the_supported_python_floor(self) -> None:
+        config = json.loads(RENOVATE.read_text(encoding="utf-8"))
+        matching = [
+            rule
+            for rule in config["packageRules"]
+            if ".python-version" in rule.get("matchFileNames", [])
+        ]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["matchPackageNames"], ["python"])
+        self.assertEqual(matching[0]["allowedVersions"], "3.13")
 
     def test_integration_labs_are_reusable_and_scheduled(self) -> None:
         nm_workflow = NM_INTEGRATION_WORKFLOW.read_text(encoding="utf-8")

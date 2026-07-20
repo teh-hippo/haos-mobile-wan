@@ -11,6 +11,7 @@ APP_DIR = REPO_ROOT / "ha_cellular_gateway"
 README = REPO_ROOT / "README.md"
 DOCS = APP_DIR / "DOCS.md"
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "validate.yml"
+BUILDER_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "builder.yml"
 CONFIG = APP_DIR / "config.yaml"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 PYTHON_VERSION = REPO_ROOT / ".python-version"
@@ -20,8 +21,19 @@ class DistributionMetadataTests(unittest.TestCase):
     def test_addon_config_uses_mqtt_service_without_supervisor_discovery(self) -> None:
         config = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
         self.assertEqual(config["name"], "Mobile WAN")
+        self.assertEqual(config["image"], "ghcr.io/teh-hippo/haos-mobile-wan")
         self.assertIn("mqtt:need", config["services"])
         self.assertNotIn("discovery", config)
+
+    def test_builder_publishes_and_verifies_signed_image(self) -> None:
+        workflow = BUILDER_WORKFLOW.read_text(encoding="utf-8")
+        for snippet in (
+            "home-assistant/builder/actions/build-image@",
+            "home-assistant/builder/actions/publish-multi-arch-manifest@",
+            "home-assistant/builder/actions/cosign-verify@",
+            "published-image-ok",
+        ):
+            self.assertIn(snippet, workflow)
 
     def test_addon_includes_native_artwork(self) -> None:
         for name in ("icon.svg", "logo.svg"):

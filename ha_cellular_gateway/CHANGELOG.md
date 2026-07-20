@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.12.0
+
+- Publish signed, pre-built aarch64 images to GHCR using the official Home
+  Assistant builder actions.
+- Configure Home Assistant to pull the immutable versioned image instead of
+  rebuilding the app independently on each HAOS host.
+- Verify the published Cosign signature, image version label and application
+  import before release.
+
 ## 0.11.6
 
 - Adopt the Home Assistant app linter's canonical metadata by relying on the

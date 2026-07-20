@@ -138,6 +138,20 @@ class HostInterfaceTests(unittest.TestCase):
         downstream.cleanup(ownership)
         self.assertNotIn("enp1s0u1", self.runner.routes.interface_addresses)
 
+    def test_cleanup_succeeds_when_the_interface_directory_still_exists(self) -> None:
+        self._add_interface("enp1s0u1", "6c:1f:f7:cc:49:ab")
+        downstream = self._downstream()
+        ownership = {
+            "downstream": "enp1s0u1",
+            "downstream_address": "192.168.80.1/24",
+            "downstream_address_owned": True,
+        }
+        downstream.apply("enp1s0u1")
+
+        downstream.cleanup(ownership)
+
+        self.assertNotIn("enp1s0u1", self.runner.routes.interface_addresses)
+
     def test_rejects_host_managed_downstream_address(self) -> None:
         self.runner.routes.interface_addresses["enp1s0u1"] = ("192.168.80.9", 24)
         downstream = self._downstream()
@@ -148,6 +162,81 @@ class HostInterfaceTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(GatewayError, "host-managed"):
             downstream.apply("enp1s0u1")
+
+    def test_candidates_returns_empty_list_when_sys_net_root_is_missing(self) -> None:
+        downstream = self._downstream()
+        self.sys_net_root.rmdir()
+
+        self.assertEqual(downstream.candidates("end0"), [])
+
+    def test_selection_error_reports_configured_mac_missing(self) -> None:
+        downstream = self._downstream(mac="aa:bb:cc:dd:ee:ff")
+
+        self.assertEqual(
+            downstream.selection_error("end0"),
+            "Configured downstream NIC is not present",
+        )
+
+    def test_selection_error_reports_no_candidates_present(self) -> None:
+        downstream = self._downstream()
+
+        self.assertEqual(
+            downstream.selection_error("end0"),
+            "USB Ethernet downstream is not present",
+        )
+
+    def test_wireless_interfaces_are_excluded_from_candidates(self) -> None:
+        self._add_interface("wlan1", "aa:bb:cc:dd:ee:ff")
+        (self.sys_net_root / "wlan1" / "wireless").mkdir()
+        downstream = self._downstream()
+
+        self.assertEqual(downstream.candidates("end0"), [])
+
+    def test_address_errors_reports_missing_owned_address(self) -> None:
+        downstream = self._downstream()
+
+        self.assertEqual(
+            downstream.address_errors("enp1s0u1", owned=True),
+            ["App-owned downstream address is unavailable"],
+        )
+
+    def test_address_errors_reports_unexpected_extra_addresses(self) -> None:
+        self.runner.routes.interface_addresses["enp1s0u1"] = [
+            ("192.168.80.1", 24),
+            ("192.168.80.2", 24),
+        ]
+        downstream = self._downstream()
+
+        self.assertEqual(
+            downstream.address_errors("enp1s0u1", owned=True),
+            ["Downstream interface has unexpected IPv4 addresses"],
+        )
+
+    def test_address_errors_reports_no_errors_for_an_exact_owned_match(self) -> None:
+        self.runner.routes.interface_addresses["enp1s0u1"] = ("192.168.80.1", 24)
+        downstream = self._downstream()
+
+        self.assertEqual(downstream.address_errors("enp1s0u1", owned=True), [])
+
+    def test_apply_raises_when_the_address_does_not_take_effect(self) -> None:
+        downstream = self._downstream()
+        downstream.addresses = lambda interface, family=4: set()
+
+        with self.assertRaisesRegex(GatewayError, "unavailable"):
+            downstream.apply("enp1s0u1")
+
+    def test_cleanup_raises_when_address_persists_after_deletion(self) -> None:
+        self._add_interface("enp1s0u1", "6c:1f:f7:cc:49:ab")
+        downstream = self._downstream()
+        ownership = {
+            "downstream": "enp1s0u1",
+            "downstream_address": "192.168.80.1/24",
+            "downstream_address_owned": True,
+        }
+        downstream.addresses = lambda interface, family=4: {"192.168.80.1/24"}
+
+        with self.assertRaisesRegex(GatewayError, "Could not remove"):
+            downstream.cleanup(ownership)
 
 
 if __name__ == "__main__":

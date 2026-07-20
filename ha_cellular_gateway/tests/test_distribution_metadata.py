@@ -260,6 +260,10 @@ class DistributionMetadataTests(unittest.TestCase):
         self.assertEqual(project["project"]["requires-python"], ">=3.13")
         self.assertEqual(project["tool"]["ruff"]["target-version"], "py313")
         self.assertEqual(project["tool"]["mypy"]["python_version"], "3.13")
+        self.assertGreaterEqual(
+            project["tool"]["coverage"]["report"]["fail_under"],
+            95,
+        )
         self.assertEqual(workflow.count('python-version: "3.13"'), 3)
 
 

@@ -341,6 +341,53 @@ class NetworkManagerInspectTests(unittest.TestCase):
         self.assertFalse(result.safe)
         self.assertIn("overlaps the management network", result.error or "")
 
+    def test_missing_connected_route_while_active_is_transient(self) -> None:
+        cli = healthy_cli()
+        cli.table_routes = [cli.table_routes[0]]
+
+        result = self._manager(cli).inspect("eth0")
+
+        self.assertEqual(result.state, "waiting")
+        self.assertTrue(result.safe)
+
+    def test_continuity_fails_when_a_different_profile_is_active(self) -> None:
+        cli = healthy_cli()
+        cli.active["eth0"] = "other-uuid"
+
+        self.assertFalse(self._manager(cli).continuity(usb_upstream()))
+
+    def test_continuity_fails_when_a_main_default_route_reappears(self) -> None:
+        cli = healthy_cli()
+        cli.main_default = [{"dst": "default", "dev": "eth0", "gateway": "172.20.10.1"}]
+
+        self.assertFalse(self._manager(cli).continuity(usb_upstream()))
+
+    def test_continuity_fails_when_a_policy_rule_selects_the_usb_table(self) -> None:
+        cli = healthy_cli()
+        cli.rules = [{"table": str(ROUTE_TABLE)}]
+
+        self.assertFalse(self._manager(cli).continuity(usb_upstream()))
+
+    def test_continuity_fails_when_the_device_address_no_longer_matches(self) -> None:
+        cli = healthy_cli()
+        cli.addresses["eth0"] = ["172.20.10.9/28"]
+
+        self.assertFalse(self._manager(cli).continuity(usb_upstream()))
+
+    def test_continuity_confirms_a_fully_converged_upstream(self) -> None:
+        cli = healthy_cli()
+
+        self.assertTrue(self._manager(cli).continuity(usb_upstream()))
+
+    def test_release_profile_deactivates_and_deletes_the_connection(self) -> None:
+        cli = healthy_cli()
+        manager = self._manager(cli)
+
+        manager.release_profile()
+
+        self.assertIsNone(cli.profile)
+        self.assertNotIn("eth0", cli.active)
+
 
 if __name__ == "__main__":
     unittest.main()

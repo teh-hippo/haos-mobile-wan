@@ -251,9 +251,9 @@ Supervisor-side host address.
 
 ## Development
 
-The validation workflow runs locked Ruff and mypy checks, branch-aware unit
-coverage, ShellCheck, Actionlint, Home Assistant app linting, Python
-compilation, an `import app.main` smoke check, metadata validation, AppArmor
+The validation workflow runs locked Ruff and mypy checks, at least 95 percent
+branch-aware unit coverage, ShellCheck, Actionlint, Home Assistant app linting,
+Python compilation, an `import app.main` smoke check, metadata validation, AppArmor
 parsing, an `aarch64` image build, HIGH/CRITICAL vulnerability scanning and a
 retained full-image SBOM. See
 [`.github/workflows/validate.yml`](.github/workflows/validate.yml) for the

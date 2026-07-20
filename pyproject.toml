@@ -41,6 +41,6 @@ branch = true
 source = ["ha_cellular_gateway/rootfs/app"]
 
 [tool.coverage.report]
-fail_under = 86.5
+fail_under = 95.0
 precision = 1
 show_missing = true

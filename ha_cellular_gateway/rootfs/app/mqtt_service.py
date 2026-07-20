@@ -68,7 +68,7 @@ def _parse(payload: object, *, warn: bool) -> MqttCredentials | None:
         return None
     try:
         port = int(data["port"])
-    except KeyError, TypeError, ValueError:
+    except (KeyError, TypeError, ValueError):
         _log_failure(warn, "MQTT service response has an invalid broker port")
         return None
     return MqttCredentials(

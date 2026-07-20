@@ -90,5 +90,5 @@ def detect_management(run: RunCommand) -> ManagementBaseline:
 def resolve_management(run: RunCommand) -> ManagementBaseline | None:
     try:
         return detect_management(run)
-    except GatewayError, OSError, subprocess.SubprocessError, ValueError:
+    except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
         return None

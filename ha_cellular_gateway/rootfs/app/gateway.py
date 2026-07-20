@@ -133,7 +133,7 @@ class GatewayEngine:
             try:
                 self.policy.rule_args(self.owned_state)
                 self.policy.route_args(self.owned_state)
-            except GatewayError, TypeError, ValueError:
+            except (GatewayError, TypeError, ValueError):
                 self.owned_state = None
                 startup_errors.append("Persistent ownership state is invalid")
         self.state_load_error = "; ".join(startup_errors) or None

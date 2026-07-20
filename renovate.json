@@ -1,4 +1,12 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>teh-hippo/common-repo-configs//renovate/default.json5"]
+  "extends": ["github>teh-hippo/common-repo-configs//renovate/default.json5"],
+  "packageRules": [
+    {
+      "description": "Runtime base updates require an app version and changelog",
+      "matchManagers": ["dockerfile"],
+      "matchFileNames": ["ha_cellular_gateway/Dockerfile"],
+      "automerge": false
+    }
+  ]
 }

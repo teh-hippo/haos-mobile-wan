@@ -4,11 +4,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helpers import FakeRunner, build_engine, make_config, sysctl_values
 from rootfs.app.const import GENERIC_USB
 from rootfs.app.management import ManagementBaseline
 from rootfs.app.nm_profile_specs import GENERIC_USB_PROFILE_UUID
 from rootfs.app.upstream_generic_usb import GenericUsbUpstream
+from test_support.engine_fixtures import build_engine, make_config, sysctl_values
+from test_support.runner import FakeRunner
 
 
 def add_interface(
@@ -56,7 +57,7 @@ class GenericUsbUpstreamTests(unittest.TestCase):
         self.root = Path(self.directory.name) / "net"
         self.root.mkdir()
         self.runner = FakeRunner()
-        self.runner.nm_wildcard_bind = "usb0"
+        self.runner.networkmanager.nm_wildcard_bind = "usb0"
         self.config = make_config(mobile_connection=GENERIC_USB)
 
     def tearDown(self) -> None:
@@ -75,7 +76,7 @@ class GenericUsbUpstreamTests(unittest.TestCase):
 
     def test_supported_interface_uses_shared_dhcp_path(self) -> None:
         add_interface(self.root, "usb0", "cdc_ether")
-        self.runner.nm_dhcp["usb0"] = {
+        self.runner.networkmanager.nm_dhcp["usb0"] = {
             "address": "10.42.0.15",
             "prefix": 24,
             "gateway": "10.42.0.2",
@@ -124,13 +125,13 @@ class GenericUsbUpstreamTests(unittest.TestCase):
 
         self.assertIsNone(resolved)
         self.assertIn("Enable USB tethering", errors[0])
-        self.assertNotIn("usb0", self.runner.nm_active)
+        self.assertNotIn("usb0", self.runner.networkmanager.nm_active)
 
     def test_foreign_bound_profile_blocks_selected_interface(self) -> None:
         add_interface(self.root, "usb0", "cdc_ether")
         upstream = self.upstream()
         upstream.nm.profile.create()
-        self.runner.nm_profiles["foreign"] = {
+        self.runner.networkmanager.nm_profiles["foreign"] = {
             "connection.uuid": "foreign",
             "connection.id": "foreign",
             "connection.type": "802-3-ethernet",
@@ -143,13 +144,13 @@ class GenericUsbUpstreamTests(unittest.TestCase):
         self.assertIsNone(resolved)
         self.assertIn("foreign NetworkManager profile", errors[0])
         self.assertFalse(upstream.fallback_allowed())
-        self.assertIn(GENERIC_USB_PROFILE_UUID, self.runner.nm_profiles)
+        self.assertIn(GENERIC_USB_PROFILE_UUID, self.runner.networkmanager.nm_profiles)
 
     def test_engine_assigns_tether_and_router_adapters_separately(self) -> None:
         add_usb_interface(self.root, "usb0", "cdc_ether", "usb2")
         add_usb_interface(self.root, "enxdown", "r8152", "usb1")
-        self.runner.nm_wildcard_bind = "usb0"
-        self.runner.nm_dhcp["usb0"] = {
+        self.runner.networkmanager.nm_wildcard_bind = "usb0"
+        self.runner.networkmanager.nm_dhcp["usb0"] = {
             "address": "10.42.0.15",
             "prefix": 24,
             "gateway": "10.42.0.2",

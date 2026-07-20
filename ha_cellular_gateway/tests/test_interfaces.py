@@ -2,10 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helpers import FakeRunner, make_config
 from rootfs.app.downstream import DownstreamInterface
 from rootfs.app.errors import GatewayError
 from rootfs.app.management import detect_management
+from test_support.engine_fixtures import make_config
+from test_support.runner import FakeRunner
 
 
 class HostInterfaceTests(unittest.TestCase):
@@ -65,18 +66,18 @@ class HostInterfaceTests(unittest.TestCase):
         self.assertEqual(baseline.address, "192.168.1.2/24")
 
     def test_management_prefers_route_source(self) -> None:
-        self.runner.interface_addresses["end0"] = [
+        self.runner.routes.interface_addresses["end0"] = [
             ("192.168.1.2", 24),
             ("192.168.1.3", 24),
         ]
-        self.runner.main_default_routes[0]["prefsrc"] = "192.168.1.3"
+        self.runner.routes.main_default_routes[0]["prefsrc"] = "192.168.1.3"
         baseline = detect_management(
             lambda *args, **kwargs: self.runner.run(list(args), **kwargs)
         )
         self.assertEqual(baseline.address, "192.168.1.3/24")
 
     def test_rejects_multiple_management_interfaces(self) -> None:
-        self.runner.main_default_routes.append(
+        self.runner.routes.main_default_routes.append(
             {"dst": "default", "gateway": "10.0.0.1", "dev": "eth9"}
         )
         with self.assertRaisesRegex(GatewayError, "exactly one"):
@@ -131,14 +132,14 @@ class HostInterfaceTests(unittest.TestCase):
 
         downstream.apply("enp1s0u1")
         self.assertEqual(
-            self.runner.interface_addresses["enp1s0u1"],
+            self.runner.routes.interface_addresses["enp1s0u1"],
             ("192.168.80.1", 24),
         )
         downstream.cleanup(ownership)
-        self.assertNotIn("enp1s0u1", self.runner.interface_addresses)
+        self.assertNotIn("enp1s0u1", self.runner.routes.interface_addresses)
 
     def test_rejects_host_managed_downstream_address(self) -> None:
-        self.runner.interface_addresses["enp1s0u1"] = ("192.168.80.9", 24)
+        self.runner.routes.interface_addresses["enp1s0u1"] = ("192.168.80.9", 24)
         downstream = self._downstream()
 
         self.assertEqual(

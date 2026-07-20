@@ -3,9 +3,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helpers import FakeProcess, FakeRunner, make_config
 from rootfs.app.dhcp import DnsmasqService
 from rootfs.app.errors import GatewayError
+from test_support.engine_fixtures import make_config
+from test_support.process import FakeProcess
+from test_support.runner import FakeRunner
 
 
 class DnsmasqServiceTests(unittest.TestCase):

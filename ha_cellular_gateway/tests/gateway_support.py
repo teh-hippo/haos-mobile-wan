@@ -2,9 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helpers import FakeProcess, FakeRunner, build_engine, make_config, sysctl_values
 from rootfs.app.gateway import GatewayEngine
 from rootfs.app.management import ManagementBaseline
+from test_support.engine_fixtures import build_engine, make_config, sysctl_values
+from test_support.process import FakeProcess
+from test_support.runner import FakeRunner
 
 
 class GatewayTestCase(unittest.TestCase):
@@ -61,7 +63,7 @@ class GatewayTestCase(unittest.TestCase):
         engine.safety.errors = lambda *args, **kwargs: []
         engine.management = ManagementBaseline("end0", "192.168.1.2/24")
         engine.management_interface = "end0"
-        engine.runner.nm_wifi_cache["wlan0"] = {"Phone"}
+        engine.runner.networkmanager.nm_wifi_cache["wlan0"] = {"Phone"}
         engine.upstream_lifecycle.activate(engine.management)
         engine._persist_state()
         engine.firewall.installed = lambda downstream=None, upstream_interface=None: (

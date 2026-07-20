@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import unittest
 
-from helpers import Result, make_config
 from rootfs.app.management import ManagementBaseline
 from rootfs.app.networkmanager_wifi import NetworkManagerWifi
 from rootfs.app.nm_inventory import NmInventory
@@ -18,6 +17,8 @@ from rootfs.app.nm_profile_specs import (
     usb_profile_spec,
     wifi_profile_spec,
 )
+from test_support.engine_fixtures import make_config
+from test_support.process import Result
 
 
 class FakeNmcli:

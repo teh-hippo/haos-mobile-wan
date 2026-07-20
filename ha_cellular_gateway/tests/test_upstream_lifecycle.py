@@ -4,7 +4,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helpers import FakeRunner, build_engine, make_config, sysctl_values
 from rootfs.app.const import (
     GENERIC_USB,
     GENERIC_USB_WIFI_FALLBACK,
@@ -18,6 +17,8 @@ from rootfs.app.nm_profile_specs import (
     USB_PROFILE_UUID,
     WIFI_PROFILE_UUID,
 )
+from test_support.engine_fixtures import build_engine, make_config, sysctl_values
+from test_support.runner import FakeRunner
 
 
 def _legacy_profile(uuid: str, interface: str) -> dict[str, str]:
@@ -73,9 +74,9 @@ class UpstreamLifecycleTests(unittest.TestCase):
         engine.upstream_lifecycle.activate(self._management())
 
         self.assertIsNone(engine.upstream_lifecycle.error)
-        self.assertIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
-        self.assertNotIn(USB_PROFILE_UUID, engine.runner.nm_profiles)
-        self.assertFalse(engine.runner.nm_device_autoconnect["wlan0"])
+        self.assertIn(WIFI_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
+        self.assertNotIn(USB_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
+        self.assertFalse(engine.runner.networkmanager.nm_device_autoconnect["wlan0"])
         self.assertTrue(engine.wifi.held)
         self.assertEqual(engine.wifi.phase(), "held")
         marker = engine.wifi.state()
@@ -89,8 +90,8 @@ class UpstreamLifecycleTests(unittest.TestCase):
         engine.upstream_lifecycle.activate(self._management())
 
         self.assertIsNone(engine.upstream_lifecycle.error)
-        self.assertIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
-        self.assertIn(USB_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertIn(WIFI_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
+        self.assertIn(USB_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
 
     def test_generic_usb_claim_reuses_usb_profile_lifecycle(self) -> None:
         engine = self._engine(mobile_connection=GENERIC_USB)
@@ -98,9 +99,11 @@ class UpstreamLifecycleTests(unittest.TestCase):
         engine.upstream_lifecycle.activate(self._management())
 
         self.assertIsNone(engine.upstream_lifecycle.error)
-        self.assertIn(GENERIC_USB_PROFILE_UUID, engine.runner.nm_profiles)
-        self.assertNotIn(USB_PROFILE_UUID, engine.runner.nm_profiles)
-        self.assertNotIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertIn(
+            GENERIC_USB_PROFILE_UUID, engine.runner.networkmanager.nm_profiles
+        )
+        self.assertNotIn(USB_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
+        self.assertNotIn(WIFI_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
 
     def test_generic_usb_fallback_claims_usb_and_wifi(self) -> None:
         engine = self._engine(mobile_connection=GENERIC_USB_WIFI_FALLBACK)
@@ -108,9 +111,11 @@ class UpstreamLifecycleTests(unittest.TestCase):
         engine.upstream_lifecycle.activate(self._management())
 
         self.assertIsNone(engine.upstream_lifecycle.error)
-        self.assertIn(GENERIC_USB_PROFILE_UUID, engine.runner.nm_profiles)
-        self.assertIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
-        self.assertNotIn(USB_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertIn(
+            GENERIC_USB_PROFILE_UUID, engine.runner.networkmanager.nm_profiles
+        )
+        self.assertIn(WIFI_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
+        self.assertNotIn(USB_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
 
     def test_deactivate_removes_profile_and_restores_autoconnect(self) -> None:
         engine = self._engine()
@@ -119,80 +124,92 @@ class UpstreamLifecycleTests(unittest.TestCase):
         engine.upstream_lifecycle.deactivate(self._management())
 
         self.assertIsNone(engine.upstream_lifecycle.error)
-        self.assertNotIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
-        self.assertTrue(engine.runner.nm_device_autoconnect["wlan0"])
+        self.assertNotIn(WIFI_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
+        self.assertTrue(engine.runner.networkmanager.nm_device_autoconnect["wlan0"])
         self.assertIsNone(engine.wifi.state())
         self.assertFalse(engine.wifi.held)
 
     def test_genuine_foreign_profile_is_preserved_and_displaced(self) -> None:
         engine = self._engine()
-        engine.runner.nm_profiles["A-D074"] = _genuine_profile()
-        engine.runner.nm_active["wlan0"] = "A-D074"
+        engine.runner.networkmanager.nm_profiles["A-D074"] = _genuine_profile()
+        engine.runner.networkmanager.nm_active["wlan0"] = "A-D074"
 
         engine.upstream_lifecycle.activate(self._management())
 
         self.assertIsNone(engine.upstream_lifecycle.error)
-        self.assertEqual(engine.runner.nm_profiles["A-D074"], _genuine_profile())
-        self.assertNotIn("wlan0", engine.runner.nm_active)
+        self.assertEqual(
+            engine.runner.networkmanager.nm_profiles["A-D074"], _genuine_profile()
+        )
+        self.assertNotIn("wlan0", engine.runner.networkmanager.nm_active)
         marker = engine.wifi.state()
         assert marker is not None
         self.assertEqual(marker["prior_active_foreign_uuid"], "A-D074")
 
     def test_release_restores_prior_foreign_connection(self) -> None:
         engine = self._engine()
-        engine.runner.nm_profiles["A-D074"] = _genuine_profile()
-        engine.runner.nm_active["wlan0"] = "A-D074"
+        engine.runner.networkmanager.nm_profiles["A-D074"] = _genuine_profile()
+        engine.runner.networkmanager.nm_active["wlan0"] = "A-D074"
         engine.upstream_lifecycle.activate(self._management())
 
         engine.upstream_lifecycle.deactivate(self._management())
 
-        self.assertEqual(engine.runner.nm_active.get("wlan0"), "A-D074")
-        self.assertTrue(engine.runner.nm_device_autoconnect["wlan0"])
-        self.assertEqual(engine.runner.nm_profiles["A-D074"], _genuine_profile())
+        self.assertEqual(engine.runner.networkmanager.nm_active.get("wlan0"), "A-D074")
+        self.assertTrue(engine.runner.networkmanager.nm_device_autoconnect["wlan0"])
+        self.assertEqual(
+            engine.runner.networkmanager.nm_profiles["A-D074"], _genuine_profile()
+        )
 
     def test_legacy_lineage_cleaned_while_genuine_foreign_preserved(self) -> None:
         engine = self._engine()
-        engine.runner.nm_profiles["bound"] = _legacy_profile("bound", "wlan0")
-        engine.runner.nm_profiles["unbound"] = _legacy_profile("unbound", "")
-        engine.runner.nm_profiles["A-D074"] = _genuine_profile()
+        engine.runner.networkmanager.nm_profiles["bound"] = _legacy_profile(
+            "bound", "wlan0"
+        )
+        engine.runner.networkmanager.nm_profiles["unbound"] = _legacy_profile(
+            "unbound", ""
+        )
+        engine.runner.networkmanager.nm_profiles["A-D074"] = _genuine_profile()
 
         engine.upstream_lifecycle.activate(self._management())
 
         self.assertIsNone(engine.upstream_lifecycle.error)
-        self.assertNotIn("bound", engine.runner.nm_profiles)
-        self.assertNotIn("unbound", engine.runner.nm_profiles)
-        self.assertIn("A-D074", engine.runner.nm_profiles)
-        self.assertIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertNotIn("bound", engine.runner.networkmanager.nm_profiles)
+        self.assertNotIn("unbound", engine.runner.networkmanager.nm_profiles)
+        self.assertIn("A-D074", engine.runner.networkmanager.nm_profiles)
+        self.assertIn(WIFI_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
 
     def test_lineage_address_mismatch_is_not_cleaned(self) -> None:
         engine = self._engine()
         profile = _legacy_profile("mismatch", "wlan0")
         profile["ipv4.addresses"] = "172.20.11.4/28"
-        engine.runner.nm_profiles["mismatch"] = profile
+        engine.runner.networkmanager.nm_profiles["mismatch"] = profile
 
         engine.upstream_lifecycle.activate(self._management())
 
-        self.assertIn("mismatch", engine.runner.nm_profiles)
+        self.assertIn("mismatch", engine.runner.networkmanager.nm_profiles)
 
     def test_lineage_ssid_mismatch_preserves_genuine_profile(self) -> None:
         engine = self._engine()
         profile = _legacy_profile("same-name", "wlan0")
         profile["802-11-wireless.ssid"] = "Neighbour"
-        engine.runner.nm_profiles["same-name"] = profile
+        engine.runner.networkmanager.nm_profiles["same-name"] = profile
 
         engine.upstream_lifecycle.activate(self._management())
 
         self.assertIsNone(engine.upstream_lifecycle.error)
-        self.assertIn("same-name", engine.runner.nm_profiles)
+        self.assertIn("same-name", engine.runner.networkmanager.nm_profiles)
         self.assertEqual(
-            engine.runner.nm_profiles["same-name"]["802-11-wireless.ssid"],
+            engine.runner.networkmanager.nm_profiles["same-name"][
+                "802-11-wireless.ssid"
+            ],
             "Neighbour",
         )
 
     def test_failed_lineage_delete_is_reported(self) -> None:
         engine = self._engine()
-        engine.runner.nm_profiles["bound"] = _legacy_profile("bound", "wlan0")
-        engine.runner.nm_delete_fail = True
+        engine.runner.networkmanager.nm_profiles["bound"] = _legacy_profile(
+            "bound", "wlan0"
+        )
+        engine.runner.networkmanager.nm_delete_fail = True
 
         engine.upstream_lifecycle.activate(self._management())
 
@@ -200,7 +217,7 @@ class UpstreamLifecycleTests(unittest.TestCase):
             LINEAGE_WIFI_DELETE_ERROR,
             engine.upstream_lifecycle.error or "",
         )
-        self.assertIn("bound", engine.runner.nm_profiles)
+        self.assertIn("bound", engine.runner.networkmanager.nm_profiles)
 
     def test_activation_requires_management_before_mutation(self) -> None:
         engine = self._engine()
@@ -211,32 +228,32 @@ class UpstreamLifecycleTests(unittest.TestCase):
             "Management interface is unavailable",
             engine.upstream_lifecycle.error or "",
         )
-        self.assertNotIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertNotIn(WIFI_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
 
     def test_unmanaged_adapter_blocks_without_mutation(self) -> None:
         engine = self._engine()
-        engine.runner.nm_managed["wlan0"] = False
+        engine.runner.networkmanager.nm_managed["wlan0"] = False
 
         engine.upstream_lifecycle.activate(self._management())
 
         self.assertIn("does not manage", engine.upstream_lifecycle.error or "")
-        self.assertNotIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
-        self.assertTrue(engine.runner.nm_device_autoconnect["wlan0"])
+        self.assertNotIn(WIFI_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
+        self.assertTrue(engine.runner.networkmanager.nm_device_autoconnect["wlan0"])
 
     def test_hard_rfkill_blocks_without_mutation(self) -> None:
         engine = self._engine()
-        engine.runner.nm_radio_hardware = False
+        engine.runner.networkmanager.nm_radio_hardware = False
 
         engine.upstream_lifecycle.activate(self._management())
 
         self.assertIn("hardware-blocked", engine.upstream_lifecycle.error or "")
-        self.assertNotIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertNotIn(WIFI_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
 
     def test_startup_recovery_restores_from_persisted_marker(self) -> None:
         primer = self._engine()
         primer.upstream_lifecycle.activate(self._management())
         runner = primer.runner
-        self.assertFalse(runner.nm_device_autoconnect["wlan0"])
+        self.assertFalse(runner.networkmanager.nm_device_autoconnect["wlan0"])
 
         engine = build_engine(
             make_config(
@@ -250,8 +267,8 @@ class UpstreamLifecycleTests(unittest.TestCase):
 
         engine.upstream_lifecycle.recover(self._management())
 
-        self.assertNotIn(WIFI_PROFILE_UUID, runner.nm_profiles)
-        self.assertTrue(runner.nm_device_autoconnect["wlan0"])
+        self.assertNotIn(WIFI_PROFILE_UUID, runner.networkmanager.nm_profiles)
+        self.assertTrue(runner.networkmanager.nm_device_autoconnect["wlan0"])
         self.assertIsNone(engine.wifi.state())
 
     def test_startup_recovery_reclaims_fixed_uuid_without_marker(self) -> None:
@@ -267,7 +284,7 @@ class UpstreamLifecycleTests(unittest.TestCase):
             state_path=self.state_path,
         )
         primer.wifi.profile.create()
-        runner.nm_device_autoconnect["wlan0"] = True
+        runner.networkmanager.nm_device_autoconnect["wlan0"] = True
 
         engine = build_engine(
             config,
@@ -278,18 +295,20 @@ class UpstreamLifecycleTests(unittest.TestCase):
 
         engine.upstream_lifecycle.recover(self._management())
 
-        self.assertNotIn(WIFI_PROFILE_UUID, runner.nm_profiles)
-        self.assertTrue(runner.nm_device_autoconnect["wlan0"])
+        self.assertNotIn(WIFI_PROFILE_UUID, runner.networkmanager.nm_profiles)
+        self.assertTrue(runner.networkmanager.nm_device_autoconnect["wlan0"])
 
     def test_wifi_profile_drift_blocks_without_deletion(self) -> None:
         engine = self._engine()
         engine.wifi.profile.create()
-        engine.runner.nm_profiles[WIFI_PROFILE_UUID]["ipv4.route-table"] = "254"
+        engine.runner.networkmanager.nm_profiles[WIFI_PROFILE_UUID][
+            "ipv4.route-table"
+        ] = "254"
 
         engine.upstream_lifecycle.activate(self._management())
 
         self.assertIn("unexpected settings", engine.upstream_lifecycle.error or "")
-        self.assertIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertIn(WIFI_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
 
     def test_usb_cleanup_failure_is_reported_without_escaping(self) -> None:
         engine = self._engine(mobile_connection="iphone_usb")
@@ -306,8 +325,8 @@ class UpstreamLifecycleTests(unittest.TestCase):
 
     def test_restart_preserves_marker_and_restores_exactly(self) -> None:
         runner = FakeRunner()
-        runner.nm_profiles["A-D074"] = _genuine_profile()
-        runner.nm_active["wlan0"] = "A-D074"
+        runner.networkmanager.nm_profiles["A-D074"] = _genuine_profile()
+        runner.networkmanager.nm_active["wlan0"] = "A-D074"
         config = make_config(
             hotspot_ssid="Phone",
             hotspot_password="supersecret",
@@ -321,7 +340,7 @@ class UpstreamLifecycleTests(unittest.TestCase):
         primer.upstream_lifecycle.activate(self._management())
         baseline = primer.wifi.state()
         self.assertIsNotNone(baseline)
-        self.assertFalse(runner.nm_device_autoconnect["wlan0"])
+        self.assertFalse(runner.networkmanager.nm_device_autoconnect["wlan0"])
 
         engine = build_engine(
             config,
@@ -339,16 +358,18 @@ class UpstreamLifecycleTests(unittest.TestCase):
         engine.upstream_lifecycle.deactivate(self._management())
 
         self.assertIsNone(engine.upstream_lifecycle.error)
-        self.assertTrue(runner.nm_device_autoconnect["wlan0"])
-        self.assertEqual(runner.nm_active.get("wlan0"), "A-D074")
-        self.assertEqual(runner.nm_profiles["A-D074"], _genuine_profile())
+        self.assertTrue(runner.networkmanager.nm_device_autoconnect["wlan0"])
+        self.assertEqual(runner.networkmanager.nm_active.get("wlan0"), "A-D074")
+        self.assertEqual(
+            runner.networkmanager.nm_profiles["A-D074"], _genuine_profile()
+        )
         self.assertIsNone(engine.wifi.state())
 
     def test_combined_mode_keeps_usb_owned_while_wifi_safely_unavailable(
         self,
     ) -> None:
         engine = self._engine(mobile_connection=IPHONE_USB_WIFI_FALLBACK)
-        engine.runner.nm_radio_hardware = False
+        engine.runner.networkmanager.nm_radio_hardware = False
 
         def usb_churn_commands() -> list[list[str]]:
             return [
@@ -365,8 +386,8 @@ class UpstreamLifecycleTests(unittest.TestCase):
         engine.upstream_lifecycle.activate(self._management())
 
         self.assertIsNone(engine.upstream_lifecycle.error)
-        self.assertIn(USB_PROFILE_UUID, engine.runner.nm_profiles)
-        self.assertNotIn(WIFI_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertIn(USB_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
+        self.assertNotIn(WIFI_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
         self.assertEqual(engine.wifi.phase(), "blocked")
         usb_entry = engine.upstream_lifecycle.journal.entry("iphone_usb")
         assert isinstance(usb_entry, dict)
@@ -377,7 +398,7 @@ class UpstreamLifecycleTests(unittest.TestCase):
             engine.upstream_lifecycle.activate(self._management())
 
         self.assertIsNone(engine.upstream_lifecycle.error)
-        self.assertIn(USB_PROFILE_UUID, engine.runner.nm_profiles)
+        self.assertIn(USB_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
         self.assertEqual(
             engine.upstream_lifecycle.journal.entry("iphone_usb"),
             usb_entry,

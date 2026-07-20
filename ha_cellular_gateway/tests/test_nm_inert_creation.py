@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import unittest
 
-from helpers import FakeRunner, make_config
 from rootfs.app.command import RunCommand
 from rootfs.app.networkmanager_invariants import (
     main_default_present,
@@ -19,6 +18,8 @@ from rootfs.app.nm_profile_specs import (
     usb_profile_spec,
     wifi_profile_spec,
 )
+from test_support.engine_fixtures import make_config
+from test_support.runner import FakeRunner
 
 IPHONE_IFACE = "eth0"
 DHCP_OFFER = {"address": "172.20.10.6", "prefix": 28, "gateway": "172.20.10.1"}
@@ -40,8 +41,8 @@ def add_command(runner: FakeRunner) -> list[str]:
 
 def carrier_runner() -> FakeRunner:
     runner = FakeRunner()
-    runner.nm_dhcp[IPHONE_IFACE] = dict(DHCP_OFFER)
-    runner.nm_wildcard_bind = IPHONE_IFACE
+    runner.networkmanager.nm_dhcp[IPHONE_IFACE] = dict(DHCP_OFFER)
+    runner.networkmanager.nm_wildcard_bind = IPHONE_IFACE
     return runner
 
 
@@ -107,10 +108,10 @@ class AutoactivationModelTests(unittest.TestCase):
 
         runner.run(["nmcli", "connection", "add", *spec.create_args])
 
-        self.assertEqual(runner.nm_active.get(IPHONE_IFACE), spec.uuid)
-        self.assertIn(IPHONE_IFACE, runner.interface_addresses)
+        self.assertEqual(runner.networkmanager.nm_active.get(IPHONE_IFACE), spec.uuid)
+        self.assertIn(IPHONE_IFACE, runner.routes.interface_addresses)
         self.assertTrue(main_default_present(adapter(runner), IPHONE_IFACE))
-        self.assertEqual(runner.nm_routes.get(USB_ROUTE_TABLE, []), [])
+        self.assertEqual(runner.networkmanager.nm_routes.get(USB_ROUTE_TABLE, []), [])
 
     def test_positive_control_inert_create_is_dormant_until_activation(
         self,
@@ -120,15 +121,17 @@ class AutoactivationModelTests(unittest.TestCase):
 
         profile.create()
 
-        self.assertNotIn(IPHONE_IFACE, runner.nm_active)
-        self.assertNotIn(IPHONE_IFACE, runner.interface_addresses)
+        self.assertNotIn(IPHONE_IFACE, runner.networkmanager.nm_active)
+        self.assertNotIn(IPHONE_IFACE, runner.routes.interface_addresses)
         self.assertFalse(main_default_present(adapter(runner), IPHONE_IFACE))
-        self.assertEqual(runner.nm_routes.get(USB_ROUTE_TABLE, []), [])
+        self.assertEqual(runner.networkmanager.nm_routes.get(USB_ROUTE_TABLE, []), [])
 
         state = profile.activate(IPHONE_IFACE)
 
         self.assertEqual(state, "active")
-        self.assertEqual(runner.nm_active.get(IPHONE_IFACE), profile.spec.uuid)
+        self.assertEqual(
+            runner.networkmanager.nm_active.get(IPHONE_IFACE), profile.spec.uuid
+        )
         self.assertFalse(main_default_present(adapter(runner), IPHONE_IFACE))
         routes = networkmanager_routes(adapter(runner), USB_ROUTE_TABLE)
         self.assertTrue(

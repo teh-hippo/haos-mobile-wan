@@ -3,7 +3,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helpers import make_config
 from rootfs.app.config import GatewayConfig
 from rootfs.app.const import (
     GENERIC_USB,
@@ -13,6 +12,7 @@ from rootfs.app.const import (
     WIFI_HOTSPOT,
 )
 from rootfs.app.errors import GatewayError
+from test_support.engine_fixtures import make_config
 
 
 class GatewayConfigTests(unittest.TestCase):

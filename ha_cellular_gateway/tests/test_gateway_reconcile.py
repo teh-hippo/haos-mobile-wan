@@ -1,19 +1,17 @@
 import unittest
 
 from gateway_support import GatewayTestCase
-from helpers import (
-    FakeProcess,
-    FakeRunner,
-    build_engine,
-    install_realistic_firewall_state,
-    install_realistic_policy_state,
-    make_config,
-    sysctl_values,
-)
 from rootfs.app.const import IPHONE_USB, WIFI_HOTSPOT
 from rootfs.app.errors import GatewayError, SafetyError
 from rootfs.app.gateway import GatewayEngine
 from rootfs.app.upstream_models import ResolvedUpstream
+from test_support.engine_fixtures import build_engine, make_config, sysctl_values
+from test_support.firewall_fixtures import (
+    install_realistic_firewall_state,
+    install_realistic_policy_state,
+)
+from test_support.process import FakeProcess
+from test_support.runner import FakeRunner
 
 
 class GatewayReconcileTests(GatewayTestCase):
@@ -46,7 +44,7 @@ class GatewayReconcileTests(GatewayTestCase):
             engine.apply()
         self.assertFalse(engine.applied)
         self.assertTrue(engine.firewall.host_protection_installed("enx001122334455"))
-        self.assertNotIn("enx001122334455", engine.runner.interface_addresses)
+        self.assertNotIn("enx001122334455", engine.runner.routes.interface_addresses)
 
         engine.firewall.apply = lambda downstream, upstream_interface=None: None
         engine.startup_cleanup_pending = False
@@ -57,7 +55,7 @@ class GatewayReconcileTests(GatewayTestCase):
         engine = self._prepare_active_engine()
         engine.apply()
         self.assertTrue(engine.firewall.host_protection_installed("enx001122334455"))
-        self.assertIn("enx001122334455", engine.runner.interface_addresses)
+        self.assertIn("enx001122334455", engine.runner.routes.interface_addresses)
 
         engine.safety.errors = lambda *args, **kwargs: ["Upstream unavailable"]
 
@@ -66,7 +64,7 @@ class GatewayReconcileTests(GatewayTestCase):
 
         self.assertFalse(engine.applied)
         self.assertTrue(engine.firewall.host_protection_installed("enx001122334455"))
-        self.assertNotIn("enx001122334455", engine.runner.interface_addresses)
+        self.assertNotIn("enx001122334455", engine.runner.routes.interface_addresses)
 
     def test_active_mode_reapplies_when_policy_state_is_missing(self) -> None:
         engine = self._prepare_active_engine()
@@ -226,7 +224,7 @@ class GatewayReconcileTests(GatewayTestCase):
         engine.safety.errors = lambda *args, upstream_errors=None, **kwargs: list(
             upstream_errors or []
         )
-        engine.runner.nm_auto_activate = False
+        engine.runner.networkmanager.nm_auto_activate = False
         return engine
 
     def test_wifi_reconcile_reports_association_failure(self) -> None:

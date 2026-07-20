@@ -2,14 +2,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helpers import (
-    FakeRunner,
-    build_engine,
+from test_support.engine_fixtures import build_engine, make_config, sysctl_values
+from test_support.firewall_fixtures import (
     install_realistic_firewall_state,
-    make_config,
     prepend_chain_rule,
-    sysctl_values,
 )
+from test_support.runner import FakeRunner
 
 
 class FirewallTests(unittest.TestCase):
@@ -37,7 +35,7 @@ class FirewallTests(unittest.TestCase):
         match: list[str] | None = None,
     ) -> None:
         rule = self.engine.firewall.netfilter.jump_rule(child, comment, match)
-        self.runner.chain_listings[(family, parent)] = "\n".join(initial_rules)
+        self.runner.firewall.chain_listings[(family, parent)] = "\n".join(initial_rules)
 
         self.engine.firewall.netfilter.ensure_jump(
             family,
@@ -370,7 +368,7 @@ class FirewallTests(unittest.TestCase):
             with self.subTest(
                 family=family, parent=parent, initial_rules=initial_rules
             ):
-                self.runner.chain_listings.pop((family, parent), None)
+                self.runner.firewall.chain_listings.pop((family, parent), None)
                 self._assert_parent_jump_repair(
                     family,
                     parent,

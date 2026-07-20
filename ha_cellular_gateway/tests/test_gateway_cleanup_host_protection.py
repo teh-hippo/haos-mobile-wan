@@ -1,16 +1,14 @@
 import unittest
 
 from gateway_support import GatewayTestCase
-from helpers import (
-    FakeRunner,
-    build_engine,
-    install_realistic_firewall_state,
-    make_config,
-    prepend_chain_rule,
-    sysctl_values,
-)
 from rootfs.app.const import IPHONE_USB
 from rootfs.app.errors import GatewayError
+from test_support.engine_fixtures import build_engine, make_config, sysctl_values
+from test_support.firewall_fixtures import (
+    install_realistic_firewall_state,
+    prepend_chain_rule,
+)
+from test_support.runner import FakeRunner
 
 
 class GatewayCleanupHostProtectionTests(GatewayTestCase):
@@ -28,10 +26,10 @@ class GatewayCleanupHostProtectionTests(GatewayTestCase):
             restarted.firewall,
             "enx001122334455",
         )
-        restarted.runner.chain_listings[("iptables", "INPUT")] = "\n".join(
+        restarted.runner.firewall.chain_listings[("iptables", "INPUT")] = "\n".join(
             ipv4_input_rules
         )
-        restarted.runner.chain_listings[("ip6tables", "INPUT")] = "\n".join(
+        restarted.runner.firewall.chain_listings[("ip6tables", "INPUT")] = "\n".join(
             ipv6_input_rules
         )
 
@@ -40,7 +38,7 @@ class GatewayCleanupHostProtectionTests(GatewayTestCase):
         self.assertTrue(restarted.firewall.host_protection_installed("enx001122334455"))
         self.assertNotIn(
             "enx001122334455",
-            restarted.runner.interface_addresses,
+            restarted.runner.routes.interface_addresses,
         )
 
     def test_cleanup_removes_host_protection_when_adapter_probe_fails(self) -> None:
@@ -65,7 +63,7 @@ class GatewayCleanupHostProtectionTests(GatewayTestCase):
                 for command in commands
             )
         )
-        self.assertNotIn("enx001122334455", engine.runner.interface_addresses)
+        self.assertNotIn("enx001122334455", engine.runner.routes.interface_addresses)
 
     def test_cleanup_keeps_host_guard_if_address_removal_fails(self) -> None:
         engine = self._prepare_active_engine()
@@ -194,7 +192,7 @@ class GatewayCleanupHostProtectionTests(GatewayTestCase):
             "enx001122334455",
         )
         engine.last_downstream = "enx001122334455"
-        runner.main_default_routes = []
+        runner.routes.main_default_routes = []
 
         engine.reconcile()
 

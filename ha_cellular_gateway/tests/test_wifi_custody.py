@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import unittest
 
-from helpers import FakeRunner, FakeWifiProfileMetadata, make_config
 from rootfs.app.networkmanager_wifi import NetworkManagerWifi
 from rootfs.app.nm_profile_specs import WIFI_PROFILE_UUID
 from rootfs.app.wifi_custody import (
@@ -10,6 +9,9 @@ from rootfs.app.wifi_custody import (
     RADIO_INSPECTION_UNAVAILABLE,
 )
 from rootfs.app.wifi_custody_marker import parse_marker
+from test_support.engine_fixtures import make_config
+from test_support.metadata import FakeWifiProfileMetadata
+from test_support.runner import FakeRunner
 
 
 def _up_commands(runner: FakeRunner) -> list[list[str]]:
@@ -83,7 +85,7 @@ class WifiCustodianTests(unittest.TestCase):
         self.assertTrue(controller.held)
         self.assertIsNotNone(controller.state())
         self.assertIsNotNone(controller.custodian.read_profile_marker())
-        self.assertFalse(runner.nm_device_autoconnect["wlan0"])
+        self.assertFalse(runner.networkmanager.nm_device_autoconnect["wlan0"])
         write_index = events.index(("metadata-write", MARKER_KEY))
         persist_index = events.index(("persist", ""))
         device_index = next(
@@ -116,8 +118,8 @@ class WifiCustodianTests(unittest.TestCase):
 
         self.assertTrue(errors)
         self.assertIn("management interface", errors[0].lower())
-        self.assertNotIn(WIFI_PROFILE_UUID, runner.nm_profiles)
-        self.assertTrue(runner.nm_device_autoconnect["wlan0"])
+        self.assertNotIn(WIFI_PROFILE_UUID, runner.networkmanager.nm_profiles)
+        self.assertTrue(runner.networkmanager.nm_device_autoconnect["wlan0"])
 
     def test_absent_target_waits_without_activation(self) -> None:
         runner = FakeRunner()
@@ -132,7 +134,7 @@ class WifiCustodianTests(unittest.TestCase):
 
     def test_visible_target_triggers_single_activation(self) -> None:
         runner = FakeRunner()
-        runner.nm_wifi_cache["wlan0"] = {"Phone"}
+        runner.networkmanager.nm_wifi_cache["wlan0"] = {"Phone"}
         controller = self._controller(runner, [1000.0])
         controller.claim("end0")
 
@@ -143,8 +145,8 @@ class WifiCustodianTests(unittest.TestCase):
 
     def test_activation_is_not_hammered_while_in_flight(self) -> None:
         runner = FakeRunner()
-        runner.nm_wifi_cache["wlan0"] = {"Phone"}
-        runner.nm_auto_activate = False
+        runner.networkmanager.nm_wifi_cache["wlan0"] = {"Phone"}
+        runner.networkmanager.nm_auto_activate = False
         clock = [1000.0]
         controller = self._controller(runner, clock)
         controller.claim("end0")
@@ -158,8 +160,8 @@ class WifiCustodianTests(unittest.TestCase):
 
     def test_authentication_failure_becomes_sticky(self) -> None:
         runner = FakeRunner()
-        runner.nm_wifi_cache["wlan0"] = {"Phone"}
-        runner.nm_auth_failure = True
+        runner.networkmanager.nm_wifi_cache["wlan0"] = {"Phone"}
+        runner.networkmanager.nm_auth_failure = True
         controller = self._controller(runner, [1000.0])
         controller.claim("end0")
 
@@ -174,26 +176,26 @@ class WifiCustodianTests(unittest.TestCase):
 
     def test_foreign_connection_mid_session_is_redisplaced(self) -> None:
         runner = FakeRunner()
-        runner.nm_wifi_cache["wlan0"] = {"Phone"}
+        runner.networkmanager.nm_wifi_cache["wlan0"] = {"Phone"}
         controller = self._controller(runner, [1000.0])
         controller.claim("end0")
-        runner.nm_profiles["A-D074"] = {
+        runner.networkmanager.nm_profiles["A-D074"] = {
             "connection.uuid": "A-D074",
             "connection.id": "A-D074",
             "connection.type": "802-11-wireless",
             "connection.interface-name": "wlan0",
         }
-        runner.nm_active["wlan0"] = "A-D074"
+        runner.networkmanager.nm_active["wlan0"] = "A-D074"
 
         result = controller.inspect()
 
         self.assertEqual(result.state, "connecting")
-        self.assertNotIn("wlan0", runner.nm_active)
-        self.assertIn("A-D074", runner.nm_profiles)
+        self.assertNotIn("wlan0", runner.networkmanager.nm_active)
+        self.assertIn("A-D074", runner.networkmanager.nm_profiles)
 
     def test_hard_rfkill_blocks_but_is_safely_unavailable(self) -> None:
         runner = FakeRunner()
-        runner.nm_radio_hardware = False
+        runner.networkmanager.nm_radio_hardware = False
         controller = self._controller(runner, [1000.0])
 
         errors = controller.claim("end0")
@@ -203,12 +205,12 @@ class WifiCustodianTests(unittest.TestCase):
         self.assertEqual(controller.phase(), "blocked")
         self.assertEqual(result.state, "blocked")
         self.assertTrue(result.safe)
-        self.assertNotIn(WIFI_PROFILE_UUID, runner.nm_profiles)
-        self.assertTrue(runner.nm_device_autoconnect["wlan0"])
+        self.assertNotIn(WIFI_PROFILE_UUID, runner.networkmanager.nm_profiles)
+        self.assertTrue(runner.networkmanager.nm_device_autoconnect["wlan0"])
 
     def test_radio_inspection_failure_is_not_device_missing(self) -> None:
         runner = FakeRunner()
-        runner.nm_radio_query_fail = True
+        runner.networkmanager.nm_radio_query_fail = True
         controller = self._controller(runner, [1000.0])
 
         errors = controller.claim("end0")
@@ -217,18 +219,18 @@ class WifiCustodianTests(unittest.TestCase):
         self.assertEqual(errors, [RADIO_INSPECTION_UNAVAILABLE])
         self.assertEqual(result.error, RADIO_INSPECTION_UNAVAILABLE)
         self.assertTrue(result.safe)
-        self.assertNotIn(WIFI_PROFILE_UUID, runner.nm_profiles)
+        self.assertNotIn(WIFI_PROFILE_UUID, runner.networkmanager.nm_profiles)
 
     def test_release_follows_renamed_device_by_stable_identity(self) -> None:
         runner = FakeRunner()
         controller = self._controller(runner, [1000.0])
         controller.claim("end0")
-        self.assertFalse(runner.nm_device_autoconnect["wlan0"])
+        self.assertFalse(runner.networkmanager.nm_device_autoconnect["wlan0"])
 
-        identity = runner.nm_path.pop("wlan0")
-        runner.nm_path["wlan1"] = identity
-        runner.nm_device_autoconnect["wlan1"] = runner.nm_device_autoconnect.pop(
-            "wlan0"
+        identity = runner.networkmanager.nm_path.pop("wlan0")
+        runner.networkmanager.nm_path["wlan1"] = identity
+        runner.networkmanager.nm_device_autoconnect["wlan1"] = (
+            runner.networkmanager.nm_device_autoconnect.pop("wlan0")
         )
         start = len(runner.commands)
 
@@ -238,8 +240,8 @@ class WifiCustodianTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertFalse(controller.restore_pending)
         self.assertIsNone(controller.state())
-        self.assertTrue(runner.nm_device_autoconnect["wlan1"])
-        self.assertNotIn("wlan0", runner.nm_device_autoconnect)
+        self.assertTrue(runner.networkmanager.nm_device_autoconnect["wlan1"])
+        self.assertNotIn("wlan0", runner.networkmanager.nm_device_autoconnect)
         self.assertTrue(device_sets)
         self.assertTrue(all(command[3] == "wlan1" for command in device_sets))
 
@@ -250,8 +252,8 @@ class WifiCustodianTests(unittest.TestCase):
         controller = self._controller(runner, [1000.0])
         controller.claim("end0")
 
-        runner.nm_path.pop("wlan0")
-        runner.nm_device_autoconnect.pop("wlan0", None)
+        runner.networkmanager.nm_path.pop("wlan0")
+        runner.networkmanager.nm_device_autoconnect.pop("wlan0", None)
         start = len(runner.commands)
 
         errors = controller.release("end0")
@@ -261,27 +263,27 @@ class WifiCustodianTests(unittest.TestCase):
         self.assertEqual(controller.phase(), "restoration_pending")
         self.assertIsNotNone(controller.state())
         self.assertIsNotNone(controller.marker)
-        self.assertIn(WIFI_PROFILE_UUID, runner.nm_profiles)
+        self.assertIn(WIFI_PROFILE_UUID, runner.networkmanager.nm_profiles)
         self.assertEqual(_device_set_commands(runner.commands[start:]), [])
 
-        runner.nm_path["wlan0"] = "platform-fe300000.mmcnr"
-        runner.nm_device_autoconnect["wlan0"] = False
+        runner.networkmanager.nm_path["wlan0"] = "platform-fe300000.mmcnr"
+        runner.networkmanager.nm_device_autoconnect["wlan0"] = False
 
         errors = controller.release("end0")
 
         self.assertEqual(errors, [])
         self.assertFalse(controller.restore_pending)
         self.assertIsNone(controller.state())
-        self.assertTrue(runner.nm_device_autoconnect["wlan0"])
+        self.assertTrue(runner.networkmanager.nm_device_autoconnect["wlan0"])
 
     def test_release_never_mutates_replacement_that_inherited_ifname(self) -> None:
         runner = FakeRunner()
         controller = self._controller(runner, [1000.0])
         controller.claim("end0")
 
-        runner.nm_path["wlan0"] = "platform-replacement-usb"
-        runner.nm_device_autoconnect["wlan0"] = True
-        runner.nm_managed["wlan0"] = True
+        runner.networkmanager.nm_path["wlan0"] = "platform-replacement-usb"
+        runner.networkmanager.nm_device_autoconnect["wlan0"] = True
+        runner.networkmanager.nm_managed["wlan0"] = True
         start = len(runner.commands)
 
         errors = controller.release("end0")
@@ -289,20 +291,20 @@ class WifiCustodianTests(unittest.TestCase):
         self.assertTrue(errors)
         self.assertTrue(controller.restore_pending)
         self.assertIsNotNone(controller.marker)
-        self.assertTrue(runner.nm_device_autoconnect["wlan0"])
-        self.assertIn(WIFI_PROFILE_UUID, runner.nm_profiles)
+        self.assertTrue(runner.networkmanager.nm_device_autoconnect["wlan0"])
+        self.assertIn(WIFI_PROFILE_UUID, runner.networkmanager.nm_profiles)
         self.assertEqual(_device_set_commands(runner.commands[start:]), [])
 
     def test_marker_is_stable_across_reconciles_and_restores_exactly(self) -> None:
         runner = FakeRunner()
-        runner.nm_wifi_cache["wlan0"] = {"Phone"}
-        runner.nm_profiles["A-D074"] = {
+        runner.networkmanager.nm_wifi_cache["wlan0"] = {"Phone"}
+        runner.networkmanager.nm_profiles["A-D074"] = {
             "connection.uuid": "A-D074",
             "connection.id": "A-D074",
             "connection.type": "802-11-wireless",
             "connection.interface-name": "wlan0",
         }
-        runner.nm_active["wlan0"] = "A-D074"
+        runner.networkmanager.nm_active["wlan0"] = "A-D074"
         controller = self._controller(runner, [1000.0])
 
         for _ in range(3):
@@ -313,46 +315,48 @@ class WifiCustodianTests(unittest.TestCase):
         assert marker is not None
         self.assertTrue(marker["prior_device_autoconnect"])
         self.assertEqual(marker["prior_active_foreign_uuid"], "A-D074")
-        self.assertFalse(runner.nm_device_autoconnect["wlan0"])
-        self.assertEqual(runner.nm_profiles["A-D074"]["connection.uuid"], "A-D074")
+        self.assertFalse(runner.networkmanager.nm_device_autoconnect["wlan0"])
+        self.assertEqual(
+            runner.networkmanager.nm_profiles["A-D074"]["connection.uuid"], "A-D074"
+        )
 
         self.assertEqual(controller.release("end0"), [])
-        self.assertTrue(runner.nm_device_autoconnect["wlan0"])
-        self.assertEqual(runner.nm_active.get("wlan0"), "A-D074")
+        self.assertTrue(runner.networkmanager.nm_device_autoconnect["wlan0"])
+        self.assertEqual(runner.networkmanager.nm_active.get("wlan0"), "A-D074")
         self.assertIsNone(controller.state())
 
     def test_release_retries_after_failed_foreign_reactivation(self) -> None:
         runner = FakeRunner()
-        runner.nm_profiles["A-D074"] = {
+        runner.networkmanager.nm_profiles["A-D074"] = {
             "connection.uuid": "A-D074",
             "connection.id": "A-D074",
             "connection.type": "802-11-wireless",
             "connection.interface-name": "wlan0",
         }
-        runner.nm_active["wlan0"] = "A-D074"
+        runner.networkmanager.nm_active["wlan0"] = "A-D074"
         controller = self._controller(runner, [1000.0])
         self.assertEqual(controller.claim("end0"), [])
 
-        runner.nm_up_failures.add("A-D074")
+        runner.networkmanager.nm_up_failures.add("A-D074")
         errors = controller.release("end0")
 
         self.assertTrue(errors)
         self.assertTrue(controller.restore_pending)
         self.assertEqual(controller.phase(), "restoration_pending")
         self.assertIsNotNone(controller.state())
-        self.assertIn(WIFI_PROFILE_UUID, runner.nm_profiles)
-        self.assertFalse(runner.nm_device_autoconnect["wlan0"])
-        self.assertIsNone(runner.nm_active.get("wlan0"))
+        self.assertIn(WIFI_PROFILE_UUID, runner.networkmanager.nm_profiles)
+        self.assertFalse(runner.networkmanager.nm_device_autoconnect["wlan0"])
+        self.assertIsNone(runner.networkmanager.nm_active.get("wlan0"))
 
-        runner.nm_up_failures.discard("A-D074")
+        runner.networkmanager.nm_up_failures.discard("A-D074")
         errors = controller.release("end0")
 
         self.assertEqual(errors, [])
         self.assertFalse(controller.restore_pending)
         self.assertIsNone(controller.state())
-        self.assertNotIn(WIFI_PROFILE_UUID, runner.nm_profiles)
-        self.assertTrue(runner.nm_device_autoconnect["wlan0"])
-        self.assertEqual(runner.nm_active.get("wlan0"), "A-D074")
+        self.assertNotIn(WIFI_PROFILE_UUID, runner.networkmanager.nm_profiles)
+        self.assertTrue(runner.networkmanager.nm_device_autoconnect["wlan0"])
+        self.assertEqual(runner.networkmanager.nm_active.get("wlan0"), "A-D074")
 
     def test_marker_recovers_from_metadata_in_a_fresh_custodian(self) -> None:
         runner = FakeRunner()

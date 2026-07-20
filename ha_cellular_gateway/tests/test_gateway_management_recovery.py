@@ -3,9 +3,11 @@ import time
 import unittest
 
 from gateway_support import GatewayTestCase
-from helpers import FakeProcess, FakeRunner, build_engine, make_config, sysctl_values
 from rootfs.app.errors import GatewayError
 from rootfs.app.gateway import GatewayEngine
+from test_support.engine_fixtures import build_engine, make_config, sysctl_values
+from test_support.process import FakeProcess
+from test_support.runner import FakeRunner
 
 
 class GatewayManagementRecoveryTests(GatewayTestCase):
@@ -98,7 +100,7 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
         self.assertIsNone(degraded.owned_state)
         self.assertNotIn(
             "enx001122334455",
-            degraded.runner.interface_addresses,
+            degraded.runner.routes.interface_addresses,
         )
         self.assertFalse(degraded.firewall.host_protection_installed("enx001122334455"))
         self.assertIn("Invalid app configuration", degraded.last_error)
@@ -172,7 +174,7 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
     def test_management_recovers_across_reconciles_without_restart(self) -> None:
         values = sysctl_values()
         runner = FakeRunner()
-        runner.main_default_routes = []
+        runner.routes.main_default_routes = []
         engine = build_engine(
             make_config(
                 hotspot_ssid="Phone",
@@ -186,7 +188,7 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
         engine.safety.errors = lambda *args, management=None, **kwargs: (
             [] if management is not None else ["Management interface is unavailable"]
         )
-        runner.nm_wifi_cache["wlan0"] = {"Phone"}
+        runner.networkmanager.nm_wifi_cache["wlan0"] = {"Phone"}
         engine.firewall.installed = lambda downstream=None, upstream_interface=None: (
             engine.applied
         )
@@ -205,10 +207,10 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
         )
         self.assertNotIn(
             "enx001122334455",
-            runner.interface_addresses,
+            runner.routes.interface_addresses,
         )
 
-        runner.main_default_routes = [
+        runner.routes.main_default_routes = [
             {"dst": "default", "gateway": "192.168.1.1", "dev": "end0"}
         ]
 
@@ -221,7 +223,7 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
     def test_missing_management_blocks_profile_and_downstream_mutation(self) -> None:
         values = sysctl_values()
         runner = FakeRunner()
-        runner.main_default_routes = []
+        runner.routes.main_default_routes = []
         engine = build_engine(
             make_config(
                 hotspot_ssid="Phone",
@@ -237,7 +239,7 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
 
         engine.reconcile()
 
-        self.assertEqual(runner.nm_profiles, {})
+        self.assertEqual(runner.networkmanager.nm_profiles, {})
         self.assertIsNone(engine.last_downstream)
         self.assertIn("Management interface is unavailable", engine.last_error)
 
@@ -246,16 +248,16 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
     ) -> None:
         engine = self._prepare_active_engine()
         self.assertEqual(engine.management_interface, "end0")
-        self.assertTrue(engine.runner.nm_profiles)
-        engine.runner.main_default_routes = [
+        self.assertTrue(engine.runner.networkmanager.nm_profiles)
+        engine.runner.routes.main_default_routes = [
             {"dst": "default", "gateway": "192.168.2.1", "dev": "eth9"}
         ]
-        engine.runner.interface_addresses["eth9"] = ("192.168.2.2", 24)
+        engine.runner.routes.interface_addresses["eth9"] = ("192.168.2.2", 24)
 
         engine.reconcile()
 
         self.assertFalse(engine.applied)
-        self.assertEqual(engine.runner.nm_profiles, {})
+        self.assertEqual(engine.runner.networkmanager.nm_profiles, {})
         self.assertIn("Management interface changed", engine.last_error)
 
     def test_persisted_extra_state_key_is_ignored(self) -> None:

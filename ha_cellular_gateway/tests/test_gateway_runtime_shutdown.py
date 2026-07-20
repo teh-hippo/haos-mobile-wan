@@ -3,11 +3,13 @@ import unittest
 from pathlib import Path
 
 from gateway_support import GatewayTestCase
-from helpers import FakeProcess, FakeRunner, build_engine, make_config, sysctl_values
 from rootfs.app.const import IPHONE_USB
 from rootfs.app.errors import GatewayError
 from rootfs.app.management import ManagementBaseline
 from rootfs.app.upstream_iphone import IPhoneUsbUpstream
+from test_support.engine_fixtures import build_engine, make_config, sysctl_values
+from test_support.process import FakeProcess
+from test_support.runner import FakeRunner
 
 
 class GatewayRuntimeShutdownTests(GatewayTestCase):
@@ -76,7 +78,7 @@ class GatewayRuntimeShutdownTests(GatewayTestCase):
         engine.management = ManagementBaseline("eth0", "192.168.1.2/24")
         engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
         engine.upstream_lifecycle.activate(engine.management)
-        self.assertTrue(engine.runner.nm_profiles)
+        self.assertTrue(engine.runner.networkmanager.nm_profiles)
 
         with self.assertLogs(
             "rootfs.app.gateway_runtime",
@@ -84,7 +86,7 @@ class GatewayRuntimeShutdownTests(GatewayTestCase):
         ) as captured:
             engine.stop()
 
-        self.assertEqual(engine.runner.nm_profiles, {})
+        self.assertEqual(engine.runner.networkmanager.nm_profiles, {})
         self.assertIn(
             "Graceful shutdown cleanup completed",
             "\n".join(captured.output),
@@ -93,8 +95,8 @@ class GatewayRuntimeShutdownTests(GatewayTestCase):
     def test_stop_after_detected_usb_does_not_flush_external_interface(self) -> None:
         values = sysctl_values()
         runner = FakeRunner()
-        runner.interface_addresses["eth0"] = ("172.20.10.2", 28)
-        runner.main_default_routes.append(
+        runner.routes.interface_addresses["eth0"] = ("172.20.10.2", 28)
+        runner.routes.main_default_routes.append(
             {"dst": "default", "gateway": "172.20.10.1", "dev": "eth0"}
         )
         engine = build_engine(

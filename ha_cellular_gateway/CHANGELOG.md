@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.0-beta.1
+
+- Publish the first opt-in 1.0 beta for final physical HAOS acceptance across
+  iPhone USB, generic USB, dedicated Wi-Fi, failover and cleanup scenarios.
+- Keep gateway runtime behaviour identical to 0.12.1 so acceptance focuses on
+  the production candidate rather than new functionality.
+- Distribute the candidate as a signed beta-only image with exact-commit
+  validation, integration labs and an attached CycloneDX SBOM.
+
 ## 0.12.1
 
 - Publish versioned GHCR images only when the app version changes, preventing

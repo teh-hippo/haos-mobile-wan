@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.2
+
+- Stop reconciliation as soon as termination is requested, prioritise gateway
+  cleanup before MQTT shutdown and allow 90 seconds for graceful cleanup.
+- Log interrupted startup recovery and document restart or start-then-stop as
+  the repair path after a forced termination.
+- Clarify that USB-only modes do not claim Wi-Fi and preserve unrelated Wi-Fi
+  profiles.
+- Pin the Home Assistant runtime base image to an immutable digest.
+
 ## 0.11.1
 
 - Use Mobile WAN as the Home Assistant app display name and add native app
@@ -13,10 +23,6 @@
   instead of requiring an app restart.
 - Remove obsolete manual HAOS networking and historical upgrade instructions
   from the commissioning documentation.
-- Stop reconciliation as soon as termination is requested, prioritise gateway
-  cleanup before MQTT shutdown and allow 90 seconds for graceful cleanup.
-- Log interrupted startup recovery and document restart or start-then-stop as
-  the repair path after a forced termination.
 
 ## 0.11.0
 

@@ -262,6 +262,10 @@ documentation can change without an app release when the payload is unchanged.
 Renovate does not auto-merge runtime base-image updates because those changes
 need the same version and changelog treatment.
 
+Source-size guardrails are category-specific rather than one repository-wide
+number: runtime modules are limited to 250 lines, unit and support modules to
+400, the live NetworkManager lab to 350 and QEMU guest modules to 300.
+
 The on-demand [NetworkManager integration
 lab](ha_cellular_gateway/integration/networkmanager/README.md) runs only by
 manual workflow dispatch or its local rootful Docker command. It is separate
@@ -285,6 +289,7 @@ uv run coverage report
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy ha_cellular_gateway/rootfs/app tools
+uv run python tools/structure_contract.py
 git ls-files -z '*.sh' | xargs -0 uv run shellcheck -x
 uv run actionlint
 

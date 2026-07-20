@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.6
+
+- Adopt the Home Assistant app linter's canonical metadata by relying on the
+  default enforced AppArmor setting.
+- Upgrade Alpine packages during the image build and remove the unused
+  inherited `tempio` binary so fixable HIGH and CRITICAL image findings are not
+  shipped.
+- Add required Home Assistant metadata linting, image vulnerability scanning
+  and a retained CycloneDX SBOM.
+
 ## 0.11.5
 
 - Replace the gateway engine's broad flat mutable fields with typed

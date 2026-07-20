@@ -12,6 +12,7 @@ except ImportError:  # pragma: no cover - exercised in CI
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = REPO_ROOT / "ha_cellular_gateway" / "config.yaml"
 APPARMOR_PATH = REPO_ROOT / "ha_cellular_gateway" / "apparmor.txt"
+DOCKERFILE_PATH = REPO_ROOT / "ha_cellular_gateway" / "Dockerfile"
 
 
 @unittest.skipIf(yaml is None, "pyyaml is required for addon metadata checks")
@@ -20,6 +21,7 @@ class AddonSecurityTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.config = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
         cls.profile = APPARMOR_PATH.read_text(encoding="utf-8")
+        cls.dockerfile = DOCKERFILE_PATH.read_text(encoding="utf-8")
 
     def test_metadata_keeps_minimal_supported_permissions(self) -> None:
         self.assertEqual(self.config["arch"], ["aarch64"])
@@ -27,7 +29,7 @@ class AddonSecurityTests(unittest.TestCase):
         self.assertTrue(self.config["hassio_api"])
         self.assertEqual(self.config["hassio_role"], "manager")
         self.assertTrue(self.config["usb"])
-        self.assertTrue(self.config["apparmor"])
+        self.assertNotIn("apparmor", self.config)
         self.assertEqual(self.config["timeout"], 90)
         self.assertEqual(self.config["privileged"], ["NET_ADMIN", "NET_RAW"])
         self.assertNotIn("full_access", self.config)
@@ -47,6 +49,10 @@ class AddonSecurityTests(unittest.TestCase):
             self.config["schema"]["router_address"],
             "str?",
         )
+
+    def test_image_refreshes_packages_and_removes_unused_tempio(self) -> None:
+        self.assertIn("apk upgrade --no-cache", self.dockerfile)
+        self.assertIn("rm -f /usr/bin/tempio", self.dockerfile)
 
     def test_apparmor_profile_is_enforcing_and_scoped(self) -> None:
         self.assertIn(

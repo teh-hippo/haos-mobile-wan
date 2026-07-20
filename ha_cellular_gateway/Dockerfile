@@ -11,7 +11,8 @@ LABEL \
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/
 
-RUN apk add --no-cache \
+RUN apk upgrade --no-cache \
+    && apk add --no-cache \
     curl \
     dnsmasq \
     iproute2 \
@@ -26,7 +27,8 @@ RUN apk add --no-cache \
     && command -v idevicepair >/dev/null \
     && command -v nmcli >/dev/null \
     && python3 -c "import paho.mqtt.client" \
-    && python3 -c "import dbus"
+    && python3 -c "import dbus" \
+    && rm -f /usr/bin/tempio
 
 COPY rootfs /
 

@@ -101,7 +101,7 @@ jobs:
           assert app["hassio_api"] is True
           assert app["hassio_role"] == "manager"
           assert app["usb"] is True
-          assert app["apparmor"] is True
+          assert "apparmor" not in app
           assert app["privileged"] == ["NET_ADMIN", "NET_RAW"]
           assert app.get("full_access") in (None, False)
           assert app["host_dbus"] is True

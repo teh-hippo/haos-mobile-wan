@@ -1,5 +1,5 @@
 name: Mobile WAN
-version: "0.11.5"
+version: "0.11.6"
 slug: ha_cellular_gateway
 description: Provides fallback WAN through Wi-Fi or USB tethering
 url: https://github.com/teh-hippo/haos-mobile-wan
@@ -29,7 +29,6 @@ usb: true
 privileged:
   - NET_ADMIN
   - NET_RAW
-apparmor: true
 timeout: 90
 backup_exclude:
   - dnsmasq.leases

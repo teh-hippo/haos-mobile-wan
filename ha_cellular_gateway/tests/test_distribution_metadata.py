@@ -133,6 +133,9 @@ class DistributionMetadataTests(unittest.TestCase):
             "uv run mypy ha_cellular_gateway/rootfs/app tools",
             "uv run python tools/structure_contract.py",
             'uv run python -c "import app.main"',
+            "Home Assistant app linting",
+            "HIGH/CRITICAL vulnerability scanning",
+            "full-image SBOM",
         ):
             self.assertIn(snippet, text)
         for snippet in (
@@ -142,6 +145,9 @@ class DistributionMetadataTests(unittest.TestCase):
             "uv run mypy ha_cellular_gateway/rootfs/app tools",
             "uv run python tools/structure_contract.py",
             'uv run python -c "import app.main"',
+            "frenck/action-addon-linter@",
+            "aquasecurity/trivy-action@",
+            "trivy-sbom.cdx.json",
             "apparmor_parser -QK ha_cellular_gateway/apparmor.txt",
             "docker buildx build",
         ):

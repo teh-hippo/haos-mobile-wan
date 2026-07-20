@@ -158,6 +158,11 @@ jobs:
       - name: Validate source structure
         run: uv run python tools/structure_contract.py
 
+      - name: Lint Home Assistant app
+        uses: frenck/action-addon-linter@f995494fd84fae6310d23617e66d0e37de4f14eb # v2.21.0
+        with:
+          path: ./ha_cellular_gateway
+
       - name: Parse AppArmor profile
         run: apparmor_parser -QK ha_cellular_gateway/apparmor.txt
 
@@ -208,6 +213,34 @@ jobs:
             haos-mobile-wan:ci -c "import app.main; print('startup-ok')")
           echo "$output"
           echo "$output" | grep -q startup-ok
+
+      - name: Generate image SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: haos-mobile-wan:ci
+          format: cyclonedx
+          output: trivy-sbom.cdx.json
+          exit-code: "0"
+          list-all-pkgs: true
+          scanners: vuln
+
+      - name: Upload image SBOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: haos-mobile-wan-sbom-${{ github.sha }}
+          path: trivy-sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Scan image vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: haos-mobile-wan:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          scanners: vuln
 
   validate:
     name: validate

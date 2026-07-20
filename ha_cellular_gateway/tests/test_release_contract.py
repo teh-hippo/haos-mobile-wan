@@ -122,6 +122,15 @@ class ReleaseContractTests(unittest.TestCase):
             ),
             [],
         )
+        self.assertEqual(
+            stable_release_errors(
+                {
+                    "version": "1.0.0",
+                    "image": "ghcr.io/teh-hippo/haos-mobile-wan",
+                }
+            ),
+            [],
+        )
 
     def test_beta_release_does_not_require_stable_metadata(self) -> None:
         self.assertEqual(

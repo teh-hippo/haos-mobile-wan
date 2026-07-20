@@ -8,7 +8,6 @@ arch:
   - aarch64
 startup: services
 boot: manual
-stage: stable
 breaking_versions:
   - "0.3.0"
   - "0.3.18"

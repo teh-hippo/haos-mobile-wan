@@ -72,6 +72,10 @@ Before starting it:
 5. connect one USB Ethernet adapter for the router WAN;
 6. follow the [commissioning guide](ha_cellular_gateway/DOCS.md).
 
+Released versions use signed, pre-built aarch64 images from GHCR. Home
+Assistant pulls the image matching the app version rather than compiling it on
+the HAOS host.
+
 The normal form contains only the settings needed for everyday use. Interface,
 address and adapter overrides remain available under unused optional settings.
 
@@ -254,6 +258,10 @@ parsing, an `aarch64` image build, HIGH/CRITICAL vulnerability scanning and a
 retained full-image SBOM. See
 [`.github/workflows/validate.yml`](.github/workflows/validate.yml) for the
 authoritative commands.
+
+Pull requests build the distributable image without publishing it. A protected
+push to `main` publishes and signs the versioned aarch64 image and generic
+manifest, then verifies the signature, version label and application import.
 
 Changes to the shipped app payload must increase
 `ha_cellular_gateway/config.yaml` and add the matching changelog heading. The

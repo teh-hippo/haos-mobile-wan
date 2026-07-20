@@ -72,9 +72,7 @@ def validate_dynamic_lease(
         upstream.network.broadcast_address,
     }:
         return None, f"{label} lease gateway is not a usable peer address"
-    if management_network is not None and upstream.network.overlaps(
-        management_network
-    ):
+    if management_network is not None and upstream.network.overlaps(management_network):
         return None, f"{label} lease overlaps the management network"
     if upstream.network.overlaps(downstream.network):
         return None, f"{label} lease overlaps the downstream network"

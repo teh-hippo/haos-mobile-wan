@@ -12,9 +12,7 @@ class MainShutdownTests(unittest.TestCase):
         engine.stop_event = threading.Event()
         server = mock.Mock()
         thread = mock.Mock()
-        thread.start.side_effect = lambda: self.assertTrue(
-            engine.stop_event.is_set()
-        )
+        thread.start.side_effect = lambda: self.assertTrue(engine.stop_event.is_set())
 
         with mock.patch.object(
             main.threading,

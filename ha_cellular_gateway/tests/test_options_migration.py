@@ -11,7 +11,6 @@ from unittest import mock
 from rootfs.app.config import KNOWN_OPTION_KEYS
 from rootfs.app.options_migration import prune_legacy_options
 
-
 KNOWN_OPTIONS = {
     "auto_disable_minutes": 30,
     "mobile_connection": "Wi-Fi hotspot",
@@ -87,9 +86,7 @@ class PruneLegacyOptionsTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         request, timeout = calls[0]
         assert isinstance(request, urllib.request.Request)
-        self.assertEqual(
-            request.full_url, "http://supervisor/addons/self/options"
-        )
+        self.assertEqual(request.full_url, "http://supervisor/addons/self/options")
         self.assertEqual(request.get_method(), "POST")
         self.assertEqual(request.get_header("Authorization"), "Bearer token")
         self.assertEqual(request.get_header("Content-type"), "application/json")

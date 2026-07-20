@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass
 
 from .command import RunCommand
 from .errors import GatewayError
+from .networkmanager_invariants import main_default_present
 from .nm_device import (
     DeviceState,
     RadioInspectionError,
@@ -15,9 +15,9 @@ from .nm_device import (
     resolve_interface,
     set_device_autoconnect,
 )
-from .nm_profile import NmProfile
-from .networkmanager_invariants import main_default_present
 from .nm_metadata import WifiProfileMetadata
+from .nm_profile import NmProfile
+from .wifi_custody_marker import CustodyMarker, parse_marker
 
 CUSTODY_ERRORS = (GatewayError, OSError, subprocess.SubprocessError, ValueError)
 MARKER_KEY = "cellgw.custody"
@@ -27,55 +27,9 @@ DEVICE_MISSING = "The dedicated Wi-Fi adapter is not present"
 DEVICE_UNMANAGED = "NetworkManager does not manage the dedicated Wi-Fi adapter"
 RADIO_SOFT_OFF = "The Wi-Fi radio is turned off"
 RADIO_HARD_OFF = "The Wi-Fi radio is hardware-blocked"
-RADIO_INSPECTION_UNAVAILABLE = (
-    "NetworkManager Wi-Fi radio inspection is unavailable"
-)
+RADIO_INSPECTION_UNAVAILABLE = "NetworkManager Wi-Fi radio inspection is unavailable"
 DISPLACE_FAILED = "A foreign Wi-Fi connection still controls the dedicated adapter"
 RESTORE_PENDING = "The marked Wi-Fi adapter runtime restoration is pending"
-
-
-@dataclass(frozen=True)
-class CustodyMarker:
-    stable_device_identity: str
-    prior_device_autoconnect: bool
-    prior_active_foreign_uuid: str | None
-
-    def serialise(self) -> str:
-        foreign = self.prior_active_foreign_uuid or ""
-        return f"{self.stable_device_identity}|{int(self.prior_device_autoconnect)}|{foreign}"
-
-    def as_state(self) -> dict[str, object]:
-        return {
-            "stable_device_identity": self.stable_device_identity,
-            "prior_device_autoconnect": self.prior_device_autoconnect,
-            "prior_active_foreign_uuid": self.prior_active_foreign_uuid,
-        }
-
-
-def parse_marker(value: object) -> CustodyMarker | None:
-    if isinstance(value, str):
-        parts = value.split("|")
-        if len(parts) != 3 or not parts[0]:
-            return None
-        return CustodyMarker(parts[0], parts[1] == "1", parts[2] or None)
-    if not isinstance(value, dict):
-        return None
-    identity = value.get("stable_device_identity")
-    autoconnect = value.get("prior_device_autoconnect")
-    foreign = value.get("prior_active_foreign_uuid")
-    if (
-        set(value) != {
-            "stable_device_identity",
-            "prior_device_autoconnect",
-            "prior_active_foreign_uuid",
-        }
-        or not isinstance(identity, str)
-        or not identity
-        or not isinstance(autoconnect, bool)
-        or not (foreign is None or isinstance(foreign, str))
-    ):
-        return None
-    return CustodyMarker(identity, autoconnect, foreign or None)
 
 
 class WifiCustodian:
@@ -102,6 +56,7 @@ class WifiCustodian:
         self, management_interface: str | None, *, identity: str | None = None
     ) -> str | None:
         self.blocker = None
+        interface: str | None
         if identity is None:
             identity = device_identity(self.run, self.configured_interface)
             interface = self.configured_interface
@@ -182,7 +137,13 @@ class WifiCustodian:
             foreign = marker.prior_active_foreign_uuid
             if foreign and self._profile_exists(foreign):
                 result = self.run(
-                    "nmcli", "-w", "8", "connection", "up", "uuid", foreign,
+                    "nmcli",
+                    "-w",
+                    "8",
+                    "connection",
+                    "up",
+                    "uuid",
+                    foreign,
                     check=False,
                 )
                 if result.returncode != 0:
@@ -228,9 +189,18 @@ class WifiCustodian:
         return []
 
     def _profile_exists(self, uuid: str) -> bool:
-        return self.run(
-            "nmcli", "-g", "connection.uuid", "connection", "show", uuid, check=False
-        ).returncode == 0
+        return (
+            self.run(
+                "nmcli",
+                "-g",
+                "connection.uuid",
+                "connection",
+                "show",
+                uuid,
+                check=False,
+            ).returncode
+            == 0
+        )
 
     def _write_profile_marker(self) -> None:
         assert self.marker is not None

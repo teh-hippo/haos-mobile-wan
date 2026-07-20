@@ -5,8 +5,7 @@ def rule_present(rules: object, expected: list[str]) -> bool:
     if not isinstance(rules, list):
         return False
     return any(
-        isinstance(rule, dict) and rule_matches(rule, expected)
-        for rule in rules
+        isinstance(rule, dict) and rule_matches(rule, expected) for rule in rules
     )
 
 
@@ -20,10 +19,13 @@ def rule_matches(rule: dict[str, object], expected: list[str]) -> bool:
         allowed_sources.add(source.removesuffix("/32"))
     actual_source = str(rule.get("src", ""))
     actual_length = rule.get("srclen")
+    actual_priority = rule.get("priority", -1)
+    if not isinstance(actual_priority, (int, str)):
+        return False
     if actual_source not in {"", "all"} and actual_length is not None:
         actual_source = f"{actual_source}/{actual_length}"
     return (
-        int(rule.get("priority", -1)) == priority
+        int(actual_priority) == priority
         and str(rule.get("table", rule.get("lookup", ""))) == table
         and (
             interface is None
@@ -41,8 +43,7 @@ def route_present(routes: object, expected: list[str]) -> bool:
     if not isinstance(routes, list):
         return False
     return any(
-        isinstance(route, dict) and route_matches(route, expected)
-        for route in routes
+        isinstance(route, dict) and route_matches(route, expected) for route in routes
     )
 
 

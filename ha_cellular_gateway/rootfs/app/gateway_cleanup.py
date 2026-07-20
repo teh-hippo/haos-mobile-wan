@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Callable
+from functools import partial
 from typing import TYPE_CHECKING
 
 from .errors import GatewayError
@@ -53,19 +54,14 @@ def cleanup(
             and engine._protectable_downstream(engine.last_downstream)
         ):
             protected_downstream = engine.last_downstream
-        if (
-            not engine._protectable_downstream(protected_downstream)
-            and isinstance(owned_state, dict)
+        if not engine._protectable_downstream(protected_downstream) and isinstance(
+            owned_state, dict
         ):
             candidate = owned_state.get("downstream")
             protected_downstream = candidate if isinstance(candidate, str) else None
-        if (
-            not (
-                preserve_host_protection
-                or engine.downstream.owns_address(owned_state)
-            )
-            or not engine._protectable_downstream(protected_downstream)
-        ):
+        if not (
+            preserve_host_protection or engine.downstream.owns_address(owned_state)
+        ) or not engine._protectable_downstream(protected_downstream):
             protected_downstream = None
 
         errors: list[str] = []
@@ -79,9 +75,10 @@ def cleanup(
         ownerships: list[dict[str, object]] = []
         if owned_state:
             ownerships.append(owned_state)
-        if not owned_only and downstream and (
-            engine.last_upstream is not None
-            or engine.config.uses_wifi
+        if (
+            not owned_only
+            and downstream
+            and (engine.last_upstream is not None or engine.config.uses_wifi)
         ):
             current = engine.policy.ownership(
                 downstream,
@@ -93,7 +90,7 @@ def cleanup(
             _attempt(
                 errors,
                 "policy routing",
-                lambda ownership=ownership: engine.policy.cleanup(ownership),
+                partial(engine.policy.cleanup, ownership),
             )
         address_error_count = len(errors)
         _attempt(

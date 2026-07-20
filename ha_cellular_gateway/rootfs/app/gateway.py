@@ -10,9 +10,11 @@ from .auto_disable import AutoDisable
 from .command import CommandRunner
 from .config import STATE_PATH, GatewayConfig
 from .dhcp import DnsmasqService
+from .downstream import DownstreamInterface
 from .errors import GatewayError
 from .firewall import Firewall
 from .gateway_cleanup import cleanup as cleanup_gateway
+from .gateway_probe import probe_upstream
 from .gateway_reconcile import apply as apply_gateway
 from .gateway_reconcile import reconcile as reconcile_gateway
 from .gateway_runtime import (
@@ -23,7 +25,6 @@ from .gateway_runtime import (
     status,
     stop,
 )
-from .downstream import DownstreamInterface
 from .management import ManagementBaseline
 from .management_state import (
     resolve_pinned_management,
@@ -35,9 +36,9 @@ from .nm_metadata import WifiProfileMetadata
 from .policy import PolicyRouting
 from .safety import SafetyInspector
 from .state import StateStore
-from .usb_upstream_factory import build_usb_upstreams
 from .upstream_lifecycle import UpstreamLifecycle
 from .upstream_models import ResolvedUpstream
+from .usb_upstream_factory import build_usb_upstreams
 
 
 class GatewayEngine:
@@ -132,7 +133,7 @@ class GatewayEngine:
             try:
                 self.policy.rule_args(self.owned_state)
                 self.policy.route_args(self.owned_state)
-            except (GatewayError, TypeError, ValueError):
+            except GatewayError, TypeError, ValueError:
                 self.owned_state = None
                 startup_errors.append("Persistent ownership state is invalid")
         self.state_load_error = "; ".join(startup_errors) or None
@@ -140,10 +141,12 @@ class GatewayEngine:
             self.last_error = self.state_load_error
         self.upstream_lifecycle.set_persist(self._persist_state)
         self.wifi.set_persist(self._persist_state)
+
     def _run(
         self, *args: str, check: bool = True, timeout: int = 20
     ) -> subprocess.CompletedProcess[str]:
         return self.runner.run(list(args), check=check, timeout=timeout)
+
     def _persist_state(self) -> None:
         self.state_store.save(
             owned=self.owned_state,
@@ -151,6 +154,7 @@ class GatewayEngine:
             wifi_custody=self.wifi.state(),
             management_interface=self.management_interface,
         )
+
     def cleanup(
         self,
         *,
@@ -164,15 +168,14 @@ class GatewayEngine:
             force=force,
             owned_only=owned_only,
         )
+
     def _protectable_downstream(self, downstream: str | None) -> bool:
         upstream_interface = (
             self.last_upstream.interface
             if self.last_upstream
             else (self.config.upstream_interface if self.config.uses_wifi else None)
         )
-        management_interface = (
-            self.management.interface if self.management else None
-        )
+        management_interface = self.management.interface if self.management else None
         return bool(downstream) and downstream not in {
             management_interface,
             upstream_interface,
@@ -204,46 +207,31 @@ class GatewayEngine:
                 self.last_health_probe = None
             self.last_upstream = upstream
 
-    def _health_probe(self, upstream: ResolvedUpstream | None) -> tuple[bool, str | None]:
-        if upstream is None:
-            return False, None
-        try:
-            result = self._run(
-                "curl",
-                "-4",
-                "-fsS",
-                "--interface",
-                upstream.ip,
-                "--max-time",
-                "10",
-                "https://www.cloudflare.com/cdn-cgi/trace",
-                check=False,
-                timeout=15,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return False, None
-        if result.returncode != 0:
-            return False, None
-        public_ip = None
-        for line in result.stdout.splitlines():
-            if line.startswith("ip="):
-                public_ip = line.partition("=")[2]
-                break
-        return True, public_ip
+    def _health_probe(
+        self, upstream: ResolvedUpstream | None
+    ) -> tuple[bool, str | None]:
+        return probe_upstream(self, upstream)
 
     def _refresh_health_if_due(self) -> None:
         refresh_health_if_due(self)
+
     def apply(self) -> None:
         apply_gateway(self)
+
     def reconcile(self, *, refresh_health: bool = False) -> None:
         reconcile_gateway(self, refresh_health=refresh_health)
+
     def _fail_closed(self, error: Exception) -> None:
         fail_closed(self, error)
+
     def status(self) -> dict[str, object]:
         return status(self)
+
     def health(self) -> dict[str, object]:
         return health(self)
+
     def run_loop(self) -> None:
         run_loop(self)
+
     def stop(self) -> None:
         stop(self)

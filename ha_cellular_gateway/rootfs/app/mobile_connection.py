@@ -57,8 +57,7 @@ class MobileConnectionResolver:
         if not self.usb.fallback_allowed():
             upstream = None
             usb_errors = [
-                self.usb.pairing_message
-                or f"{self.usb.label} ownership is unsafe"
+                self.usb.pairing_message or f"{self.usb.label} ownership is unsafe"
             ]
         if self.config.uses_usb and not self.config.uses_wifi:
             return ConnectionResolution(
@@ -102,11 +101,7 @@ class MobileConnectionResolver:
                 fallback_active=True,
                 fallback_reason=reason,
             )
-        errors = tuple(
-            error
-            for error in (*usb_errors, wifi.error)
-            if error
-        )
+        errors = tuple(error for error in (*usb_errors, wifi.error) if error)
         return ConnectionResolution(
             None,
             errors=errors,

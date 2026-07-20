@@ -1,18 +1,20 @@
 import unittest
 
 from rootfs.app.api_token import load_or_create_token
+from rootfs.app.mobile_connection import (
+    MobileConnectionResolver as DirectMobileConnectionResolver,
+)
 from rootfs.app.upstream import (
-    MobileConnectionResolver,
     IPhoneUsbUpstream,
+    MobileConnectionResolver,
     ResolvedUpstream,
     configured_upstream,
 )
 from rootfs.app.upstream_iphone import IPhoneUsbUpstream as DirectIPhoneUsbUpstream
-from rootfs.app.mobile_connection import (
-    MobileConnectionResolver as DirectMobileConnectionResolver,
-)
 from rootfs.app.upstream_models import (
     ResolvedUpstream as DirectResolvedUpstream,
+)
+from rootfs.app.upstream_models import (
     configured_upstream as direct_configured_upstream,
 )
 

@@ -180,10 +180,7 @@ class Netfilter:
                 len(arguments) < 3
                 or arguments[0] != "-A"
                 or arguments[1] != chain
-                or not any(
-                    value.startswith(self.comment_prefix)
-                    for value in arguments
-                )
+                or not any(value.startswith(self.comment_prefix) for value in arguments)
             ):
                 continue
             self.run(

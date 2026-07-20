@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import unittest
-from collections.abc import Callable
 
 from helpers import FakeRunner, make_config
 from rootfs.app.command import RunCommand
@@ -89,9 +88,7 @@ class InertCreateArgvTests(unittest.TestCase):
         )
         self.assertEqual(merged.count("connection.autoconnect"), 1)
         self.assertEqual(merged.count("connection.autoconnect-retries"), 1)
-        self.assertEqual(
-            merged[merged.index("connection.autoconnect") + 1], "no"
-        )
+        self.assertEqual(merged[merged.index("connection.autoconnect") + 1], "no")
         self.assertEqual(
             merged[merged.index("connection.autoconnect-retries") + 1], "0"
         )
@@ -136,8 +133,7 @@ class AutoactivationModelTests(unittest.TestCase):
         routes = networkmanager_routes(adapter(runner), USB_ROUTE_TABLE)
         self.assertTrue(
             any(
-                route.get("dst") == "default"
-                and route.get("dev") == IPHONE_IFACE
+                route.get("dst") == "default" and route.get("dev") == IPHONE_IFACE
                 for route in routes
             ),
             "explicit activation must isolate the default in table 202",

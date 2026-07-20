@@ -26,10 +26,9 @@ from .wifi_custody import (
     RADIO_HARD_OFF,
     RADIO_INSPECTION_UNAVAILABLE,
     RADIO_SOFT_OFF,
-    CustodyMarker,
     WifiCustodian,
-    parse_marker,
 )
+from .wifi_custody_marker import CustodyMarker, parse_marker
 
 WIFI_NOT_ASSOCIATED = "Hotspot Wi-Fi is enabled but not associated"
 WIFI_PROFILE_DRIFT_MESSAGE = (

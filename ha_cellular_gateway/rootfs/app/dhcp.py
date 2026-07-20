@@ -41,14 +41,10 @@ class DnsmasqService:
                 "port=0",
                 "dhcp-authoritative",
                 (
-                    f"dhcp-range={self.config.dhcp_start},{self.config.dhcp_end},"
-                    f"{netmask},5m"
+                    f"dhcp-range={self.config.dhcp_start},{self.config.dhcp_end},{netmask},5m"
                 ),
                 f"dhcp-option=option:router,{self.config.downstream_ip}",
-                (
-                    "dhcp-option=option:dns-server,"
-                    + ",".join(self.config.dns_servers)
-                ),
+                ("dhcp-option=option:dns-server," + ",".join(self.config.dns_servers)),
                 f"dhcp-leasefile={self.lease_path}",
                 f"pid-file={self.run_dir / 'dnsmasq.pid'}",
                 "log-facility=-",
@@ -77,9 +73,7 @@ class DnsmasqService:
         except subprocess.TimeoutExpired:
             return
         self.process = None
-        raise GatewayError(
-            f"Router DHCP service exited with status {returncode}"
-        )
+        raise GatewayError(f"Router DHCP service exited with status {returncode}")
 
     def stop(self) -> None:
         stop_process(self.process)

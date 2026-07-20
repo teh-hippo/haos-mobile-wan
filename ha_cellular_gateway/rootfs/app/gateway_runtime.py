@@ -5,8 +5,8 @@ import subprocess
 import time
 from typing import TYPE_CHECKING
 
-from .status_model import derive_gateway_state, derive_health
 from .status_issues import build_status_issues
+from .status_model import derive_gateway_state, derive_health
 
 if TYPE_CHECKING:
     from .gateway import GatewayEngine
@@ -31,10 +31,7 @@ def refresh_health_if_due(engine: GatewayEngine) -> None:
         return
     healthy, public_ip = engine._health_probe(upstream)
     with engine.lock:
-        if (
-            engine.last_upstream != upstream
-            or engine.health_generation != generation
-        ):
+        if engine.last_upstream != upstream or engine.health_generation != generation:
             return
         engine.upstream_healthy = healthy
         engine.public_ip = public_ip

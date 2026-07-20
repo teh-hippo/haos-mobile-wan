@@ -16,7 +16,7 @@ OPTIONS_URL = "http://supervisor/addons/self/options"
 def read_options(path: Path = OPTIONS_PATH) -> dict[str, object] | None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return None
     return data if isinstance(data, dict) else None
 

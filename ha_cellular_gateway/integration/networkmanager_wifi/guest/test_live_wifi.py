@@ -14,8 +14,8 @@ from app.const import (
 )
 from app.management import ManagementBaseline
 from app.mobile_connection import MobileConnectionResolver
-from app.nm_profile_specs import GENERIC_USB_PROFILE_UUID, WIFI_PROFILE_UUID
 from app.networkmanager_wifi import NetworkManagerWifi
+from app.nm_profile_specs import GENERIC_USB_PROFILE_UUID, WIFI_PROFILE_UUID
 from app.upstream_generic_usb import GenericUsbUpstream
 from app.wifi_custody import RADIO_HARD_OFF
 
@@ -430,9 +430,7 @@ def fixed_control(run: TracingRun, wifi: NetworkManagerWifi) -> None:
     generic.nm.profile.create()
     interface = bind_generic_usb()
     require(
-        os.path.basename(
-            os.path.realpath(f"/sys/class/net/{interface}/device/driver")
-        )
+        os.path.basename(os.path.realpath(f"/sys/class/net/{interface}/device/driver"))
         == "cdc_ether",
         "QEMU generic USB did not bind with cdc_ether",
     )
@@ -453,8 +451,7 @@ def fixed_control(run: TracingRun, wifi: NetworkManagerWifi) -> None:
     )
     selected = resolver.resolve(management(), "downstream0")
     require(
-        selected.upstream is not None
-        and selected.upstream.connection == GENERIC_USB,
+        selected.upstream is not None and selected.upstream.connection == GENERIC_USB,
         "generic USB was not preferred over Wi-Fi",
     )
 
@@ -471,14 +468,12 @@ def fixed_control(run: TracingRun, wifi: NetworkManagerWifi) -> None:
     deadline = time.monotonic() + 30
     selected = resolver.resolve(management(), "downstream0")
     while (
-        selected.upstream is None
-        or selected.upstream.connection != GENERIC_USB
+        selected.upstream is None or selected.upstream.connection != GENERIC_USB
     ) and time.monotonic() < deadline:
         time.sleep(1)
         selected = resolver.resolve(management(), "downstream0")
     require(
-        selected.upstream is not None
-        and selected.upstream.connection == GENERIC_USB,
+        selected.upstream is not None and selected.upstream.connection == GENERIC_USB,
         "generic USB preference did not return",
     )
 

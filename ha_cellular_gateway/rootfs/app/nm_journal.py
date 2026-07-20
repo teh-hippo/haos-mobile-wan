@@ -26,8 +26,7 @@ class NmOwnershipJournal:
             for key, uuid in value.items()
         ):
             self.owned = {
-                key: {"uuid": uuid, "fingerprint": {}}
-                for key, uuid in value.items()
+                key: {"uuid": uuid, "fingerprint": {}} for key, uuid in value.items()
             }
             self.phase = "active"
             return None
@@ -80,10 +79,7 @@ class NmOwnershipJournal:
         self.profile_states[key] = state
 
     def diagnostics(self, *, legacy_wifi_profiles: int) -> dict[str, object]:
-        owned = {
-            key: entry.get("uuid")
-            for key, entry in self.owned.items()
-        }
+        owned = {key: entry.get("uuid") for key, entry in self.owned.items()}
         return {
             "phase": self.phase,
             "owned_profiles": owned,

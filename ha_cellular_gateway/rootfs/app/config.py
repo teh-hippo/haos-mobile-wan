@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
 
+from .config_validation import validate_config
 from .const import (
     DEFAULT_MOBILE_CONNECTION_OPTION,
     GENERIC_USB,
@@ -17,8 +18,6 @@ from .const import (
     WIFI_HOTSPOT,
 )
 from .errors import GatewayError
-from .config_validation import validate_config
-
 
 OPTIONS_PATH = Path(os.environ.get("CELLGW_OPTIONS", "/data/options.json"))
 TOKEN_PATH = Path(os.environ.get("CELLGW_TOKEN", "/data/api_token"))
@@ -96,9 +95,14 @@ class GatewayConfig:
             return data.get(key, _OPTION_DEFAULTS[key])
 
         mobile_connection = str(option("mobile_connection"))
+        auto_disable = option("auto_disable_minutes")
         try:
-            auto_disable_minutes = int(option("auto_disable_minutes"))
-        except (TypeError, ValueError):
+            auto_disable_minutes = (
+                int(auto_disable)
+                if isinstance(auto_disable, (bool, int, float, str))
+                else -1
+            )
+        except TypeError, ValueError:
             auto_disable_minutes = -1
         return cls(
             auto_disable_minutes=auto_disable_minutes,

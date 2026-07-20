@@ -46,7 +46,10 @@ class NmcliHarnessRunnerTests(unittest.TestCase):
 
         result = NmcliHarnessRunner(delegate).run(args)
 
-        self.assertEqual(result.stdout, f"{SYNTHETIC_DEVICE_IDENTITY}\n100 (connected)\nforeign-uuid\n")
+        self.assertEqual(
+            result.stdout,
+            f"{SYNTHETIC_DEVICE_IDENTITY}\n100 (connected)\nforeign-uuid\n",
+        )
         self.assertEqual(delegate.calls, [(args, True, 20)])
 
     def test_existing_path_and_all_other_commands_delegate_unchanged(self) -> None:
@@ -59,7 +62,9 @@ class NmcliHarnessRunnerTests(unittest.TestCase):
             "nmwan0",
         ]
         delegate = RecordingCommandRunner(
-            subprocess.CompletedProcess(path_read, 0, "/org/freedesktop/NetworkManager/Devices/7\n", "")
+            subprocess.CompletedProcess(
+                path_read, 0, "/org/freedesktop/NetworkManager/Devices/7\n", ""
+            )
         )
         runner = NmcliHarnessRunner(delegate)
 

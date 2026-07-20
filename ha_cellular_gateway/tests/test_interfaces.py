@@ -2,11 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from rootfs.app.errors import GatewayError
-from rootfs.app.downstream import DownstreamInterface
-from rootfs.app.management import detect_management
-
 from helpers import FakeRunner, make_config
+from rootfs.app.downstream import DownstreamInterface
+from rootfs.app.errors import GatewayError
+from rootfs.app.management import detect_management
 
 
 class HostInterfaceTests(unittest.TestCase):

@@ -152,12 +152,8 @@ class UsbRestartRegressionTests(unittest.TestCase):
         # once, then issues no further add/delete/up across reconciles.
         self.assertEqual(_adds(commands, USB_PROFILE_UUID), 1)
         self.assertEqual(_connection_verbs(commands, "up", USB_PROFILE_UUID), 1)
-        self.assertEqual(
-            _connection_verbs(commands, "delete", USB_PROFILE_UUID), 0
-        )
-        self.assertEqual(
-            _connection_verbs(commands, "down", USB_PROFILE_UUID), 0
-        )
+        self.assertEqual(_connection_verbs(commands, "delete", USB_PROFILE_UUID), 0)
+        self.assertEqual(_connection_verbs(commands, "down", USB_PROFILE_UUID), 0)
 
         # Kernel truth: main clean, lease isolated in table 202, USB preferred.
         self.assertEqual(self._iphone_main_defaults(runner), [])
@@ -168,9 +164,7 @@ class UsbRestartRegressionTests(unittest.TestCase):
         # Wi-Fi ownership prepares exactly once as stable warm standby.
         self.assertIn(WIFI_PROFILE_UUID, runner.nm_profiles)
         self.assertEqual(_adds(commands, WIFI_PROFILE_UUID), 1)
-        self.assertEqual(
-            _connection_verbs(commands, "delete", WIFI_PROFILE_UUID), 0
-        )
+        self.assertEqual(_connection_verbs(commands, "delete", WIFI_PROFILE_UUID), 0)
 
 
 if __name__ == "__main__":

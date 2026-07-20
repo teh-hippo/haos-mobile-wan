@@ -87,7 +87,5 @@ class GenericUsbUpstream(UsbNetworkUpstream):
             interface_carrier(self.sys_net_root, interface),
             management,
             carrier_state="waiting_for_carrier",
-            carrier_message=(
-                "Enable USB tethering or connect the USB network dongle"
-            ),
+            carrier_message=("Enable USB tethering or connect the USB network dongle"),
         )

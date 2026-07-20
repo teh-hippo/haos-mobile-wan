@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from helpers import make_config
 from rootfs.app.config import GatewayConfig
 from rootfs.app.const import (
     GENERIC_USB,
@@ -12,8 +13,6 @@ from rootfs.app.const import (
     WIFI_HOTSPOT,
 )
 from rootfs.app.errors import GatewayError
-
-from helpers import make_config
 
 
 class GatewayConfigTests(unittest.TestCase):
@@ -170,7 +169,9 @@ class GatewayConfigTests(unittest.TestCase):
         for password in ("short", "x" * 64):
             with self.subTest(password=password):
                 with self.assertRaisesRegex(GatewayError, "password"):
-                    make_config(hotspot_ssid="Phone", hotspot_password=password).validate()
+                    make_config(
+                        hotspot_ssid="Phone", hotspot_password=password
+                    ).validate()
 
     def test_usb_connection_allows_dynamic_upstream_network(self) -> None:
         config = make_config(

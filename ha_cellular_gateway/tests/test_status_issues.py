@@ -144,9 +144,7 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertTrue(result[0]["repairable"])
 
     def test_safety_checks_not_run_sentinel_is_suppressed(self) -> None:
-        result = build_status_issues(
-            ["Safety checks have not run yet"], None, {}
-        )
+        result = build_status_issues(["Safety checks have not run yet"], None, {})
         self.assertEqual(result, [])
 
     def test_last_error_adds_issue_when_not_in_safety_errors(self) -> None:
@@ -164,9 +162,7 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertEqual(len(result), 1)
 
     def test_prefix_match_strict_rp_filter(self) -> None:
-        result = build_status_issues(
-            ["Strict rp_filter is enabled on usb0"], None, {}
-        )
+        result = build_status_issues(["Strict rp_filter is enabled on usb0"], None, {})
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["id"], "strict_rp_filter_enabled")
         self.assertEqual(result[0]["translation_key"], "host_configuration")
@@ -179,9 +175,7 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertEqual(result[0]["id"], "policy_priority_conflict")
 
     def test_upstream_ipv6_active_maps_to_host_configuration_issue(self) -> None:
-        result = build_status_issues(
-            ["IPv6 is active on mobile upstream"], None, {}
-        )
+        result = build_status_issues(["IPv6 is active on mobile upstream"], None, {})
         self.assertEqual(len(result), 1)
         issue = result[0]
         self.assertEqual(issue["id"], "upstream_ipv6_active")
@@ -190,9 +184,7 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertFalse(issue["transient"])
 
     def test_upstream_ipv6_unverified_maps_to_host_configuration_issue(self) -> None:
-        result = build_status_issues(
-            ["Cannot verify upstream IPv6 state"], None, {}
-        )
+        result = build_status_issues(["Cannot verify upstream IPv6 state"], None, {})
         self.assertEqual(len(result), 1)
         issue = result[0]
         self.assertEqual(issue["id"], "upstream_ipv6_unverified")
@@ -381,9 +373,7 @@ class StatusIssuesTests(unittest.TestCase):
         self.assertFalse(issue["transient"])
 
     def test_hotspot_adapter_disabled_is_repairable(self) -> None:
-        result = build_status_issues(
-            ["Hotspot Wi-Fi adapter is disabled"], None, {}
-        )
+        result = build_status_issues(["Hotspot Wi-Fi adapter is disabled"], None, {})
         self.assertEqual(len(result), 1)
         issue = result[0]
         self.assertEqual(issue["id"], "hotspot_adapter_disabled")

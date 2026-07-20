@@ -4,7 +4,6 @@ import subprocess
 from collections.abc import Sequence
 from typing import Protocol
 
-
 DEVICE = "nmwan0"
 SYNTHETIC_DEVICE_IDENTITY = "nm-lab-veth:nmwan0"
 WIFI_HARDWARE_QUERY = ("nmcli", "-g", "WIFI-HW", "radio")

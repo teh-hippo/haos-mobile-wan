@@ -5,7 +5,6 @@ from pathlib import Path
 
 import yaml
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 APP_DIR = REPO_ROOT / "ha_cellular_gateway"
 README = REPO_ROOT / "README.md"
@@ -78,7 +77,9 @@ class DistributionMetadataTests(unittest.TestCase):
         self.assertIn("to your router during a fixed-line outage", text)
         self.assertIn("- a phone Wi-Fi hotspot;", text)
         self.assertIn("- iPhone USB tethering;", text)
-        self.assertIn("- generic Android RNDIS, CDC and Ethernet-style USB tethering;", text)
+        self.assertIn(
+            "- generic Android RNDIS, CDC and Ethernet-style USB tethering;", text
+        )
         self.assertIn("- automatic USB-preferred Wi-Fi fallback;", text)
         self.assertNotIn("It does not know about or control", text)
         self.assertNotIn("The router only needs a WAN Ethernet port", text)
@@ -122,13 +123,18 @@ class DistributionMetadataTests(unittest.TestCase):
             text,
         )
         for snippet in (
-            "python -m unittest discover -s ha_cellular_gateway/tests -v",
-            'python -c "import app.main"',
+            "uv sync --frozen",
+            "uv run coverage run -m unittest discover",
+            "uv run ruff check .",
+            "uv run mypy ha_cellular_gateway/rootfs/app tools",
+            'uv run python -c "import app.main"',
         ):
             self.assertIn(snippet, text)
         for snippet in (
-            "python -m unittest discover -s ha_cellular_gateway/tests -v",
-            'python -c "import app.main"',
+            "uv run coverage run -m unittest discover",
+            "uv run ruff format --check .",
+            "uv run mypy ha_cellular_gateway/rootfs/app tools",
+            'uv run python -c "import app.main"',
             "apparmor_parser -QK ha_cellular_gateway/apparmor.txt",
             "docker buildx build",
         ):
@@ -137,7 +143,6 @@ class DistributionMetadataTests(unittest.TestCase):
             "custom_components",
             "--cov-report=json",
             "strings == runtime_translations",
-            "python -m mypy",
         ):
             self.assertNotIn(absent, workflow)
 

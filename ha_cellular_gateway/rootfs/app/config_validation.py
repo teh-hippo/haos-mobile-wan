@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 PRIVATE_NETWORKS = tuple(
-    ipaddress.ip_network(network)
+    ipaddress.IPv4Network(network)
     for network in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
 )
 
@@ -23,9 +23,7 @@ def validate_config(config: GatewayConfig) -> None:
     if not 0 <= config.auto_disable_minutes <= 1440:
         raise GatewayError("Auto-disable must be between 0 and 1440 minutes")
     if config.mobile_connection not in MOBILE_CONNECTIONS:
-        raise GatewayError(
-            f"Unsupported mobile connection: {config.mobile_connection}"
-        )
+        raise GatewayError(f"Unsupported mobile connection: {config.mobile_connection}")
     if config.uses_wifi and not config.upstream_interface:
         raise GatewayError("Network interface names must not be empty")
     validate_hotspot_credentials(config.hotspot_ssid, config.hotspot_password)
@@ -37,7 +35,9 @@ def validate_hotspot_credentials(ssid: str, password: str) -> None:
     if not ssid and not password:
         return
     if not ssid or not password:
-        raise GatewayError("Hotspot SSID and password must both be set or both be empty")
+        raise GatewayError(
+            "Hotspot SSID and password must both be set or both be empty"
+        )
     try:
         ssid_length = len(ssid.encode("utf-8"))
     except UnicodeError as err:
@@ -55,9 +55,8 @@ def _validate_addresses(config: GatewayConfig) -> None:
         raise GatewayError(f"Invalid network configuration: {err}") from err
     upstream = _hotspot_interface(config)
     gateway = _hotspot_gateway(config)
-    for interface in (downstream, *(tuple([upstream]) if upstream else ())):
-        if interface.version != 4:
-            raise GatewayError("Only IPv4 gateway mode is supported")
+    if not isinstance(downstream, ipaddress.IPv4Interface):
+        raise GatewayError("Only IPv4 gateway mode is supported")
     _validate_host_address("Downstream", downstream)
     if downstream.network.prefixlen > 30:
         raise GatewayError("Downstream network must have room for a router lease")
@@ -70,13 +69,15 @@ def _validate_addresses(config: GatewayConfig) -> None:
 
 def _hotspot_interface(
     config: GatewayConfig,
-) -> ipaddress.IPv4Interface | ipaddress.IPv6Interface | None:
+) -> ipaddress.IPv4Interface | None:
     if not config.uses_wifi:
         return None
     try:
         upstream = ipaddress.ip_interface(config.upstream_address)
     except ValueError as err:
         raise GatewayError(f"Invalid network configuration: {err}") from err
+    if not isinstance(upstream, ipaddress.IPv4Interface):
+        raise GatewayError("Only IPv4 gateway mode is supported")
     return upstream
 
 
@@ -87,14 +88,14 @@ def _hotspot_gateway(config: GatewayConfig) -> ipaddress.IPv4Address | None:
         gateway = ipaddress.ip_address(config.upstream_gateway)
     except ValueError as err:
         raise GatewayError(f"Invalid network configuration: {err}") from err
-    if gateway.version != 4:
+    if not isinstance(gateway, ipaddress.IPv4Address):
         raise GatewayError("Only IPv4 gateway mode is supported")
     return gateway
 
 
 def _validate_host_address(
     label: str,
-    interface: ipaddress.IPv4Interface | ipaddress.IPv6Interface,
+    interface: ipaddress.IPv4Interface,
 ) -> None:
     if interface.ip in {
         interface.network.network_address,
@@ -104,8 +105,8 @@ def _validate_host_address(
 
 
 def _validate_upstream(
-    upstream: ipaddress.IPv4Interface | ipaddress.IPv6Interface,
-    gateway: ipaddress.IPv4Address | ipaddress.IPv6Address | None,
+    upstream: ipaddress.IPv4Interface,
+    gateway: ipaddress.IPv4Address | None,
 ) -> None:
     if upstream.ip in {
         upstream.network.network_address,
@@ -124,8 +125,8 @@ def _validate_upstream(
 
 
 def _validate_non_overlapping(
-    downstream: ipaddress.IPv4Interface | ipaddress.IPv6Interface,
-    upstream: ipaddress.IPv4Interface | ipaddress.IPv6Interface | None,
+    downstream: ipaddress.IPv4Interface,
+    upstream: ipaddress.IPv4Interface | None,
 ) -> None:
     networks = _networks(downstream, upstream)
     if any(
@@ -133,15 +134,13 @@ def _validate_non_overlapping(
         for index, left in enumerate(networks)
         for right in networks[index + 1 :]
     ):
-        raise GatewayError(
-            "Upstream and downstream networks must not overlap"
-        )
+        raise GatewayError("Upstream and downstream networks must not overlap")
 
 
 def _networks(
-    downstream: ipaddress.IPv4Interface | ipaddress.IPv6Interface,
-    upstream: ipaddress.IPv4Interface | ipaddress.IPv6Interface | None,
-) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    downstream: ipaddress.IPv4Interface,
+    upstream: ipaddress.IPv4Interface | None,
+) -> tuple[ipaddress.IPv4Network, ...]:
     return (*((upstream.network,) if upstream else ()), downstream.network)
 
 

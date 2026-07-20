@@ -49,7 +49,14 @@ class StatusModelTests(unittest.TestCase):
         self.assertEqual(
             derive_gateway_state(
                 True,
-                [issue("fallback", "Fallback unavailable", transient=False, blocking=False)],
+                [
+                    issue(
+                        "fallback",
+                        "Fallback unavailable",
+                        transient=False,
+                        blocking=False,
+                    )
+                ],
             ),
             "connected",
         )

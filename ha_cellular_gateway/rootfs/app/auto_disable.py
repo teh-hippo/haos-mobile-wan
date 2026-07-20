@@ -106,8 +106,6 @@ class AutoDisable:
         try:
             engine._persist_state()
         except (OSError, ValueError) as err:
-            self.persistence_error = (
-                f"Auto-disable state persistence failed: {err}"
-            )
+            self.persistence_error = f"Auto-disable state persistence failed: {err}"
         else:
             self.persistence_error = None

@@ -4,7 +4,6 @@ set -eu
 readonly HARNESS_DIR=/run/networkmanager-integration
 readonly DBUS_SOCKET=/run/dbus/system_bus_socket
 readonly NM_DEVICE=nmwan0
-readonly PHONE_DEVICE=phone0
 readonly PROFILE_UUIDS="69fc469b-e2b9-52ba-8f8d-20e5a353735b 4a229445-9e75-45a6-9a0a-8d9ea2a75a01 4a229445-9e75-45a6-9a0a-8d9ea2a75a02 4a229445-9e75-45a6-9a0a-8d9ea2a75a03 4a229445-9e75-45a6-9a0a-8d9ea2a75a04 4a229445-9e75-45a6-9a0a-8d9ea2a75a05"
 
 DBUS_PID=

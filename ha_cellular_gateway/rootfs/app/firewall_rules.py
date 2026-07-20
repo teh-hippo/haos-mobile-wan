@@ -20,12 +20,24 @@ class FirewallRules:
     def input_rules(self) -> tuple[list[str], ...]:
         return (
             self._tagged(
-                "local-established", "-m", "conntrack", "--ctstate",
-                "ESTABLISHED,RELATED", "-j", "ACCEPT",
+                "local-established",
+                "-m",
+                "conntrack",
+                "--ctstate",
+                "ESTABLISHED,RELATED",
+                "-j",
+                "ACCEPT",
             ),
             self._tagged(
-                "dhcp-in", "-p", "udp", "--sport", "68", "--dport", "67",
-                "-j", "ACCEPT",
+                "dhcp-in",
+                "-p",
+                "udp",
+                "--sport",
+                "68",
+                "--dport",
+                "67",
+                "-j",
+                "ACCEPT",
             ),
             self._tagged("icmp-in", "-p", "icmp", "-j", "ACCEPT"),
             self._tagged("local-drop", "-j", "DROP"),
@@ -67,10 +79,24 @@ class FirewallRules:
             self._forward_rule(downstream, upstream, outbound=True),
             self._forward_rule(downstream, upstream, outbound=False),
             self._tagged(
-                "drop-out", "-i", downstream, "!", "-o", upstream, "-j", "DROP",
+                "drop-out",
+                "-i",
+                downstream,
+                "!",
+                "-o",
+                upstream,
+                "-j",
+                "DROP",
             ),
             self._tagged(
-                "drop-in", "!", "-i", upstream, "-o", downstream, "-j", "DROP",
+                "drop-in",
+                "!",
+                "-i",
+                upstream,
+                "-o",
+                downstream,
+                "-j",
+                "DROP",
             ),
             ["-j", "RETURN"],
         )
@@ -78,8 +104,13 @@ class FirewallRules:
     def nat_rule(self, upstream: str | None = None) -> list[str]:
         upstream = upstream or self.config.upstream_interface
         return self._tagged(
-            "snat", "-s", self.config.transit_subnet, "-o", upstream,
-            "-j", "MASQUERADE",
+            "snat",
+            "-s",
+            self.config.transit_subnet,
+            "-o",
+            upstream,
+            "-j",
+            "MASQUERADE",
         )
 
     def _mss_rule(

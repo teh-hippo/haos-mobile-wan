@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 COMPOSE_FILE="$SCRIPT_DIR/compose.yaml"
 LOG_DIR="$SCRIPT_DIR/logs"
 LOG_FILE="$LOG_DIR/compose.log"
@@ -28,6 +28,7 @@ mkdir -p "$LOG_DIR"
 STATUS_FILE="$LOG_DIR/.compose-status"
 rm -f "$STATUS_FILE"
 
+# shellcheck disable=SC2329
 cleanup() {
     status=$?
     trap - EXIT INT TERM

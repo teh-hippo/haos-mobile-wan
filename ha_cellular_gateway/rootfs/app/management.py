@@ -76,9 +76,7 @@ def detect_management(run: RunCommand) -> ManagementBaseline:
         if isinstance(source, str)
     }
     matching = [
-        address
-        for address in addresses
-        if address.partition("/")[0] in preferred
+        address for address in addresses if address.partition("/")[0] in preferred
     ]
     if len(matching) == 1:
         return ManagementBaseline(interface, matching[0])
@@ -92,5 +90,5 @@ def detect_management(run: RunCommand) -> ManagementBaseline:
 def resolve_management(run: RunCommand) -> ManagementBaseline | None:
     try:
         return detect_management(run)
-    except (GatewayError, OSError, subprocess.SubprocessError, ValueError):
+    except GatewayError, OSError, subprocess.SubprocessError, ValueError:
         return None

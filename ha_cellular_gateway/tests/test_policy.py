@@ -2,7 +2,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 from helpers import FakeRunner, build_engine, make_config, sysctl_values
 
 
@@ -26,8 +25,7 @@ class PolicyRoutingTests(unittest.TestCase):
         commands = [" ".join(command) for command in self.runner.commands]
 
         self.assertIn(
-            "ip route replace 192.168.80.0/24 dev enx001122334455 "
-            "src 192.168.80.1 table 201",
+            "ip route replace 192.168.80.0/24 dev enx001122334455 src 192.168.80.1 table 201",
             commands,
         )
         self.assertIn(
@@ -51,7 +49,10 @@ class PolicyRoutingTests(unittest.TestCase):
         self.assertTrue(delete_commands)
         self.assertTrue(all(len(command) > 5 for command in delete_commands))
         self.assertFalse(
-            any(command == ["ip", "rule", "del", "pref", "20100"] for command in delete_commands)
+            any(
+                command == ["ip", "rule", "del", "pref", "20100"]
+                for command in delete_commands
+            )
         )
 
     def test_foreign_priority_is_reported_without_mutation(self) -> None:
@@ -65,7 +66,9 @@ class PolicyRoutingTests(unittest.TestCase):
         errors = self.engine.policy.conflicts("enx001122334455")
         self.assertEqual(errors, ["Policy priority 20100 is already in use"])
         self.assertFalse(
-            any(command[:3] == ["ip", "rule", "del"] for command in self.runner.commands)
+            any(
+                command[:3] == ["ip", "rule", "del"] for command in self.runner.commands
+            )
         )
 
     def test_foreign_rule_using_owned_table_is_reported(self) -> None:

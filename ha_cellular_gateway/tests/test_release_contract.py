@@ -89,12 +89,8 @@ class ReleaseContractTests(unittest.TestCase):
 
     def test_release_file_classification_is_explicit(self) -> None:
         self.assertTrue(is_release_file("ha_cellular_gateway/apparmor.txt"))
-        self.assertTrue(
-            is_release_file("ha_cellular_gateway/translations/en.yaml")
-        )
-        self.assertFalse(
-            is_release_file("ha_cellular_gateway/integration/test_lab.py")
-        )
+        self.assertTrue(is_release_file("ha_cellular_gateway/translations/en.yaml"))
+        self.assertFalse(is_release_file("ha_cellular_gateway/integration/test_lab.py"))
 
     def test_config_version_requires_semver_string(self) -> None:
         self.assertEqual(config_version('version: "0.11.3"\n'), "0.11.3")

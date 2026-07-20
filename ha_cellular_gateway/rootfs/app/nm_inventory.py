@@ -60,12 +60,8 @@ class NmInventory:
                     interface_name=normalise_setting(
                         settings.get("connection.interface-name", "")
                     ),
-                    match_driver=normalise_setting(
-                        settings.get("match.driver", "")
-                    ),
-                    ssid=normalise_setting(
-                        settings.get("802-11-wireless.ssid", "")
-                    ),
+                    match_driver=normalise_setting(settings.get("match.driver", "")),
+                    ssid=normalise_setting(settings.get("802-11-wireless.ssid", "")),
                     ipv4_addresses=normalise_setting(
                         settings.get("ipv4.addresses", "")
                     ),

@@ -21,10 +21,9 @@ OPERATION_ERRORS = (GatewayError, OSError, subprocess.SubprocessError, ValueErro
 
 
 def _protect_host(engine: GatewayEngine, downstream: str | None) -> None:
-    if (
-        engine._protectable_downstream(downstream)
-        and not engine.firewall.host_protection_installed(downstream)
-    ):
+    if engine._protectable_downstream(
+        downstream
+    ) and not engine.firewall.host_protection_installed(downstream):
         assert downstream is not None
         engine.firewall.protect_host(downstream)
 
@@ -131,8 +130,7 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                 recovery_started = time.monotonic()
                 if recovery_pending:
                     _LOGGER.warning(
-                        "Interrupted gateway state detected; recovering before "
-                        "reconciliation"
+                        "Interrupted gateway state detected; recovering before reconciliation"
                     )
                 try:
                     cleanup(
@@ -141,9 +139,7 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
                             not engine.config_error and management is not None
                         ),
                         force=bool(owned_state),
-                        owned_only=bool(
-                            engine.config_error or management is None
-                        ),
+                        owned_only=bool(engine.config_error or management is None),
                     )
                 except OPERATION_ERRORS:
                     if recovery_pending:
@@ -185,9 +181,7 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
             if management is None:
                 reconcile_without_management(engine)
                 return
-            downstream = engine.safety.find_downstream(
-                management.interface
-            )
+            downstream = engine.safety.find_downstream(management.interface)
 
             engine.upstream_lifecycle.activate(management)
             engine._persist_state()

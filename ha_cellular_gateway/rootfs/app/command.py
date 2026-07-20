@@ -4,7 +4,6 @@ import json
 import subprocess
 from collections.abc import Callable
 
-
 RunCommand = Callable[..., subprocess.CompletedProcess[str]]
 
 

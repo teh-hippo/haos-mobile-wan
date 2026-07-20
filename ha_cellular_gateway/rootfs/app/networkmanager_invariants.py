@@ -18,21 +18,25 @@ def main_default_present(run: RunCommand, interface: str) -> bool:
         "main",
         "default",
     )
+    if not isinstance(routes, list):
+        return False
     return any(
         isinstance(route, dict)
         and route.get("dev") == interface
         and route.get("dst") == "default"
-        for route in routes if isinstance(routes, list)
+        for route in routes
     )
 
 
 def rule_selects_table(run: RunCommand, table: int) -> bool:
     rules = run_json(run, "ip", "-j", "rule", "show")
+    if not isinstance(rules, list):
+        return False
     wanted = str(table)
     return any(
         isinstance(rule, dict)
         and str(rule.get("table", rule.get("lookup", ""))) == wanted
-        for rule in rules if isinstance(rules, list)
+        for rule in rules
     )
 
 
@@ -50,6 +54,8 @@ def networkmanager_routes(
         "table",
         str(table),
     )
+    if not isinstance(routes, list):
+        return []
     return [route for route in routes if isinstance(route, dict)]
 
 
@@ -67,9 +73,7 @@ def table_gateway(
     if not defaults:
         return None, "waiting"
     gateways = {
-        str(route.get("gateway", ""))
-        for route in defaults
-        if route.get("gateway")
+        str(route.get("gateway", "")) for route in defaults if route.get("gateway")
     }
     if len(defaults) != 1 or len(gateways) != 1:
         return None, "invalid"

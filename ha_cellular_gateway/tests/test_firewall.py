@@ -2,10 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 from helpers import (
-    build_engine,
     FakeRunner,
+    build_engine,
     install_realistic_firewall_state,
     make_config,
     prepend_chain_rule,
@@ -61,41 +60,31 @@ class FirewallTests(unittest.TestCase):
         commands = [" ".join(command) for command in self.runner.commands]
 
         self.assertIn(
-            "iptables -I INPUT 1 -i enx001122334455 -j HA_CELLGW_LOCAL "
-            "-m comment --comment ha-cellgw:local-jump",
+            "iptables -I INPUT 1 -i enx001122334455 -j HA_CELLGW_LOCAL -m comment --comment ha-cellgw:local-jump",
             commands,
         )
         self.assertTrue(
             any(
-                "HA_CELLGW_LOCAL -p udp --sport 68 --dport 67 -j ACCEPT"
-                in command
+                "HA_CELLGW_LOCAL -p udp --sport 68 --dport 67 -j ACCEPT" in command
                 for command in commands
             )
         )
         self.assertTrue(
-            any(
-                "HA_CELLGW_LOCAL -p icmp -j ACCEPT" in command
-                for command in commands
-            )
+            any("HA_CELLGW_LOCAL -p icmp -j ACCEPT" in command for command in commands)
+        )
+        self.assertTrue(
+            any("HA_CELLGW_LOCAL -j DROP" in command for command in commands)
         )
         self.assertTrue(
             any(
-                "HA_CELLGW_LOCAL -j DROP" in command
-                for command in commands
-            )
-        )
-        self.assertTrue(
-            any(
-                "-i enx001122334455 -o wlan0 -s 192.168.80.0/24"
-                in command
+                "-i enx001122334455 -o wlan0 -s 192.168.80.0/24" in command
                 and "TCPMSS" in command
                 for command in commands
             )
         )
         self.assertFalse(
             any(
-                "INPUT 1 -i end0" in command
-                or "INPUT 1 -i wlan0" in command
+                "INPUT 1 -i end0" in command or "INPUT 1 -i wlan0" in command
                 for command in commands
             )
         )
@@ -104,8 +93,7 @@ class FirewallTests(unittest.TestCase):
         self.engine.firewall.apply("enx001122334455")
         commands = [" ".join(command) for command in self.runner.commands]
         self.assertIn(
-            "ip6tables -I INPUT 1 -i enx001122334455 -j HA_CELLGW6_LOCAL "
-            "-m comment --comment ha-cellgw:v6-local-jump",
+            "ip6tables -I INPUT 1 -i enx001122334455 -j HA_CELLGW6_LOCAL -m comment --comment ha-cellgw:v6-local-jump",
             commands,
         )
         self.assertIn(
@@ -116,8 +104,28 @@ class FirewallTests(unittest.TestCase):
     def test_installed_requires_owned_local_rules(self) -> None:
         firewall = self.engine.firewall
         existing = {
-            ("iptables", "DOCKER-USER", tuple(), tuple(firewall.netfilter.jump_rule(firewall.FORWARD_CHAIN, "ha-cellgw:jump"))),
-            ("iptables", "INPUT", tuple(), tuple(firewall.netfilter.jump_rule(firewall.INPUT_CHAIN, "ha-cellgw:local-jump", ["-i", "enx001122334455"]))),
+            (
+                "iptables",
+                "DOCKER-USER",
+                tuple(),
+                tuple(
+                    firewall.netfilter.jump_rule(
+                        firewall.FORWARD_CHAIN, "ha-cellgw:jump"
+                    )
+                ),
+            ),
+            (
+                "iptables",
+                "INPUT",
+                tuple(),
+                tuple(
+                    firewall.netfilter.jump_rule(
+                        firewall.INPUT_CHAIN,
+                        "ha-cellgw:local-jump",
+                        ["-i", "enx001122334455"],
+                    )
+                ),
+            ),
             ("iptables", "POSTROUTING", ("-t", "nat"), tuple(firewall._nat_rule())),
             *{
                 ("iptables", "FORWARD", ("-t", "mangle"), tuple(rule))
@@ -125,8 +133,8 @@ class FirewallTests(unittest.TestCase):
             },
         }
         firewall.netfilter.chain_exists = lambda family, chain: family == "iptables"
-        firewall.netfilter.rule_exists = (
-            lambda family, chain, rule, table_args=None: (
+        firewall.netfilter.rule_exists = lambda family, chain, rule, table_args=None: (
+            (
                 family,
                 chain,
                 tuple(table_args or ()),
@@ -159,19 +167,22 @@ class FirewallTests(unittest.TestCase):
         firewall = self.engine.firewall
         firewall.netfilter.chain_exists = lambda family, chain: family == "iptables"
         firewall.netfilter.rule_exists = lambda family, chain, rule, table_args=None: (
-            family,
-            chain,
-            tuple(rule),
-        ) == (
-            "iptables",
-            "INPUT",
-            tuple(
-                firewall.netfilter.jump_rule(
-                    firewall.INPUT_CHAIN,
-                    "ha-cellgw:local-jump",
-                    ["-i", "enx001122334455"],
-                )
-            ),
+            (
+                family,
+                chain,
+                tuple(rule),
+            )
+            == (
+                "iptables",
+                "INPUT",
+                tuple(
+                    firewall.netfilter.jump_rule(
+                        firewall.INPUT_CHAIN,
+                        "ha-cellgw:local-jump",
+                        ["-i", "enx001122334455"],
+                    )
+                ),
+            )
         )
         firewall.netfilter.chain_rules = lambda family, chain, table_args=None: [
             *firewall._input_rules()[:-1],
@@ -245,7 +256,8 @@ class FirewallTests(unittest.TestCase):
         commands = self.runner.commands[before:]
         self.assertFalse(
             any(
-                command[:3] in (
+                command[:3]
+                in (
                     ["iptables", "-F", firewall.INPUT_CHAIN],
                     ["iptables", "-X", firewall.INPUT_CHAIN],
                     ["ip6tables", "-F", firewall.INPUT6_CHAIN],
@@ -355,7 +367,9 @@ class FirewallTests(unittest.TestCase):
         )
 
         for family, parent, child, comment, initial_rules, match in cases:
-            with self.subTest(family=family, parent=parent, initial_rules=initial_rules):
+            with self.subTest(
+                family=family, parent=parent, initial_rules=initial_rules
+            ):
                 self.runner.chain_listings.pop((family, parent), None)
                 self._assert_parent_jump_repair(
                     family,
@@ -388,7 +402,8 @@ class FirewallTests(unittest.TestCase):
         commands = self.runner.commands[before:]
         self.assertFalse(
             any(
-                command[:3] in (
+                command[:3]
+                in (
                     ["iptables", "-F", firewall.INPUT_CHAIN],
                     ["iptables", "-X", firewall.INPUT_CHAIN],
                     ["iptables", "-F", firewall.FORWARD_CHAIN],

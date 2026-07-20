@@ -2,13 +2,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from helpers import FakeRunner, build_engine, make_config, sysctl_values
 from rootfs.app import lifecycle
 from rootfs.app.const import IPHONE_USB, WIFI_HOTSPOT
-from rootfs.app.gateway import GatewayEngine
 from rootfs.app.errors import GatewayError
+from rootfs.app.gateway import GatewayEngine
 from rootfs.app.upstream_models import ResolvedUpstream
-
-from helpers import FakeRunner, build_engine, make_config, sysctl_values
 
 USB_UPSTREAM = ResolvedUpstream(
     connection=IPHONE_USB,
@@ -146,9 +145,9 @@ class LifecycleTransitionLoggingTests(unittest.TestCase):
             hotspot_ssid="Phone",
             hotspot_password="supersecret",
         )
-        engine.wifi.profile.active_uuid = lambda interface: (
-            _ for _ in ()
-        ).throw(GatewayError("NetworkManager unavailable"))
+        engine.wifi.profile.active_uuid = lambda interface: (_ for _ in ()).throw(
+            GatewayError("NetworkManager unavailable")
+        )
 
         self.assertIsNone(lifecycle.wifi_interface_status(engine))
 

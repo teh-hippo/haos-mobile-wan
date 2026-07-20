@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.0
+
+- Promote Mobile WAN to stable after live HAOS acceptance of iPhone USB,
+  dedicated Wi-Fi, USB-preferred failover, restart, auto-stop and exact
+  profile and network cleanup.
+- Retain the signed pre-built image, strict validation, integration labs,
+  CycloneDX SBOM and exact-commit protected release workflow established
+  during the pre-1.0 cycle.
+- Keep generic RNDIS/CDC USB support available as-is because compatible
+  physical hardware was unavailable for this acceptance cycle.
+- Keep interrupted-startup recovery covered by automated tests; Home
+  Assistant Supervisor exposes no supported way to force-kill one protected
+  app for a physical acceptance test.
+
 ## 0.12.1
 
 - Publish versioned GHCR images only when the app version changes, preventing

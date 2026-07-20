@@ -245,13 +245,13 @@ addressing, interface names and iPhone identifiers.
 | The entities do not appear | Confirm the MQTT integration and broker are running, then restart the add-on |
 | An interrupted shutdown is suspected | Restart the add-on to run startup cleanup; to leave it stopped, wait for the first reconciliation and then stop it cleanly |
 
-## Pre-1.0 live acceptance
+## Live acceptance
 
-Pre-1.0 deployments are candidates until USB, Wi-Fi, failover, stability,
-upgrade and cleanup pass end to end. MQTT entities or a router DHCP lease alone
-do not prove success. Use the full
-[live acceptance checklist](ha_cellular_gateway/DOCS.md#pre-10-live-acceptance)
-and leave failed candidates stopped.
+Release candidates remain candidates until applicable USB, Wi-Fi, failover,
+stability, upgrade and cleanup gates pass end to end. MQTT entities or a router
+DHCP lease alone do not prove success. Use the full
+[live acceptance checklist](ha_cellular_gateway/DOCS.md#live-acceptance) and
+leave failed candidates stopped.
 
 ## Safety and security
 

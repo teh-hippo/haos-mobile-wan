@@ -253,6 +253,14 @@ The validation workflow runs the add-on unit tests, Python compilation, an
 [`.github/workflows/validate.yml`](.github/workflows/validate.yml) for the
 authoritative commands.
 
+Changes to the shipped app payload must increase
+`ha_cellular_gateway/config.yaml` and add the matching changelog heading. The
+payload includes the runtime filesystem, Dockerfile, AppArmor profile,
+configuration and translations. Tests, integration fixtures, workflows and
+documentation can change without an app release when the payload is unchanged.
+Renovate does not auto-merge runtime base-image updates because those changes
+need the same version and changelog treatment.
+
 The on-demand [NetworkManager integration
 lab](ha_cellular_gateway/integration/networkmanager/README.md) runs only by
 manual workflow dispatch or its local rootful Docker command. It is separate

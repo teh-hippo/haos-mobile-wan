@@ -1,0 +1,128 @@
+from __future__ import annotations
+
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+import yaml
+
+
+CONFIG_PATH = "ha_cellular_gateway/config.yaml"
+CHANGELOG_PATH = Path("ha_cellular_gateway/CHANGELOG.md")
+RELEASE_FILES = {
+    CONFIG_PATH,
+    "ha_cellular_gateway/Dockerfile",
+    "ha_cellular_gateway/apparmor.txt",
+}
+RELEASE_PREFIXES = (
+    "ha_cellular_gateway/rootfs/",
+    "ha_cellular_gateway/translations/",
+)
+VERSION_PATTERN = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+
+
+class ContractError(ValueError):
+    pass
+
+
+def parse_version(value: str) -> tuple[int, int, int]:
+    match = VERSION_PATTERN.fullmatch(value)
+    if match is None:
+        raise ContractError(f"Invalid semantic version: {value}")
+    return (
+        int(match.group(1)),
+        int(match.group(2)),
+        int(match.group(3)),
+    )
+
+
+def config_version(text: str) -> str:
+    data = yaml.safe_load(text)
+    if not isinstance(data, dict) or not isinstance(data.get("version"), str):
+        raise ContractError(f"{CONFIG_PATH} must contain a string version")
+    return data["version"]
+
+
+def is_release_file(path: str) -> bool:
+    return path in RELEASE_FILES or path.startswith(RELEASE_PREFIXES)
+
+
+def validate_contract(
+    *,
+    base_version: str,
+    current_version: str,
+    changed_files: list[str],
+    changelog: str,
+    tags: set[str],
+) -> list[str]:
+    base = parse_version(base_version)
+    current = parse_version(current_version)
+    version_changed = current != base
+    version_increased = current > base
+    release_changed = any(is_release_file(path) for path in changed_files)
+    errors: list[str] = []
+
+    if current < base:
+        errors.append(
+            f"App version decreased from {base_version} to {current_version}"
+        )
+    if release_changed and not version_changed:
+        errors.append(
+            "Release payload changed without increasing "
+            f"{CONFIG_PATH} from {base_version}"
+        )
+    if version_increased and f"v{current_version}" in tags:
+        errors.append(f"Version v{current_version} already has a Git tag")
+    if version_increased and not re.search(
+        rf"^## {re.escape(current_version)}$",
+        changelog,
+        re.MULTILINE,
+    ):
+        errors.append(
+            f"{CHANGELOG_PATH} needs a ## {current_version} heading"
+        )
+    return errors
+
+
+def _git(*args: str) -> str:
+    return subprocess.run(
+        ["git", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+
+def _base_file(base: str, path: str) -> str:
+    return _git("show", f"{base}:{path}")
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        raise ContractError("Usage: release_contract.py BASE_COMMIT")
+    base = sys.argv[1]
+    changed_files = _git(
+        "diff",
+        "--name-only",
+        f"{base}...HEAD",
+    ).splitlines()
+    errors = validate_contract(
+        base_version=config_version(_base_file(base, CONFIG_PATH)),
+        current_version=config_version(
+            Path(CONFIG_PATH).read_text(encoding="utf-8")
+        ),
+        changed_files=changed_files,
+        changelog=CHANGELOG_PATH.read_text(encoding="utf-8"),
+        tags=set(_git("tag", "--list", "v*").splitlines()),
+    )
+    if errors:
+        for error in errors:
+            print(error, file=sys.stderr)
+        return 1
+    print("Release contract passed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

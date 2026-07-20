@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.1
+
+- Publish versioned GHCR images only when the app version changes, preventing
+  workflow, test or tool updates from replacing an existing image tag.
+- Remove non-runtime development files from Builder workflow triggers.
+
 ## 0.12.0
 
 - Publish signed, pre-built aarch64 images to GHCR using the official Home

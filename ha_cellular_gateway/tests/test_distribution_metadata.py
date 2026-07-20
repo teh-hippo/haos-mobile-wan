@@ -44,6 +44,15 @@ class DistributionMetadataTests(unittest.TestCase):
         ):
             self.assertIn(snippet, workflow)
 
+    def test_builder_publishes_only_when_app_version_changes(self) -> None:
+        workflow = BUILDER_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("Determine whether to publish", workflow)
+        self.assertIn("previous_version=", workflow)
+        self.assertIn("push: ${{ needs.init.outputs.publish }}", workflow)
+        self.assertIn("if: needs.init.outputs.publish == 'true'", workflow)
+        self.assertNotIn("- pyproject.toml", workflow)
+        self.assertNotIn("- uv.lock", workflow)
+
     def test_renovate_keeps_the_supported_python_floor(self) -> None:
         config = json.loads(RENOVATE.read_text(encoding="utf-8"))
         matching = [

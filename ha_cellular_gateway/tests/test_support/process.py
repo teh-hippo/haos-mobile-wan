@@ -29,19 +29,26 @@ class FakeProcess:
         returncode: int = 0,
         stdout: str = "",
         stderr: str = "",
+        ignore_terminate: bool = False,
     ) -> None:
         self.running = running
         self.returncode = returncode
         self.stdout = stdout
         self.stderr = stderr
+        self.ignore_terminate = ignore_terminate
+        self.terminate_calls = 0
+        self.kill_calls = 0
 
     def poll(self) -> int | None:
         return None if self.running else self.returncode
 
     def terminate(self) -> None:
-        self.running = False
+        self.terminate_calls += 1
+        if not self.ignore_terminate:
+            self.running = False
 
     def kill(self) -> None:
+        self.kill_calls += 1
         self.running = False
 
     def wait(self, timeout: int = 5) -> int:

@@ -136,6 +136,66 @@ class NmMetadataTests(unittest.TestCase):
                 self.assertTrue(buses)
                 self.assertTrue(all(bus.closed for bus in buses))
 
+    def test_read_returns_the_existing_marker_value(self) -> None:
+        store = DbusWifiProfileMetadata(UUID)
+        with mock.patch.object(
+            nm_metadata, "_dbus", lambda: make_dbus(lambda address: FakeBus())
+        ):
+            self.assertEqual(store.read("marker"), "value")
+
+    def test_write_reaches_update_and_preserves_unrelated_settings(self) -> None:
+        buses: list[FakeBus] = []
+
+        def factory(address: str) -> FakeBus:
+            bus = FakeBus()
+            bus.payload = {
+                "user": {"data": {}},
+                "802-11-wireless-security": {"psk": "secret"},
+            }
+            buses.append(bus)
+            return bus
+
+        store = DbusWifiProfileMetadata(UUID)
+        with mock.patch.object(nm_metadata, "_dbus", lambda: make_dbus(factory)):
+            store.write("marker", "newvalue")
+
+        bus = buses[0]
+        self.assertIsNotNone(bus.updated)
+        self.assertEqual(bus.updated["user"]["data"]["marker"], "newvalue")
+        self.assertEqual(bus.updated["802-11-wireless-security"], {"psk": "secret"})
+        self.assertTrue(bus.closed)
+
+    def test_write_is_a_no_op_when_the_value_is_unchanged(self) -> None:
+        buses: list[FakeBus] = []
+
+        def factory(address: str) -> FakeBus:
+            bus = FakeBus()
+            buses.append(bus)
+            return bus
+
+        store = DbusWifiProfileMetadata(UUID)
+        with mock.patch.object(nm_metadata, "_dbus", lambda: make_dbus(factory)):
+            store.write("marker", "value")
+
+        self.assertIsNone(buses[0].updated)
+        self.assertTrue(buses[0].closed)
+
+    def test_clear_reaches_update_and_removes_the_marker(self) -> None:
+        buses: list[FakeBus] = []
+
+        def factory(address: str) -> FakeBus:
+            bus = FakeBus()
+            buses.append(bus)
+            return bus
+
+        store = DbusWifiProfileMetadata(UUID)
+        with mock.patch.object(nm_metadata, "_dbus", lambda: make_dbus(factory)):
+            store.clear("marker")
+
+        bus = buses[0]
+        self.assertIsNotNone(bus.updated)
+        self.assertEqual(bus.updated["user"]["data"], {})
+
 
 if __name__ == "__main__":
     unittest.main()

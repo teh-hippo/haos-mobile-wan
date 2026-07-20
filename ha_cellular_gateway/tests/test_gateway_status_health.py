@@ -154,6 +154,34 @@ class GatewayStatusHealthTests(GatewayTestCase):
         self.assertIsNone(self.engine.health_state.public_ip)
         self.assertIsNone(self.engine.health_state.last_health_probe)
 
+    def test_refresh_health_if_due_applies_a_successful_probe_result(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply()
+        engine.health_state.last_health_probe = None
+
+        engine._health_probe = lambda upstream: (True, "203.0.113.55")
+        engine._refresh_health_if_due()
+
+        self.assertTrue(engine.health_state.upstream_healthy)
+        self.assertEqual(engine.health_state.public_ip, "203.0.113.55")
+        self.assertIsNotNone(engine.health_state.last_health_probe)
+
+    def test_refresh_health_if_due_skips_probe_within_the_interval(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply()
+        self.assertTrue(engine.lifecycle_state.applied)
+        self.assertIsNotNone(engine.selection_state.upstream)
+        engine.health_state.last_health_probe = time.time()
+
+        def _unexpected(upstream):
+            raise AssertionError(
+                "_health_probe must not run again before the interval elapses"
+            )
+
+        engine._health_probe = _unexpected
+
+        engine._refresh_health_if_due()
+
     def test_manual_reconcile_does_not_run_external_health_probe(self) -> None:
         engine = self._prepare_active_engine()
         engine.lifecycle_state.startup_cleanup_pending = False
@@ -217,6 +245,44 @@ class GatewayStatusHealthTests(GatewayTestCase):
         worker.join(timeout=2)
         self.assertLess(elapsed, 0.5)
         self.assertEqual(status["mobile_connection"], IPHONE_USB)
+
+
+class GatewayLivenessHealthTests(GatewayTestCase):
+    def test_health_is_ok_shortly_after_a_reconcile(self) -> None:
+        self.engine.lifecycle_state.last_reconcile = time.time()
+
+        result = self.engine.health()
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(
+            result["last_reconcile"], self.engine.lifecycle_state.last_reconcile
+        )
+
+    def test_health_is_not_ok_once_reconcile_has_gone_stale(self) -> None:
+        self.engine.lifecycle_state.last_reconcile = time.time() - 10_000
+
+        result = self.engine.health()
+
+        self.assertFalse(result["ok"])
+
+    def test_health_falls_back_to_start_time_when_never_reconciled(self) -> None:
+        self.engine.lifecycle_state.last_reconcile = None
+        self.engine.lifecycle_state.started_at = time.time() - 10_000
+
+        result = self.engine.health()
+
+        self.assertFalse(result["ok"])
+        self.assertIsNone(result["last_reconcile"])
+
+    def test_health_is_ok_immediately_after_startup_with_no_reconcile_yet(
+        self,
+    ) -> None:
+        self.engine.lifecycle_state.last_reconcile = None
+        self.engine.lifecycle_state.started_at = time.time()
+
+        result = self.engine.health()
+
+        self.assertTrue(result["ok"])
 
 
 if __name__ == "__main__":

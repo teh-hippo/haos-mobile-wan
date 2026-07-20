@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import unittest
 
+from rootfs.app.const import IPHONE_USB
+from rootfs.app.errors import GatewayError
 from rootfs.app.nm_migration import LINEAGE_WIFI_DELETE_ERROR
-from rootfs.app.nm_profile_specs import WIFI_PROFILE_UUID
+from rootfs.app.nm_profile_specs import (
+    GENERIC_USB_PROFILE_UUID,
+    USB_PROFILE_UUID,
+    WIFI_PROFILE_UUID,
+)
 from upstream_lifecycle_support import UpstreamLifecycleTestCase, genuine_profile
 
 
@@ -120,6 +126,84 @@ class UpstreamActivationGuardTests(UpstreamLifecycleTestCase):
 
         self.assertIn("unexpected settings", engine.upstream_lifecycle.error or "")
         self.assertIn(WIFI_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
+
+    def test_usb_profile_drift_blocks_activation_without_deletion(self) -> None:
+        engine = self._engine(mobile_connection=IPHONE_USB)
+        engine.upstream.nm.profile.create()
+        engine.runner.networkmanager.nm_profiles[USB_PROFILE_UUID][
+            "ipv4.route-table"
+        ] = "254"
+
+        engine.upstream_lifecycle.activate(self._management())
+
+        self.assertIn("unexpected settings", engine.upstream_lifecycle.error or "")
+        self.assertIn(USB_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
+
+    def test_usb_profile_claim_conflict_blocks_activation(self) -> None:
+        engine = self._engine(mobile_connection=IPHONE_USB)
+        engine.upstream_lifecycle.journal.claim = lambda key, spec: (
+            "profile ownership is already claimed elsewhere"
+        )
+
+        engine.upstream_lifecycle.activate(self._management())
+
+        self.assertIn(
+            "profile ownership is already claimed elsewhere",
+            engine.upstream_lifecycle.error or "",
+        )
+        self.assertNotIn(USB_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
+
+    def test_unclaimed_drifted_profile_blocks_activation_without_rescue(self) -> None:
+        engine = self._engine(mobile_connection=IPHONE_USB)
+        engine.runner.networkmanager.nm_profiles[GENERIC_USB_PROFILE_UUID] = {
+            "connection.uuid": GENERIC_USB_PROFILE_UUID,
+            "connection.id": "haos-mobile-wan-generic-usb",
+            "connection.type": "802-3-ethernet",
+            "match.driver": "cdc_ether",
+        }
+
+        engine.upstream_lifecycle.activate(self._management())
+
+        self.assertIn(
+            "generic USB",
+            engine.upstream_lifecycle.error or "",
+        )
+        self.assertIn(
+            GENERIC_USB_PROFILE_UUID, engine.runner.networkmanager.nm_profiles
+        )
+
+    def test_preflight_inspection_failure_is_reported(self) -> None:
+        engine = self._engine(mobile_connection=IPHONE_USB)
+        engine.upstream_lifecycle.inventory.foreign_ipheth_profiles = lambda **kwargs: (
+            _ for _ in ()
+        ).throw(GatewayError("nmcli connection show failed"))
+
+        engine.upstream_lifecycle.activate(self._management())
+
+        self.assertIn(
+            "NetworkManager profile operation failed",
+            engine.upstream_lifecycle.error or "",
+        )
+        self.assertIn(
+            "nmcli connection show failed",
+            engine.upstream_lifecycle.error or "",
+        )
+        self.assertNotIn(USB_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
+
+    def test_persistent_journal_failure_blocks_activation(self) -> None:
+        engine = self._engine()
+        engine.upstream_lifecycle.journal.set_persist(
+            lambda: (_ for _ in ()).throw(OSError("disk full"))
+        )
+
+        engine.upstream_lifecycle.activate(self._management())
+
+        self.assertIn(
+            "NetworkManager ownership journal failed",
+            engine.upstream_lifecycle.error or "",
+        )
+        self.assertIn("disk full", engine.upstream_lifecycle.error or "")
+        self.assertNotIn(WIFI_PROFILE_UUID, engine.runner.networkmanager.nm_profiles)
 
 
 if __name__ == "__main__":

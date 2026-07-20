@@ -64,6 +64,51 @@ class GatewayRuntimeShutdownTests(GatewayTestCase):
             "\n".join(captured.output),
         )
 
+    def test_stop_raises_lifecycle_error_when_cleanup_succeeds(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply()
+        engine.upstream_lifecycle.deactivate = lambda management: None
+        engine.upstream_lifecycle.error = "profile deletion blocked"
+
+        with self.assertLogs(
+            "rootfs.app.gateway_runtime",
+            level="INFO",
+        ) as captured:
+            with self.assertRaisesRegex(GatewayError, "profile deletion blocked"):
+                engine.stop()
+
+        self.assertIn(
+            "Graceful shutdown cleanup failed",
+            "\n".join(captured.output),
+        )
+
+    def test_stop_combines_cleanup_and_lifecycle_errors_when_both_present(
+        self,
+    ) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply()
+
+        def fail_cleanup(**kwargs) -> None:
+            raise GatewayError("host cleanup failed")
+
+        engine.cleanup = fail_cleanup
+        engine.upstream_lifecycle.deactivate = lambda management: None
+        engine.upstream_lifecycle.error = "profile deletion blocked"
+
+        with self.assertLogs(
+            "rootfs.app.gateway_runtime",
+            level="INFO",
+        ) as captured:
+            with self.assertRaisesRegex(
+                GatewayError, "host cleanup failed; profile deletion blocked"
+            ):
+                engine.stop()
+
+        self.assertIn(
+            "Graceful shutdown cleanup failed",
+            "\n".join(captured.output),
+        )
+
     def test_stop_deletes_app_owned_wifi_profile(self) -> None:
         values = sysctl_values()
         engine = build_engine(

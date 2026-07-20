@@ -296,10 +296,10 @@ the HAOS Mobile WAN device page if the example ID differs.
 The add-on still serves `GET /v2/status` and `/health` on the Supervisor-side
 API for manual diagnostics.
 
-## Pre-1.0 live acceptance
+## Live acceptance
 
-A pre-1.0 deployment remains a candidate until every applicable live gate
-passes. Keep the add-on stopped before, between and after scenarios.
+A deployment remains a candidate until every applicable live gate passes.
+Keep the app stopped before, between and after scenarios.
 
 1. **Upgrade and baseline:** verify automatic legacy-lineage cleanup, that any
    genuine foreign Wi-Fi profile is preserved unchanged, no active app profiles,

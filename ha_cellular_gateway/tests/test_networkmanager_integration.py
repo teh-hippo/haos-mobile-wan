@@ -47,7 +47,7 @@ class NetworkManagerIntegrationTests(unittest.TestCase):
     def test_lab_configuration_and_runner_stay_rootful_and_manual(self) -> None:
         config = (LAB_DIR / "nm.conf").read_text(encoding="utf-8")
         entrypoint = (LAB_DIR / "entrypoint.sh").read_text(encoding="utf-8")
-        livetest = (LAB_DIR / "test_live_nm.py").read_text(encoding="utf-8")
+        link_lifecycle = (LAB_DIR / "live_link.py").read_text(encoding="utf-8")
         runner = (LAB_DIR / "run.sh").read_text(encoding="utf-8")
         workflow = (
             REPO_ROOT / ".github" / "workflows" / "networkmanager-integration.yml"
@@ -68,7 +68,7 @@ class NetworkManagerIntegrationTests(unittest.TestCase):
         self.assertIn("python3 /integration/test_live_nm.py", entrypoint)
         self.assertIn(
             '"ip", "link", "add", DEVICE, "type", "veth"',
-            livetest,
+            link_lifecycle,
         )
         self.assertIn("trap cleanup EXIT INT TERM", entrypoint)
         self.assertIn("Rootful Docker", runner)

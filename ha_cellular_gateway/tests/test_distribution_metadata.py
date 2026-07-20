@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -11,6 +12,8 @@ README = REPO_ROOT / "README.md"
 DOCS = APP_DIR / "DOCS.md"
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "validate.yml"
 CONFIG = APP_DIR / "config.yaml"
+PYPROJECT = REPO_ROOT / "pyproject.toml"
+PYTHON_VERSION = REPO_ROOT / ".python-version"
 
 
 class DistributionMetadataTests(unittest.TestCase):
@@ -145,6 +148,16 @@ class DistributionMetadataTests(unittest.TestCase):
             "strings == runtime_translations",
         ):
             self.assertNotIn(absent, workflow)
+
+    def test_python_compatibility_floor_is_consistent(self) -> None:
+        project = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertEqual(PYTHON_VERSION.read_text(encoding="utf-8").strip(), "3.13")
+        self.assertEqual(project["project"]["requires-python"], ">=3.13")
+        self.assertEqual(project["tool"]["ruff"]["target-version"], "py313")
+        self.assertEqual(project["tool"]["mypy"]["python_version"], "3.13")
+        self.assertEqual(workflow.count('python-version: "3.13"'), 3)
 
 
 if __name__ == "__main__":

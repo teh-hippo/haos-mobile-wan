@@ -3,6 +3,14 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
+      channel:
+        description: Release channel
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - beta
       version:
         description: >-
           Release version without a leading v (must match
@@ -11,8 +19,9 @@ on:
         type: string
       acceptance_reference:
         description: >-
-          URL or concise evidence reference for the live acceptance checklist
-        required: true
+          Stable releases require a URL or concise evidence reference for the
+          live acceptance checklist
+        required: false
         type: string
 
 permissions:
@@ -25,10 +34,16 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Require dispatch from main
+      - name: Require matching release branch
         env:
+          CHANNEL: ${{ inputs.channel }}
           REF: ${{ github.ref }}
-        run: test "$REF" = "refs/heads/main"
+        run: |
+          expected_ref=refs/heads/main
+          if [ "$CHANNEL" = beta ]; then
+            expected_ref=refs/heads/beta
+          fi
+          test "$REF" = "$expected_ref"
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
@@ -43,6 +58,8 @@ jobs:
       - name: Validate version
         id: version
         env:
+          ACCEPTANCE_REFERENCE: ${{ inputs.acceptance_reference }}
+          CHANNEL: ${{ inputs.channel }}
           VERSION: ${{ inputs.version }}
         run: |
           uv run python - <<'PY'
@@ -53,14 +70,31 @@ jobs:
           from tools.release_contract import (
               ContractError,
               config_version,
+              is_beta_version,
               parse_version,
           )
 
+          acceptance_reference = os.environ["ACCEPTANCE_REFERENCE"].strip()
+          channel = os.environ["CHANNEL"]
           version = os.environ["VERSION"]
           try:
               parse_version(version)
           except ContractError as error:
               print(error, file=sys.stderr)
+              raise SystemExit(1)
+
+          beta = is_beta_version(version)
+          if channel == "beta" and not beta:
+              print("Beta releases require a -beta.N version", file=sys.stderr)
+              raise SystemExit(1)
+          if channel == "stable" and beta:
+              print("Stable releases cannot use a beta version", file=sys.stderr)
+              raise SystemExit(1)
+          if channel == "stable" and not acceptance_reference:
+              print(
+                  "Stable releases require an acceptance reference",
+                  file=sys.stderr,
+              )
               raise SystemExit(1)
 
           config = config_version(
@@ -154,7 +188,7 @@ jobs:
         uses: home-assistant/builder/actions/cosign-verify@4de35182ce1e329181bffcbcc84d33db5e2c7e10 # 2026.06.0
         with:
           image: ${{ env.IMAGE }}
-          cosign-identity: ^https://github\.com/teh-hippo/haos-mobile-wan/\.github/workflows/builder\.yml@refs/heads/main$
+          cosign-identity: ^https://github\.com/teh-hippo/haos-mobile-wan/\.github/workflows/builder\.yml@refs/heads/${{ inputs.channel == 'beta' && 'beta' || 'main' }}$
 
       - name: Download image SBOM
         env:
@@ -189,14 +223,15 @@ jobs:
     uses: ./.github/workflows/networkmanager-wifi-integration.yml
 
   release:
-    name: publish release
+    name: publish ${{ inputs.channel }} release
     needs:
       - verify
       - candidate
       - networkmanager-integration
       - networkmanager-wifi-integration
     runs-on: ubuntu-latest
-    environment: release
+    environment:
+      name: ${{ inputs.channel == 'beta' && 'prerelease' || 'release' }}
     permissions:
       actions: read
       contents: write
@@ -213,6 +248,7 @@ jobs:
             --dir release-candidate
 
       - name: Append acceptance reference
+        if: inputs.channel == 'stable'
         env:
           ACCEPTANCE_REFERENCE: ${{ inputs.acceptance_reference }}
         run: |
@@ -223,12 +259,19 @@ jobs:
 
       - name: Create release tag and GitHub release
         env:
+          CHANNEL: ${{ inputs.channel }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: v${{ env.VERSION }}
         run: |
+          release_args=(
+            --repo "$GITHUB_REPOSITORY"
+            --title "$TAG"
+            --notes-file release-candidate/release-notes.md
+            --target "$GITHUB_SHA"
+          )
+          if [ "$CHANNEL" = beta ]; then
+            release_args+=(--prerelease)
+          fi
           gh release create "$TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "$TAG" \
-            --notes-file release-candidate/release-notes.md \
-            --target "$GITHUB_SHA" \
+            "${release_args[@]}" \
             "release-candidate/sbom/trivy-sbom.cdx.json#haos-mobile-wan-sbom-$VERSION.cdx.json"

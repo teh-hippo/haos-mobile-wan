@@ -76,6 +76,23 @@ Released versions use signed, pre-built aarch64 images from GHCR. Home
 Assistant pulls the image matching the app version rather than compiling it on
 the HAOS host.
 
+### Beta channel
+
+Prerelease candidates follow the same convention as the companion Home
+Assistant integrations: versions use `X.Y.Z-beta.N`, are published as GitHub
+pre-releases and remain opt-in. The default repository stays on `main`.
+
+To install a beta candidate, add
+`https://github.com/teh-hippo/haos-mobile-wan#beta` as a separate app
+repository, then install **Mobile WAN** from that repository. Keep any stable
+installation stopped and never run both copies at once.
+
+Supervisor identifies custom repositories by their full source URL, so the
+beta installation has a separate app identity and does not share options or
+data with the stable installation. Use it for hardware and functional
+acceptance. The final in-place upgrade and baseline-preservation gate is run
+against a short-lived candidate on `main` after all beta gates pass.
+
 The normal form contains only the settings needed for everyday use. Interface,
 address and adapter overrides remain available under unused optional settings.
 
@@ -320,21 +337,26 @@ PYTHONPATH=ha_cellular_gateway/rootfs \
 ## Release process
 
 Releases are exact-commit release candidates: nothing is rebuilt, only what
-already passed on `main` is verified and tagged.
+already passed on the selected channel is verified and tagged.
 [`.github/workflows/release.yml`](.github/workflows/release.yml) is the
-authoritative source of truth and only runs by manual `workflow_dispatch` from
-`main` with a `version` (matching `ha_cellular_gateway/config.yaml`, without a
-leading `v`) and an `acceptance_reference` input. It calls both integration
-labs at the exact commit under release using the reusable-workflow relative
-path, which always resolves to that commit rather than a branch that could
-drift; validates the version against `ha_cellular_gateway/config.yaml` and
-semver; confirms the tag and GitHub release do not already exist; locates the
+authoritative source of truth and only runs by manual `workflow_dispatch`.
+Stable releases run from `main`; beta releases run from `beta` and require a
+`-beta.N` version. Both channels require a `version` matching
+`ha_cellular_gateway/config.yaml`, without a leading `v`.
+
+The workflow calls both integration labs at the exact commit under release
+using the reusable-workflow relative path, which always resolves to that
+commit rather than a branch that could drift; validates the version and
+channel; confirms the tag and GitHub release do not already exist; locates the
 successful Builder and Validate push runs for that commit; verifies the public
 signed `ghcr.io/teh-hippo/haos-mobile-wan` image with Cosign; downloads that
 run's CycloneDX SBOM; and extracts the matching
 [`ha_cellular_gateway/CHANGELOG.md`](ha_cellular_gateway/CHANGELOG.md)
 section with [`tools/release_notes.py`](tools/release_notes.py) instead of
-using generated release notes. After those checks and both labs pass, a final
-job gated on the `release` environment downloads the verified candidate,
-appends the acceptance reference and creates the `v<version>` tag and release
-at that commit with the SBOM attached.
+using generated release notes.
+
+After those checks and both labs pass, beta runs create a GitHub prerelease
+through the unprotected `prerelease` environment. Stable runs require an
+`acceptance_reference`, wait for approval through the protected `release`
+environment, append the evidence reference and create the `v<version>` tag and
+release at that commit with the SBOM attached.

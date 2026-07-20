@@ -129,6 +129,7 @@ class DistributionMetadataTests(unittest.TestCase):
             "uv sync --frozen",
             "uv run coverage run -m unittest discover",
             "uv run ruff check .",
+            "uv run ruff check --select C901",
             "uv run mypy ha_cellular_gateway/rootfs/app tools",
             "uv run python tools/structure_contract.py",
             'uv run python -c "import app.main"',
@@ -137,6 +138,7 @@ class DistributionMetadataTests(unittest.TestCase):
         for snippet in (
             "uv run coverage run -m unittest discover",
             "uv run ruff format --check .",
+            "uv run ruff check --select C901",
             "uv run mypy ha_cellular_gateway/rootfs/app tools",
             "uv run python tools/structure_contract.py",
             'uv run python -c "import app.main"',

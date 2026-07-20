@@ -58,7 +58,7 @@ class AutoDisable:
             if self.pending:
                 self._drive_stop(engine)
                 return
-            if self.minutes == 0 or engine.applied:
+            if self.minutes == 0 or engine.lifecycle_state.applied:
                 self.deadline = None
                 return
             if self.deadline is None:

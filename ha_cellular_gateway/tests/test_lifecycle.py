@@ -36,7 +36,7 @@ class LifecycleTransitionLoggingTests(unittest.TestCase):
         )
         engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
         engine.safety.errors = lambda *_a, **_k: []
-        engine.startup_cleanup_pending = False
+        engine.lifecycle_state.startup_cleanup_pending = False
         return engine
 
     def test_iphone_connect_logs_once_on_edge(self) -> None:

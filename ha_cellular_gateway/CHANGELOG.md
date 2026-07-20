@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.11.5
+
+- Replace the gateway engine's broad flat mutable fields with typed
+  lifecycle/error, connection-selection and health state groups, keeping
+  `GatewayEngine` as the composition root.
+- Split reconciliation into focused startup-recovery, config-failure,
+  safety-evaluation and unsafe-state modules behind a short `reconcile`
+  orchestrator.
+- Split cleanup discovery and planning from teardown and state reset, and log
+  a clear warning with the underlying exception when downstream discovery
+  fails during cleanup instead of silently continuing with no diagnostic.
+- Remove the unused `force` parameter from gateway cleanup and every caller.
+- Behaviour is unchanged: fail-closed handling, host-protection preservation,
+  state persistence, auto-disable and graceful shutdown all continue to work
+  as before.
+
 ## 0.11.4
 
 - Keep application source compatible with Python 3.13, matching the Debian

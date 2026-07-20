@@ -13,11 +13,11 @@ from test_support.runner import FakeRunner
 class GatewayManagementRecoveryTests(GatewayTestCase):
     def test_running_reconcile_activates_gateway(self) -> None:
         engine = self._prepare_active_engine()
-        engine.startup_cleanup_pending = False
+        engine.lifecycle_state.startup_cleanup_pending = False
 
         engine.reconcile()
 
-        self.assertTrue(engine.applied)
+        self.assertTrue(engine.lifecycle_state.applied)
         self.assertTrue(engine.dhcp.running)
         self.assertNotEqual(engine.status()["state"], "disabled")
 
@@ -27,7 +27,7 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
         restarted = self._restart_engine()
 
         with self.assertLogs(
-            "rootfs.app.gateway_reconcile",
+            "rootfs.app.gateway_startup",
             level="INFO",
         ) as captured:
             restarted.reconcile()
@@ -36,14 +36,55 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
         self.assertIn("Interrupted gateway state detected", messages)
         self.assertIn("Interrupted gateway recovery completed", messages)
 
+    def test_incomplete_startup_recovery_is_logged_and_recorded(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply()
+        restarted = self._restart_engine()
+        restarted.upstream_lifecycle.recover = lambda management: [
+            "wifi restoration pending"
+        ]
+
+        with self.assertLogs(
+            "rootfs.app.gateway_startup",
+            level="WARNING",
+        ) as captured:
+            restarted.reconcile()
+
+        messages = "\n".join(captured.output)
+        self.assertIn("Startup recovery remains incomplete", messages)
+        self.assertIn("wifi restoration pending", messages)
+        self.assertNotIn("Interrupted gateway recovery completed", messages)
+
+    def test_startup_recovery_cleanup_failure_is_logged_and_reraised(self) -> None:
+        engine = self._prepare_active_engine()
+        engine.apply()
+        restarted = self._restart_engine()
+
+        def fail_stop() -> None:
+            raise OSError("dnsmasq pid file missing")
+
+        restarted.dhcp.stop = fail_stop
+
+        with self.assertLogs(
+            "rootfs.app.gateway_startup",
+            level="ERROR",
+        ) as captured:
+            with self.assertRaisesRegex(GatewayError, "Cleanup failed"):
+                restarted.reconcile()
+
+        self.assertIn(
+            "Interrupted gateway recovery failed",
+            "\n".join(captured.output),
+        )
+
     def test_config_error_does_not_log_recovery_complete(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply()
         restarted = self._restart_engine()
-        restarted.config_error = "Invalid app configuration"
+        restarted.lifecycle_state.config_error = "Invalid app configuration"
 
         with self.assertLogs(
-            "rootfs.app.gateway_reconcile",
+            "rootfs.app.gateway_startup",
             level="WARNING",
         ) as captured:
             restarted.reconcile()
@@ -63,7 +104,7 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
 
         self.engine.reconcile(refresh_health=True)
 
-        self.assertIsNone(self.engine.last_reconcile)
+        self.assertIsNone(self.engine.lifecycle_state.last_reconcile)
 
     def test_run_loop_skips_auto_disable_after_stop_request(self) -> None:
         def request_stop(*, refresh_health: bool = False) -> None:
@@ -97,13 +138,13 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
 
         degraded.reconcile()
 
-        self.assertIsNone(degraded.owned_state)
+        self.assertIsNone(degraded.lifecycle_state.owned_state)
         self.assertNotIn(
             "enx001122334455",
             degraded.runner.routes.interface_addresses,
         )
         self.assertFalse(degraded.firewall.host_protection_installed("enx001122334455"))
-        self.assertIn("Invalid app configuration", degraded.last_error)
+        self.assertIn("Invalid app configuration", degraded.lifecycle_state.last_error)
 
     def test_config_error_without_owned_state_does_not_mutate_host(self) -> None:
         values = sysctl_values()
@@ -126,9 +167,9 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
 
         engine.reconcile()
 
-        self.assertFalse(engine.applied)
-        self.assertIsNone(engine.last_downstream)
-        self.assertIn("Invalid app configuration", engine.last_error)
+        self.assertFalse(engine.lifecycle_state.applied)
+        self.assertIsNone(engine.selection_state.downstream)
+        self.assertIn("Invalid app configuration", engine.lifecycle_state.last_error)
 
     def test_config_error_rejects_direct_enable_without_mutation(self) -> None:
         values = sysctl_values()
@@ -152,7 +193,7 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
         ):
             engine.apply()
 
-        self.assertFalse(engine.applied)
+        self.assertFalse(engine.lifecycle_state.applied)
 
     def test_config_error_forces_owned_only_direct_cleanup(self) -> None:
         values = sysctl_values()
@@ -169,7 +210,7 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
 
         engine.cleanup()
 
-        self.assertFalse(engine.applied)
+        self.assertFalse(engine.lifecycle_state.applied)
 
     def test_management_recovers_across_reconciles_without_restart(self) -> None:
         values = sysctl_values()
@@ -190,7 +231,7 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
         )
         runner.networkmanager.nm_wifi_cache["wlan0"] = {"Phone"}
         engine.firewall.installed = lambda downstream=None, upstream_interface=None: (
-            engine.applied
+            engine.lifecycle_state.applied
         )
         engine.dhcp.start = lambda downstream: setattr(
             engine.dhcp,
@@ -200,10 +241,10 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
 
         engine.reconcile()
         self.assertIsNone(engine.management)
-        self.assertFalse(engine.applied)
+        self.assertFalse(engine.lifecycle_state.applied)
         self.assertIn(
             "Management interface is unavailable",
-            engine.last_safety_errors,
+            engine.selection_state.safety_errors,
         )
         self.assertNotIn(
             "enx001122334455",
@@ -218,7 +259,7 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
         self.assertIsNotNone(engine.management)
         assert engine.management is not None
         self.assertEqual(engine.management.interface, "end0")
-        self.assertTrue(engine.applied)
+        self.assertTrue(engine.lifecycle_state.applied)
 
     def test_missing_management_blocks_profile_and_downstream_mutation(self) -> None:
         values = sysctl_values()
@@ -240,14 +281,16 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
         engine.reconcile()
 
         self.assertEqual(runner.networkmanager.nm_profiles, {})
-        self.assertIsNone(engine.last_downstream)
-        self.assertIn("Management interface is unavailable", engine.last_error)
+        self.assertIsNone(engine.selection_state.downstream)
+        self.assertIn(
+            "Management interface is unavailable", engine.lifecycle_state.last_error
+        )
 
     def test_management_interface_change_releases_profiles_and_fails_closed(
         self,
     ) -> None:
         engine = self._prepare_active_engine()
-        self.assertEqual(engine.management_interface, "end0")
+        self.assertEqual(engine.lifecycle_state.management_interface, "end0")
         self.assertTrue(engine.runner.networkmanager.nm_profiles)
         engine.runner.routes.main_default_routes = [
             {"dst": "default", "gateway": "192.168.2.1", "dev": "eth9"}
@@ -256,9 +299,9 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
 
         engine.reconcile()
 
-        self.assertFalse(engine.applied)
+        self.assertFalse(engine.lifecycle_state.applied)
         self.assertEqual(engine.runner.networkmanager.nm_profiles, {})
-        self.assertIn("Management interface changed", engine.last_error)
+        self.assertIn("Management interface changed", engine.lifecycle_state.last_error)
 
     def test_persisted_extra_state_key_is_ignored(self) -> None:
         self.state_path.write_text(
@@ -274,7 +317,7 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
         )
         engine = self._prepare_active_engine()
         engine.reconcile()
-        self.assertTrue(engine.applied)
+        self.assertTrue(engine.lifecycle_state.applied)
         self.assertNotIn("unused", self.state_path.read_text(encoding="utf-8"))
 
 

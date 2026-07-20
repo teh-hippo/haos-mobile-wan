@@ -288,6 +288,8 @@ PYTHONPATH=ha_cellular_gateway \
 uv run coverage report
 uv run ruff check .
 uv run ruff format --check .
+uv run ruff check --select C901 --config 'lint.mccabe.max-complexity=15' \
+  ha_cellular_gateway/rootfs/app
 uv run mypy ha_cellular_gateway/rootfs/app tools
 uv run python tools/structure_contract.py
 git ls-files -z '*.sh' | xargs -0 uv run shellcheck -x

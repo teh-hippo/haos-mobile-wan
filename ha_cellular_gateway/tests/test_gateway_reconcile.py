@@ -18,16 +18,16 @@ class GatewayReconcileTests(GatewayTestCase):
     def test_active_mode_recovers_after_transient_safety_failure(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply()
-        self.assertTrue(engine.applied)
+        self.assertTrue(engine.lifecycle_state.applied)
 
         engine.safety.errors = lambda *args, **kwargs: ["Upstream unavailable"]
-        engine.startup_cleanup_pending = False
+        engine.lifecycle_state.startup_cleanup_pending = False
         engine.reconcile()
-        self.assertFalse(engine.applied)
+        self.assertFalse(engine.lifecycle_state.applied)
 
         engine.safety.errors = lambda *args, **kwargs: []
         engine.reconcile()
-        self.assertTrue(engine.applied)
+        self.assertTrue(engine.lifecycle_state.applied)
 
     def test_activation_failure_is_cleaned_and_retried(self) -> None:
         engine = self._prepare_active_engine()
@@ -42,14 +42,14 @@ class GatewayReconcileTests(GatewayTestCase):
         engine.firewall.apply = fail_firewall
         with self.assertRaisesRegex(GatewayError, "Activation failed"):
             engine.apply()
-        self.assertFalse(engine.applied)
+        self.assertFalse(engine.lifecycle_state.applied)
         self.assertTrue(engine.firewall.host_protection_installed("enx001122334455"))
         self.assertNotIn("enx001122334455", engine.runner.routes.interface_addresses)
 
         engine.firewall.apply = lambda downstream, upstream_interface=None: None
-        engine.startup_cleanup_pending = False
+        engine.lifecycle_state.startup_cleanup_pending = False
         engine.reconcile()
-        self.assertTrue(engine.applied)
+        self.assertTrue(engine.lifecycle_state.applied)
 
     def test_apply_safety_failure_cleans_host_state(self) -> None:
         engine = self._prepare_active_engine()
@@ -62,7 +62,7 @@ class GatewayReconcileTests(GatewayTestCase):
         with self.assertRaisesRegex(SafetyError, "Upstream unavailable"):
             engine.apply()
 
-        self.assertFalse(engine.applied)
+        self.assertFalse(engine.lifecycle_state.applied)
         self.assertTrue(engine.firewall.host_protection_installed("enx001122334455"))
         self.assertNotIn("enx001122334455", engine.runner.routes.interface_addresses)
 
@@ -71,7 +71,7 @@ class GatewayReconcileTests(GatewayTestCase):
         engine.apply()
         before = len(engine.runner.commands)
 
-        engine.startup_cleanup_pending = False
+        engine.lifecycle_state.startup_cleanup_pending = False
         engine.policy.installed = lambda downstream, upstream=None: False
         engine.firewall.installed = lambda downstream=None, upstream_interface=None: (
             True
@@ -97,9 +97,9 @@ class GatewayReconcileTests(GatewayTestCase):
             engine.firewall,
             engine.firewall.__class__,
         )
-        engine.applied = True
-        engine.active_connection = WIFI_HOTSPOT
-        engine.startup_cleanup_pending = False
+        engine.lifecycle_state.applied = True
+        engine.selection_state.active_connection = WIFI_HOTSPOT
+        engine.lifecycle_state.startup_cleanup_pending = False
         engine.policy.installed = lambda downstream, upstream=None: True
         engine.dhcp.process = FakeProcess()
         before = len(engine.runner.commands)
@@ -162,10 +162,12 @@ class GatewayReconcileTests(GatewayTestCase):
             engine.policy,
             engine.policy.__class__,
         )
-        engine.applied = True
-        engine.active_connection = IPHONE_USB
-        engine.startup_cleanup_pending = False
-        engine.owned_state = engine.policy.ownership("enx001122334455", resolved)
+        engine.lifecycle_state.applied = True
+        engine.selection_state.active_connection = IPHONE_USB
+        engine.lifecycle_state.startup_cleanup_pending = False
+        engine.lifecycle_state.owned_state = engine.policy.ownership(
+            "enx001122334455", resolved
+        )
         engine.dhcp.process = FakeProcess()
         dnsmasq_starts: list[str] = []
 
@@ -203,10 +205,10 @@ class GatewayReconcileTests(GatewayTestCase):
         engine.safety.errors = lambda *args, **kwargs: (_ for _ in ()).throw(
             OSError("inspection failed")
         )
-        engine.startup_cleanup_pending = False
+        engine.lifecycle_state.startup_cleanup_pending = False
         engine.reconcile()
-        self.assertFalse(engine.applied)
-        self.assertIn("Safety inspection failed", engine.last_error)
+        self.assertFalse(engine.lifecycle_state.applied)
+        self.assertIn("Safety inspection failed", engine.lifecycle_state.last_error)
 
     def _wifi_hotspot_engine(self) -> GatewayEngine:
         values = sysctl_values()
@@ -234,7 +236,7 @@ class GatewayReconcileTests(GatewayTestCase):
 
         self.assertIn(
             "The hotspot network is not currently visible",
-            engine.last_safety_errors,
+            engine.selection_state.safety_errors,
         )
         issue_ids = {issue["id"] for issue in engine.status()["issues"]}
         self.assertIn("hotspot_target_absent", issue_ids)

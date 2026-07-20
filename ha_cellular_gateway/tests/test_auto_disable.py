@@ -16,12 +16,17 @@ class FakeLifecycle:
         self.deactivate_calls += 1
 
 
+class FakeLifecycleState:
+    def __init__(self) -> None:
+        self.applied = False
+
+
 class FakeEngine:
     gateway_error = RuntimeError
 
     def __init__(self, events: list[str] | None = None) -> None:
         self.operation_lock = threading.RLock()
-        self.applied = False
+        self.lifecycle_state = FakeLifecycleState()
         self.management = None
         self.upstream_lifecycle = FakeLifecycle()
         self.persist_calls = 0
@@ -75,7 +80,7 @@ class AutoDisableTests(unittest.TestCase):
 
         self.assertEqual(first_deadline, 1900.0)
         self.assertEqual(controller.deadline, first_deadline)
-        engine.applied = True
+        engine.lifecycle_state.applied = True
         controller.reconcile(engine)
         self.assertIsNone(controller.deadline)
         self.assertFalse(controller.pending)
@@ -183,7 +188,7 @@ class AutoDisableTests(unittest.TestCase):
         self._expire(controller, engine, now)
         self.assertTrue(controller.pending)
 
-        engine.applied = True
+        engine.lifecycle_state.applied = True
         controller.reconcile(engine)
 
         self.assertTrue(controller.pending)

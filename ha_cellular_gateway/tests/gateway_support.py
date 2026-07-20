@@ -62,12 +62,12 @@ class GatewayTestCase(unittest.TestCase):
         engine.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
         engine.safety.errors = lambda *args, **kwargs: []
         engine.management = ManagementBaseline("end0", "192.168.1.2/24")
-        engine.management_interface = "end0"
+        engine.lifecycle_state.management_interface = "end0"
         engine.runner.networkmanager.nm_wifi_cache["wlan0"] = {"Phone"}
         engine.upstream_lifecycle.activate(engine.management)
         engine._persist_state()
         engine.firewall.installed = lambda downstream=None, upstream_interface=None: (
-            engine.applied
+            engine.lifecycle_state.applied
         )
         engine.dhcp.start = lambda downstream: setattr(
             engine.dhcp,

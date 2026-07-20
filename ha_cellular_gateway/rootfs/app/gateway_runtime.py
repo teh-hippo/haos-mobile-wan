@@ -16,26 +16,29 @@ _LOGGER = logging.getLogger(__name__)
 
 def refresh_health_if_due(engine: GatewayEngine) -> None:
     with engine.lock:
-        applied = engine.applied
-        last_probe = engine.last_health_probe
-        upstream = engine.last_upstream
-        generation = engine.health_generation
+        applied = engine.lifecycle_state.applied
+        last_probe = engine.health_state.last_health_probe
+        upstream = engine.selection_state.upstream
+        generation = engine.health_state.generation
     if not applied or upstream is None:
         with engine.lock:
-            engine.upstream_healthy = False
-            engine.public_ip = None
-            engine.last_health_probe = None
+            engine.health_state.upstream_healthy = False
+            engine.health_state.public_ip = None
+            engine.health_state.last_health_probe = None
         return
     now = time.time()
     if last_probe is not None and now - last_probe < engine.HEALTH_PROBE_INTERVAL:
         return
     healthy, public_ip = engine._health_probe(upstream)
     with engine.lock:
-        if engine.last_upstream != upstream or engine.health_generation != generation:
+        if (
+            engine.selection_state.upstream != upstream
+            or engine.health_state.generation != generation
+        ):
             return
-        engine.upstream_healthy = healthy
-        engine.public_ip = public_ip
-        engine.last_health_probe = time.time()
+        engine.health_state.upstream_healthy = healthy
+        engine.health_state.public_ip = public_ip
+        engine.health_state.last_health_probe = time.time()
 
 
 def fail_closed(engine: GatewayEngine, error: Exception) -> None:
@@ -56,27 +59,27 @@ def fail_closed(engine: GatewayEngine, error: Exception) -> None:
         engine._persist_state()
         lifecycle_error = engine.upstream_lifecycle.error
         with engine.lock:
-            engine.applied = False
-            engine.active_connection = None
-            engine.last_error = (
+            engine.lifecycle_state.applied = False
+            engine.selection_state.active_connection = None
+            engine.lifecycle_state.last_error = (
                 f"{error}; cleanup failed: {cleanup_error}"
                 if cleanup_error
                 else str(error)
             )
             if lifecycle_error:
-                engine.last_error += f"; {lifecycle_error}"
-            engine.last_safety_errors = [engine.last_error]
+                engine.lifecycle_state.last_error += f"; {lifecycle_error}"
+            engine.selection_state.safety_errors = [engine.lifecycle_state.last_error]
 
 
 def status(engine: GatewayEngine) -> dict[str, object]:
     with engine.lock:
-        upstream = engine.last_upstream
+        upstream = engine.selection_state.upstream
         upstream_status = engine.upstream.runtime_status()
         issues = build_status_issues(
-            engine.last_safety_errors,
-            engine.last_error,
+            engine.selection_state.safety_errors,
+            engine.lifecycle_state.last_error,
             upstream_status,
-            engine.connection_warnings,
+            engine.selection_state.warnings,
             [
                 error
                 for error in (
@@ -87,22 +90,26 @@ def status(engine: GatewayEngine) -> dict[str, object]:
             ],
         )
         health_state, health_issues = derive_health(issues)
+        downstream = engine.selection_state.downstream
         return {
             "state": derive_gateway_state(
-                engine.applied,
+                engine.lifecycle_state.applied,
                 issues,
             ),
             "health": health_state,
             "health_issues": health_issues,
-            "active": engine.applied,
+            "active": engine.lifecycle_state.applied,
             "management_interface": (
                 engine.management.interface if engine.management else None
             ),
             "mobile_connection": engine.config.mobile_connection,
-            "active_connection": engine.active_connection,
-            "fallback_active": engine.applied and engine.fallback_selected,
-            "fallback_reason": engine.fallback_reason,
-            "connection_warnings": list(engine.connection_warnings),
+            "active_connection": engine.selection_state.active_connection,
+            "fallback_active": (
+                engine.lifecycle_state.applied
+                and engine.selection_state.fallback_selected
+            ),
+            "fallback_reason": engine.selection_state.fallback_reason,
+            "connection_warnings": list(engine.selection_state.warnings),
             "configured_upstream_interface": engine.config.upstream_interface,
             "upstream_interface": (
                 upstream.interface
@@ -112,20 +119,20 @@ def status(engine: GatewayEngine) -> dict[str, object]:
             ),
             "upstream_address": upstream.address if upstream else None,
             "upstream_gateway": upstream.gateway if upstream else None,
-            "downstream_interface": engine.last_downstream,
-            "downstream_mac": engine.downstream.mac(engine.last_downstream)
-            if engine.last_downstream
-            else None,
-            "downstream_present": engine.last_downstream is not None,
-            "rules_installed": engine.applied,
+            "downstream_interface": downstream,
+            "downstream_mac": (
+                engine.downstream.mac(downstream) if downstream else None
+            ),
+            "downstream_present": downstream is not None,
+            "rules_installed": engine.lifecycle_state.applied,
             "dnsmasq_running": engine.dhcp.running,
-            "upstream_healthy": engine.upstream_healthy,
-            "public_ip": engine.public_ip,
+            "upstream_healthy": engine.health_state.upstream_healthy,
+            "public_ip": engine.health_state.public_ip,
             "auto_disable_at": engine.auto_disable.deadline_iso,
-            "last_reconcile": engine.last_reconcile,
-            "last_health_probe": engine.last_health_probe,
-            "last_error": engine.last_error,
-            "safety_errors": list(engine.last_safety_errors),
+            "last_reconcile": engine.lifecycle_state.last_reconcile,
+            "last_health_probe": engine.health_state.last_health_probe,
+            "last_error": engine.lifecycle_state.last_error,
+            "safety_errors": list(engine.selection_state.safety_errors),
             "issues": issues,
             "networkmanager": engine.upstream_lifecycle.diagnostics(),
             **upstream_status,
@@ -135,11 +142,13 @@ def status(engine: GatewayEngine) -> dict[str, object]:
 
 def health(engine: GatewayEngine) -> dict[str, object]:
     with engine.lock:
-        last_activity = engine.last_reconcile or engine.started_at
+        last_activity = (
+            engine.lifecycle_state.last_reconcile or engine.lifecycle_state.started_at
+        )
         maximum_age = max(30, engine.config.reconcile_seconds * 3)
         return {
             "ok": time.time() - last_activity <= maximum_age,
-            "last_reconcile": engine.last_reconcile,
+            "last_reconcile": engine.lifecycle_state.last_reconcile,
         }
 
 
@@ -166,13 +175,9 @@ def stop(engine: GatewayEngine) -> None:
     _LOGGER.info("Graceful shutdown cleanup started")
     engine.stop_event.set()
     with engine.operation_lock:
-        with engine.lock:
-            force = bool(engine.owned_state or engine.applied)
         cleanup_error: Exception | None = None
         try:
-            engine.cleanup(
-                force=force,
-            )
+            engine.cleanup()
         except (
             engine.gateway_error,
             OSError,

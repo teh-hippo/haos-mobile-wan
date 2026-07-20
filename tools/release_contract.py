@@ -70,7 +70,7 @@ def stable_release_errors(config: dict[str, object]) -> list[str]:
         return []
 
     errors: list[str] = []
-    if config.get("stage") != "stable":
+    if config.get("stage", "stable") != "stable":
         errors.append("Stable releases require stage: stable")
     if config.get("image") != STABLE_IMAGE:
         errors.append(f"Stable releases require image: {STABLE_IMAGE}")

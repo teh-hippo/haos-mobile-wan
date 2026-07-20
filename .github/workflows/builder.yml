@@ -7,8 +7,6 @@ on:
       - ha_cellular_gateway/config.yaml
       - ha_cellular_gateway/Dockerfile
       - ha_cellular_gateway/rootfs/**
-      - pyproject.toml
-      - uv.lock
   push:
     branches:
       - main
@@ -17,8 +15,6 @@ on:
       - ha_cellular_gateway/config.yaml
       - ha_cellular_gateway/Dockerfile
       - ha_cellular_gateway/rootfs/**
-      - pyproject.toml
-      - uv.lock
 
 permissions:
   contents: read
@@ -34,10 +30,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
+      publish: ${{ steps.publication.outputs.publish }}
       version: ${{ steps.metadata.outputs.version }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
@@ -60,6 +58,25 @@ jobs:
           PY
           )
           echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Determine whether to publish
+        id: publication
+        env:
+          BEFORE: ${{ github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          publish=false
+          if [ "$EVENT_NAME" = push ]; then
+            previous_version=$(git show \
+              "$BEFORE:ha_cellular_gateway/config.yaml" |
+              uv run python -c \
+                'import sys; from tools.release_contract import config_version; print(config_version(sys.stdin.read()))')
+            if [ "$previous_version" != "$VERSION" ]; then
+              publish=true
+            fi
+          fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
 
       - name: Prepare build matrix
         id: matrix
@@ -100,7 +117,7 @@ jobs:
             io.hass.name=Mobile WAN
             io.hass.description=Provides fallback WAN through Wi-Fi or USB tethering
             io.hass.url=https://github.com/teh-hippo/haos-mobile-wan
-          push: ${{ github.event_name == 'push' }}
+          push: ${{ needs.init.outputs.publish }}
           version: ${{ needs.init.outputs.version }}
 
   manifest:
@@ -108,7 +125,7 @@ jobs:
     needs:
       - init
       - build
-    if: github.event_name == 'push'
+    if: needs.init.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -130,7 +147,7 @@ jobs:
     needs:
       - init
       - manifest
-    if: github.event_name == 'push'
+    if: needs.init.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

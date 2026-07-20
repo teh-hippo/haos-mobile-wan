@@ -27,7 +27,7 @@ def probe_upstream(
             check=False,
             timeout=15,
         )
-    except OSError, subprocess.SubprocessError:
+    except (OSError, subprocess.SubprocessError):
         return False, None
     if result.returncode != 0:
         return False, None

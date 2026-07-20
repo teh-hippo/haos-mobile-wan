@@ -20,7 +20,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
     ) -> None:
         try:
             status = int(code)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             status = 0
         level = logging.WARNING if status >= 400 else logging.DEBUG
         _LOGGER.log(level, '"%s" %s %s', self.requestline, code, size)

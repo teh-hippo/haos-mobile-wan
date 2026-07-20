@@ -1,7 +1,7 @@
 [project]
 name = "haos-mobile-wan-dev"
 version = "0.0.0"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = []
 
 [dependency-groups]
@@ -22,13 +22,13 @@ package = false
 
 [tool.ruff]
 line-length = 88
-target-version = "py314"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I"]
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.13"
 mypy_path = "ha_cellular_gateway/rootfs"
 strict = true
 

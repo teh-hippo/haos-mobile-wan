@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.4
+
+- Keep application source compatible with Python 3.13, matching the Debian
+  integration guest while the built Home Assistant image exercises its own
+  runtime Python.
+
 ## 0.11.3
 
 - Add locked Ruff, mypy, branch coverage, ShellCheck and Actionlint validation.

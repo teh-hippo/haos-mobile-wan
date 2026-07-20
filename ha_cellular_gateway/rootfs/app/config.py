@@ -102,7 +102,7 @@ class GatewayConfig:
                 if isinstance(auto_disable, (bool, int, float, str))
                 else -1
             )
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             auto_disable_minutes = -1
         return cls(
             auto_disable_minutes=auto_disable_minutes,

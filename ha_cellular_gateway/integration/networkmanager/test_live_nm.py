@@ -811,7 +811,7 @@ def test_wifi_marker_preserves_secret(run: TracingRun) -> None:
             SYNTHETIC_PSK,
             check=False,
         )
-    except OSError, subprocess.SubprocessError:
+    except (OSError, subprocess.SubprocessError):
         raise AssertionError("synthetic Wi-Fi profile creation failed") from None
     require(
         created.returncode == 0,

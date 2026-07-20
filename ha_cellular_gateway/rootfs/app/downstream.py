@@ -39,7 +39,7 @@ class DownstreamInterface:
                 .strip()
                 .lower()
             )
-        except KeyError, OSError:
+        except (KeyError, OSError):
             return None
 
     def candidates(self, management_interface: str | None) -> list[str]:

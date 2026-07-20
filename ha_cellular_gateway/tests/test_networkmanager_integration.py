@@ -44,7 +44,7 @@ class NetworkManagerIntegrationTests(unittest.TestCase):
         self.assertNotIn("volumes", service)
         self.assertNotIn("ports", service)
 
-    def test_lab_configuration_and_runner_stay_rootful_and_manual(self) -> None:
+    def test_lab_configuration_and_runner_stay_rootful(self) -> None:
         config = (LAB_DIR / "nm.conf").read_text(encoding="utf-8")
         entrypoint = (LAB_DIR / "entrypoint.sh").read_text(encoding="utf-8")
         link_lifecycle = (LAB_DIR / "live_link.py").read_text(encoding="utf-8")
@@ -74,7 +74,12 @@ class NetworkManagerIntegrationTests(unittest.TestCase):
         self.assertIn("Rootful Docker", runner)
         self.assertIn("rootless Docker and Podman are not supported", runner)
         self.assertIn("workflow_dispatch:", workflow)
-        self.assertNotIn("pull_request:", workflow)
+        self.assertIn("workflow_call:", workflow)
+        self.assertIn("schedule:", workflow)
+        self.assertIn(
+            "ha_cellular_gateway/rootfs/app/networkmanager*.py",
+            workflow,
+        )
         self.assertNotIn("\n  push:", workflow)
         self.assertIn("timeout-minutes: 15", workflow)
 

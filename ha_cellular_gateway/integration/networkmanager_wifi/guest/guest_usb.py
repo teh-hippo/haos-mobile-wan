@@ -1,5 +1,3 @@
-"""Generic USB upstream binding, resolution, and interface discovery helpers."""
-
 from __future__ import annotations
 
 import os

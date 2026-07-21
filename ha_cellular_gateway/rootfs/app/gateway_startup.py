@@ -25,7 +25,6 @@ def recover_from_restart(
     engine: GatewayEngine,
     management: ManagementBaseline | None,
 ) -> None:
-    """Restore state left behind by an interrupted run."""
     config_error = engine.lifecycle_state.config_error
     recovery_pending = _recovery_pending(engine)
     started = time.monotonic()

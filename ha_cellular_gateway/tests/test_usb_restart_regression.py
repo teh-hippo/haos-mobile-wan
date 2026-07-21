@@ -21,14 +21,12 @@ DHCP_OFFER = {"address": "172.20.10.6", "prefix": 28, "gateway": "172.20.10.1"}
 
 
 def _safety_errors(*args, upstream=None, upstream_errors=None, **kwargs):
-    """Keep management and NetworkManager checks real; neutralise the rest."""
     if upstream is None:
         return list(upstream_errors or [])
     return []
 
 
 def _stub_iphone_runtime(engine: GatewayEngine) -> None:
-    """Present a paired, carrier-up iPhone so the real NM lease path runs."""
     runtime = engine.upstream.runtime
     runtime.capability_errors = lambda: []
     runtime.apple_usb_present = lambda: True
@@ -113,8 +111,6 @@ class UsbRestartRegressionTests(unittest.TestCase):
         runner.networkmanager.nm_wildcard_bind = IPHONE_IFACE
         runner.networkmanager.nm_wifi_cache["wlan0"] = {"Phone"}
 
-        # A live USB-only gateway: the inert profile is created, explicitly
-        # activated, and takes its DHCP lease isolated in table 202.
         live = self._engine(IPHONE_USB, runner)
         live.reconcile()
         self.assertEqual(live.selection_state.active_connection, IPHONE_USB)
@@ -123,9 +119,6 @@ class UsbRestartRegressionTests(unittest.TestCase):
         )
         self.assertTrue(self._table_202_ready(runner))
 
-        # Changing options restarts the add-on: the old engine stops gracefully
-        # and deletes/deactivates its USB profile and lease. The physical ipheth
-        # device, carrier and DHCP peer stay available across the restart.
         live.stop()
         self.assertNotIn(USB_PROFILE_UUID, runner.networkmanager.nm_profiles)
         self.assertNotIn(IPHONE_IFACE, runner.networkmanager.nm_active)
@@ -135,7 +128,6 @@ class UsbRestartRegressionTests(unittest.TestCase):
         self.assertIn(IPHONE_IFACE, runner.networkmanager.nm_dhcp)
         self.assertEqual(runner.networkmanager.nm_wildcard_bind, IPHONE_IFACE)
 
-        # A fresh engine starts in USB-preferred Wi-Fi fallback.
         restarted = self._engine(IPHONE_USB_WIFI_FALLBACK, runner)
         mark = len(runner.commands)
 
@@ -146,14 +138,11 @@ class UsbRestartRegressionTests(unittest.TestCase):
             self.assertEqual(restarted.management.interface, "end0")
 
         commands = runner.commands[mark:]
-        # The restarted engine recreates and activates the USB profile exactly
-        # once, then issues no further add/delete/up across reconciles.
         self.assertEqual(_adds(commands, USB_PROFILE_UUID), 1)
         self.assertEqual(_connection_verbs(commands, "up", USB_PROFILE_UUID), 1)
         self.assertEqual(_connection_verbs(commands, "delete", USB_PROFILE_UUID), 0)
         self.assertEqual(_connection_verbs(commands, "down", USB_PROFILE_UUID), 0)
 
-        # Kernel truth: main clean, lease isolated in table 202, USB preferred.
         self.assertEqual(self._iphone_main_defaults(runner), [])
         self.assertTrue(self._table_202_ready(runner))
         self.assertEqual(restarted.selection_state.active_connection, IPHONE_USB)
@@ -161,7 +150,6 @@ class UsbRestartRegressionTests(unittest.TestCase):
             runner.networkmanager.nm_active.get(IPHONE_IFACE), USB_PROFILE_UUID
         )
 
-        # Wi-Fi ownership prepares exactly once as stable warm standby.
         self.assertIn(WIFI_PROFILE_UUID, runner.networkmanager.nm_profiles)
         self.assertEqual(_adds(commands, WIFI_PROFILE_UUID), 1)
         self.assertEqual(_connection_verbs(commands, "delete", WIFI_PROFILE_UUID), 0)

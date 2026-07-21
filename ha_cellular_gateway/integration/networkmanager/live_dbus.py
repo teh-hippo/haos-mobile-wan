@@ -1,5 +1,3 @@
-"""D-Bus GetSettings inspection and nmcli profile/device query helpers."""
-
 from __future__ import annotations
 
 import os
@@ -53,9 +51,6 @@ def plain(value: Any) -> Any:
     return str(value)
 
 
-# NetworkManager rewrites volatile bookkeeping fields such as
-# connection.timestamp on every successful activation. They are not
-# user-configurable identity, so normalise them away before comparing.
 VOLATILE_SETTINGS = {"connection": {"timestamp"}}
 
 
@@ -89,8 +84,7 @@ def get_settings(uuid: str) -> dict[str, Any]:
     raise AssertionError(f"NetworkManager cannot find connection {uuid} over D-Bus")
 
 
-def read_psk(run: TracingRun, uuid: str) -> str:
-    """Read the stored WPA PSK the same way production does, and never log it."""
+def read_psk_without_logging(run: TracingRun, uuid: str) -> str:
     result = run(
         "nmcli",
         "--show-secrets",

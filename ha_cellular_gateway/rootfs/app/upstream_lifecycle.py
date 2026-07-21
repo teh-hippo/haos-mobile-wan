@@ -134,9 +134,6 @@ class UpstreamLifecycle:
             return ["Wi-Fi hotspot credentials are not configured"]
         errors = self.wifi.claim(self._manage_iface(management))
         if self.config.uses_usb:
-            # Combined/fallback mode: a safely unavailable Wi-Fi adapter must not
-            # fail closed or churn the healthy USB source. The blocker is still
-            # recorded on the Wi-Fi controller for diagnostics.
             errors = [error for error in errors if not safe_wifi_unavailable(error)]
         return errors
 

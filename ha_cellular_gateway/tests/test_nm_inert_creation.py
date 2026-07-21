@@ -98,11 +98,6 @@ class InertCreateArgvTests(unittest.TestCase):
 
 class AutoactivationModelTests(unittest.TestCase):
     def test_negative_control_prefix_add_leaks_a_main_default(self) -> None:
-        """The pre-fix add shape must reproduce the real main-table leak.
-
-        This guards the positive control from passing vacuously: if the fake
-        stopped modelling auto-activation, this assertion would fail first.
-        """
         runner = carrier_runner()
         spec = usb_profile_spec()
 

@@ -1,7 +1,3 @@
-"""Inspection, profile-convergence, and route-continuity tests for
-NetworkManagerIphone.
-"""
-
 from __future__ import annotations
 
 import json
@@ -37,8 +33,6 @@ def converged_profile() -> dict[str, str]:
 
 
 class FakeNetworkManagerCli:
-    """Simulate the nmcli and ip surface used by NetworkManagerIphone."""
-
     def __init__(self) -> None:
         self.profile: dict[str, str] | None = None
         self.active: dict[str, str] = {}

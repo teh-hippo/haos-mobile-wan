@@ -1,7 +1,3 @@
-"""Behavioural tests for the fail-closed and run-loop lifecycle in
-:mod:`rootfs.app.gateway_runtime`.
-"""
-
 from __future__ import annotations
 
 import unittest

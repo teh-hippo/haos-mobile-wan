@@ -21,8 +21,6 @@ class CommandRunner(Protocol):
 
 
 class NmcliHarnessRunner:
-    """Limit veth-only Wi-Fi read virtualisation to the integration lab."""
-
     def __init__(self, runner: CommandRunner) -> None:
         self.runner = runner
 

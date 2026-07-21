@@ -19,8 +19,6 @@ OPERATION_ERRORS = (GatewayError, OSError, subprocess.SubprocessError, ValueErro
 
 @dataclass
 class SafetyEvaluation:
-    """The downstream/upstream pairing and safety findings for one reconcile pass."""
-
     downstream: str | None
     upstream: ResolvedUpstream | None
     upstream_errors: list[str]

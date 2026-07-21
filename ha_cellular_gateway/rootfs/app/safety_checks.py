@@ -1,5 +1,3 @@
-"""Focused host safety inspection phases."""
-
 from __future__ import annotations
 
 import subprocess

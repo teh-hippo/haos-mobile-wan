@@ -1,5 +1,3 @@
-"""Legacy (pre-fix) NetworkManager Wi-Fi control-path regression check."""
-
 from __future__ import annotations
 
 import os

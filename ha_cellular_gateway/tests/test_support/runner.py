@@ -1,5 +1,3 @@
-"""Fake command runner composed from domain handlers."""
-
 from __future__ import annotations
 
 from .process import Result

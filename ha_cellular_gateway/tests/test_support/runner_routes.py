@@ -1,13 +1,3 @@
-"""Route table, address, and policy-routing state for the fake command runner.
-
-Owns everything reachable through ``ip address``/``ip route``/``ip rule``:
-interface addressing, the main routing table's default routes, and the
-source-routing policy rules/routes the app's ``PolicyRouter`` installs. NM
-connection tables (arbitrary numeric ``ip route show table N``) are looked up
-through the ``nm_routes`` mapping supplied by the NetworkManager state, since
-NetworkManager owns those routes; this module never mutates that mapping.
-"""
-
 from __future__ import annotations
 
 import json

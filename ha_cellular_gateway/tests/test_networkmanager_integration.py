@@ -4,7 +4,7 @@ from pathlib import Path
 
 try:
     import yaml
-except ImportError:  # pragma: no cover - exercised in CI
+except ImportError:
     yaml = None
 
 
@@ -54,12 +54,8 @@ class NetworkManagerIntegrationTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("plugins=keyfile", config)
-        # HAOS does not set no-auto-default; neither may the lab, or its
-        # realisation-gate controls would be masked and pass vacuously.
         self.assertNotIn("no-auto-default", config)
         self.assertIn("unmanaged-devices=interface-name:phone0", config)
-        # NetworkManager starts before any test veth; the test realises the
-        # carrier-up device itself after installing the intended profile.
         self.assertNotIn(
             'ip link add "$NM_DEVICE" type veth peer name "$PHONE_DEVICE"',
             entrypoint,

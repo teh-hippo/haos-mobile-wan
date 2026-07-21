@@ -1,5 +1,3 @@
-"""Production USB profile creation and inventory-read scenario."""
-
 from __future__ import annotations
 
 from app.nm_inventory import NmInventory

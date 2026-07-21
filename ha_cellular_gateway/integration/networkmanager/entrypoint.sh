@@ -63,9 +63,6 @@ mkdir -p "$HARNESS_DIR" /run/dbus
 rm -f "$DBUS_SOCKET"
 export DBUS_SYSTEM_BUS_ADDRESS="unix:path=$DBUS_SOCKET"
 
-# NetworkManager must start before any test veth exists so the test controls
-# the one-time have_connection_for_device gate: it installs the intended
-# profile, then realises the carrier-up veth and DHCP peer itself.
 DBUS_PID="$(dbus-daemon --system --fork --nopidfile --print-pid=1 2>>"$HARNESS_DIR/dbus.log")"
 NetworkManager --no-daemon --config=/etc/NetworkManager/NetworkManager.conf \
     >"$HARNESS_DIR/networkmanager.log" 2>&1 &

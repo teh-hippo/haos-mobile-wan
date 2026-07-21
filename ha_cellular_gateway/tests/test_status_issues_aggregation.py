@@ -49,7 +49,6 @@ class StatusIssuesAggregationTests(unittest.TestCase):
                 "upstream_pairing_message": pairing_message,
             },
         )
-        # upstream_driver_inactive from pairing message; safety error suppressed
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["id"], "upstream_driver_inactive")
 

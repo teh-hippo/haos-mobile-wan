@@ -1,5 +1,3 @@
-"""Generic USB upstream selection and Wi-Fi fallback preference scenario."""
-
 from __future__ import annotations
 
 import os

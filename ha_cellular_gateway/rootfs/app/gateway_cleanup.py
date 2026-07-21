@@ -19,8 +19,6 @@ OPERATION_ERRORS = (GatewayError, OSError, subprocess.SubprocessError, ValueErro
 
 @dataclass
 class CleanupPlan:
-    """The downstream, ownerships, and host-protection target for a teardown."""
-
     owned_state: dict[str, object] | None
     downstream: str | None
     protected_downstream: str | None

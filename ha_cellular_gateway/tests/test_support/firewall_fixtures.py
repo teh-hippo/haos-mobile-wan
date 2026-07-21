@@ -1,11 +1,3 @@
-"""Realistic firewall/policy state fixtures for gateway integration tests.
-
-These builders seed a ``FakeRunner``'s firewall and route handlers with the
-chain listings, rule-existence checks, and policy rules/routes that a fully
-applied ``Firewall``/``PolicyRouting`` install would leave behind, so tests
-can assert idempotent no-op behaviour on top of a realistic baseline.
-"""
-
 from __future__ import annotations
 
 from rootfs.app.firewall import Firewall

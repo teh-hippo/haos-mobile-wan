@@ -79,7 +79,6 @@ class SafetyInspector:
         state_error: str | None = None,
         downstream_address_owned: bool = False,
     ) -> list[str]:
-        """Run every host safety phase in fail-closed order."""
         management_interface = management.interface if management else None
         downstream = downstream or self.find_downstream(management_interface)
         current_upstream = upstream

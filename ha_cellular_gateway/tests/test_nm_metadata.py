@@ -19,8 +19,6 @@ UUID = "4a229445-9e75-45a6-9a0a-8d9ea2a75a03"
 
 
 class FakeDBusException(Exception):
-    """Stand-in for ``dbus.exceptions.DBusException`` with a wire error name."""
-
     def __init__(self, name: str) -> None:
         super().__init__(name)
         self._name = name
@@ -67,7 +65,6 @@ class FakeBus:
 
 
 def make_dbus(bus_factory):
-    """Build a fake ``dbus`` module exposing only what the store touches."""
     module = types.SimpleNamespace()
     module.bus = types.SimpleNamespace(BusConnection=bus_factory)
     module.exceptions = types.SimpleNamespace(DBusException=FakeDBusException)
@@ -103,7 +100,7 @@ class NmMetadataTests(unittest.TestCase):
         store = DbusWifiProfileMetadata(UUID)
         with mock.patch.object(nm_metadata, "_dbus", lambda: make_dbus(factory)):
             self.assertIsNone(store.read("marker"))
-            store.clear("marker")  # missing_ok path must swallow the absence
+            store.clear("marker")
             with self.assertRaises(GatewayError) as ctx:
                 store.write("marker", "value")
 

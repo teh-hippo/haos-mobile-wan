@@ -1,5 +1,3 @@
-"""Supervisor MQTT service lookup and publisher graceful degradation."""
-
 from __future__ import annotations
 
 import json

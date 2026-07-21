@@ -11,6 +11,7 @@ from rootfs.app.wifi_custody import (
 from rootfs.app.wifi_custody_marker import parse_marker
 from test_support.engine_fixtures import make_config
 from test_support.metadata import FakeWifiProfileMetadata
+from test_support.process import Result
 from test_support.runner import FakeRunner
 
 
@@ -67,9 +68,13 @@ class WifiCustodianTests(unittest.TestCase):
         events: list[tuple[str, str]] = []
         metadata = RecordingMetadata(events)
 
-        def run(*args: object, **kwargs: object) -> object:
-            argv = [str(arg) for arg in args]
-            result = runner.run(argv, **kwargs)  # type: ignore[arg-type]
+        def run(
+            *args: str,
+            check: bool = True,
+            timeout: int = 20,
+        ) -> Result:
+            argv = list(args)
+            result = runner.run(argv, check=check, timeout=timeout)
             if argv[:3] == ["nmcli", "device", "set"] and "autoconnect" in argv:
                 events.append(("device-autoconnect", argv[-1]))
             return result

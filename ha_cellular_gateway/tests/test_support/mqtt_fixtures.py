@@ -1,9 +1,3 @@
-"""Shared MQTT client/engine doubles and a canonical status snapshot.
-
-Used by the publisher lifecycle and Supervisor service lookup suites, which
-both need a fake `paho-mqtt` client and a stub `GatewayEngine`.
-"""
-
 from __future__ import annotations
 
 from types import SimpleNamespace

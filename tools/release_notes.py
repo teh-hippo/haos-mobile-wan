@@ -13,7 +13,6 @@ class ReleaseNotesError(ValueError):
 
 
 def extract_section(changelog: str, version: str) -> str:
-    """Return one version's changelog section."""
     heading = f"## {version}"
     for match in HEADING_PATTERN.finditer(changelog):
         if match.group("version") != version:

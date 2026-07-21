@@ -24,7 +24,7 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
     def test_restart_logs_interrupted_state_recovery(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply()
-        restarted = self._restart_engine()
+        restarted = self._restart_waiting_engine()
 
         with self.assertLogs(
             "rootfs.app.gateway_startup",
@@ -39,7 +39,7 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
     def test_incomplete_startup_recovery_is_logged_and_recorded(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply()
-        restarted = self._restart_engine()
+        restarted = self._restart_waiting_engine()
         restarted.upstream_lifecycle.recover = lambda management: [
             "wifi restoration pending"
         ]
@@ -58,7 +58,7 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
     def test_startup_recovery_cleanup_failure_is_logged_and_reraised(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply()
-        restarted = self._restart_engine()
+        restarted = self._restart_waiting_engine()
 
         def fail_stop() -> None:
             raise OSError("dnsmasq pid file missing")
@@ -80,7 +80,7 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
     def test_config_error_does_not_log_recovery_complete(self) -> None:
         engine = self._prepare_active_engine()
         engine.apply()
-        restarted = self._restart_engine()
+        restarted = self._restart_waiting_engine()
         restarted.lifecycle_state.config_error = "Invalid app configuration"
 
         with self.assertLogs(

@@ -1,11 +1,3 @@
-"""Entry point for the QEMU hwsim Wi-Fi integration lab.
-
-Runs the legacy control-path regression for the pre-fix build, or, for the
-fixed build, the Wi-Fi custody/restoration scenarios followed by the
-fallback/generic USB scenario in the exact sequence production behaviour
-must hold.
-"""
-
 from __future__ import annotations
 
 import os

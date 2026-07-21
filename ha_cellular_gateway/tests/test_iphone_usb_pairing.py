@@ -1,7 +1,3 @@
-"""Device presence, pairing, carrier, and fallback-gating tests for
-IPhoneUsbUpstream.resolve().
-"""
-
 from __future__ import annotations
 
 import unittest

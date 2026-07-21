@@ -1,11 +1,7 @@
-"""Gate-error, control-error, and route-continuity tests for
-NetworkManagerWifi's inspection state machine (the branches not already
-exercised through WifiCustodianTests in test_wifi_custody.py).
-"""
-
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 from rootfs.app.errors import GatewayError
 from rootfs.app.networkmanager_wifi import (
@@ -70,12 +66,12 @@ class NetworkManagerWifiTests(unittest.TestCase):
         controller = self._controller(runner)
         controller.claim("end0")
 
-        def raise_control_error(interface: str) -> str:
-            raise GatewayError("NetworkManager unavailable")
-
-        controller.profile.active_uuid = raise_control_error  # type: ignore[method-assign]
-
-        result = controller.inspect()
+        with mock.patch.object(
+            controller.profile,
+            "active_uuid",
+            side_effect=GatewayError("NetworkManager unavailable"),
+        ):
+            result = controller.inspect()
 
         self.assertEqual(result.state, "waiting")
         self.assertTrue(result.safe)

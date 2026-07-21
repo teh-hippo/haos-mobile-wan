@@ -1,5 +1,3 @@
-"""Shared fixtures for IPhoneUsbUpstream test suites."""
-
 from __future__ import annotations
 
 import unittest
@@ -53,8 +51,6 @@ class FakeNetworkManager:
 
 
 class IPhoneUsbUpstreamHarness(unittest.TestCase):
-    """Common device/filesystem scaffolding for IPhoneUsbUpstream tests."""
-
     def setUp(self) -> None:
         self.directory = TemporaryDirectory()
         self.root = Path(self.directory.name)

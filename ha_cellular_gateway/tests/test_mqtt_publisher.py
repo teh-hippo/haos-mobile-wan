@@ -1,5 +1,3 @@
-"""Publisher and fake-client connect, announce and stop lifecycle."""
-
 from __future__ import annotations
 
 import json

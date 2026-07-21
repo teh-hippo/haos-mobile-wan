@@ -1,13 +1,9 @@
-"""Fake subprocess results and long-running process doubles."""
-
 from __future__ import annotations
 
 import subprocess
 
 
 class Result:
-    """Stand-in for a completed subprocess invocation."""
-
     def __init__(
         self,
         returncode: int = 0,
@@ -20,8 +16,6 @@ class Result:
 
 
 class FakeProcess:
-    """Stand-in for a long-running ``subprocess.Popen`` handle."""
-
     def __init__(
         self,
         *,

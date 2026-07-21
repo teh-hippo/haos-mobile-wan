@@ -47,8 +47,6 @@ WIFI_CUSTODY_STATE_INVALID = "Persistent Wi-Fi custody state is invalid"
 
 CONTROL_ERRORS = (GatewayError, OSError, subprocess.SubprocessError, ValueError)
 
-# A safely unavailable adapter (absent, unmanaged, radio off, rfkill) leaves the
-# adapter untouched, so it must not fail closed or churn a healthy USB source.
 SAFE_WIFI_UNAVAILABLE = frozenset(
     {
         DEVICE_MISSING,

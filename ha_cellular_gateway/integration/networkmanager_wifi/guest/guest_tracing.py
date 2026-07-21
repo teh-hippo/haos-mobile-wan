@@ -1,5 +1,3 @@
-"""Command tracing, guest lab config, and nmcli profile helpers."""
-
 from __future__ import annotations
 
 import os

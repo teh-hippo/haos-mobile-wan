@@ -1,5 +1,3 @@
-"""Configuration and GatewayEngine construction fixtures."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,11 +13,10 @@ if TYPE_CHECKING:
 
 
 def build_engine(config: GatewayConfig, **kwargs: object) -> "GatewayEngine":
-    """Construct a GatewayEngine with an in-memory Wi-Fi metadata store."""
     from rootfs.app.gateway import GatewayEngine
 
     kwargs.setdefault("wifi_metadata", FakeWifiProfileMetadata())
-    return GatewayEngine(config, **kwargs)  # type: ignore[arg-type]
+    return GatewayEngine(config, **kwargs)
 
 
 def make_config(**overrides: object) -> GatewayConfig:

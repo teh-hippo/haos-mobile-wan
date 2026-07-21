@@ -1,5 +1,3 @@
-"""Wi-Fi custody displacement, DHCP lease, and full lab cleanup scenario."""
-
 from __future__ import annotations
 
 import subprocess
@@ -40,9 +38,6 @@ from live_tracing import (
 
 
 def test_custody_dhcp_and_cleanup(run: TracingRun) -> None:
-    # Install the foreign profile before the device is realised so NM's one-time
-    # gate is satisfied and no generated default is created; NM then
-    # auto-activates it (autoconnect yes) when the carrier-up veth appears.
     foreign = NmProfile(
         run,
         veth_spec(FOREIGN_UUID, "nm-lab-foreign", autoconnect="yes"),

@@ -23,13 +23,10 @@ METADATA_UNAVAILABLE = "NetworkManager profile metadata is unavailable"
 
 
 def system_bus_address() -> str:
-    """Prefer the lab's private bus address and fall back to the HAOS socket."""
     return os.environ.get("DBUS_SYSTEM_BUS_ADDRESS") or HAOS_SYSTEM_BUS
 
 
 class WifiProfileMetadata(Protocol):
-    """Read, write and clear ``user.data`` metadata on the app Wi-Fi profile."""
-
     def read(self, key: str) -> str | None: ...
 
     def write(self, key: str, value: str) -> None: ...
@@ -38,21 +35,12 @@ class WifiProfileMetadata(Protocol):
 
 
 def _dbus() -> Any:
-    import dbus  # imported lazily so unit tests and py_compile need no bindings
+    import dbus
 
     return dbus
 
 
 class DbusWifiProfileMetadata:
-    """NetworkManager D-Bus metadata store bound to one fixed profile UUID.
-
-    Alpine's nmcli does not expose the ``user`` setting, so the marker is read
-    and written through ``Settings.Connection`` directly. ``Update`` preserves
-    the connection's omitted secrets as long as no existing setting group is
-    removed, so the ``user`` group is only ever rewritten in place. The Wi-Fi
-    PSK and every other setting survive a marker change and are never read back.
-    """
-
     def __init__(
         self,
         uuid: str,
@@ -119,10 +107,6 @@ class DbusWifiProfileMetadata:
     def _store_user_data(
         settings: Any, user: dict[str, Any], data: dict[str, str]
     ) -> None:
-        # NetworkManager drops the connection's omitted secrets (the Wi-Fi PSK)
-        # whenever an existing setting group is removed during Update. The user
-        # group is therefore always rewritten in place, with empty data when the
-        # marker is cleared, so the PSK survives without ever being read back.
         dbus = _dbus()
         user[USER_DATA_PROPERTY] = dbus.Dictionary(data, signature="ss")
         settings[USER_SETTING] = dbus.Dictionary(user, signature="sv")
@@ -140,9 +124,6 @@ class DbusWifiProfileMetadata:
                 self.uuid, dbus_interface=NM_SETTINGS_INTERFACE
             )
         except dbus.exceptions.DBusException as error:
-            # Only a genuinely absent profile is "missing". Every other D-Bus
-            # error (bus unavailable, permission, restart) is re-raised so the
-            # caller converts it to METADATA_UNAVAILABLE rather than masking it.
             if error.get_dbus_name() != INVALID_CONNECTION_ERROR:
                 raise
             if missing_ok:

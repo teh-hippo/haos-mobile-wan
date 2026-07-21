@@ -1,5 +1,3 @@
-"""Dynamic status issue matching rules."""
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -145,7 +143,6 @@ ERROR_RULES: tuple[Rule, ...] = (
 
 
 def issue_from_rules(error: str) -> tuple[str, str | None, str] | None:
-    """Return (issue_id, translation_key, message) for the first matching rule."""
     for matches, issue_id, key, message in ERROR_RULES:
         if matches(error):
             return issue_id, key, message or error

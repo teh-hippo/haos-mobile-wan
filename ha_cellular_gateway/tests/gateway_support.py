@@ -10,12 +10,6 @@ from test_support.runner import FakeRunner
 
 
 class GatewayTestCase(unittest.TestCase):
-    """Shared fixture and engine-building helpers for GatewayEngine tests.
-
-    Individual test modules should add domain-specific helpers locally rather
-    than growing this base class.
-    """
-
     def setUp(self) -> None:
         self.directory = tempfile.TemporaryDirectory()
         self.state_path = Path(self.directory.name) / "state.json"
@@ -32,7 +26,7 @@ class GatewayTestCase(unittest.TestCase):
     def tearDown(self) -> None:
         self.directory.cleanup()
 
-    def _restart_engine(self) -> GatewayEngine:
+    def _restart_waiting_engine(self) -> GatewayEngine:
         values = sysctl_values()
         restarted = build_engine(
             make_config(),
@@ -41,8 +35,6 @@ class GatewayTestCase(unittest.TestCase):
             state_path=self.state_path,
         )
         restarted.safety.find_downstream = lambda *_a, **_k: "enx001122334455"
-        # Stay in the running-but-waiting state so the data plane is not applied
-        # and only the host-protection guard behaviour is exercised.
         restarted.safety.errors = lambda *args, **kwargs: [
             "Upstream interface is unavailable"
         ]

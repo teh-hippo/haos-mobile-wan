@@ -1,5 +1,3 @@
-"""USB/iPhone (``idevice_id``/``idevicepair``) command state."""
-
 from __future__ import annotations
 
 from .process import Result

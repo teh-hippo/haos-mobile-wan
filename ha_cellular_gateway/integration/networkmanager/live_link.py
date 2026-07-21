@@ -1,5 +1,3 @@
-"""Veth and dnsmasq lifecycle for realised-device scenarios."""
-
 from __future__ import annotations
 
 import os
@@ -28,27 +26,23 @@ def untrack_process(proc: "subprocess.Popen[bytes]") -> None:
 
 
 def stop_dnsmasq(proc: "subprocess.Popen[bytes]") -> None:
-    """Terminate a tracked dnsmasq peer and stop tracking it for teardown."""
     untrack_process(proc)
     _terminate(proc)
 
 
-def realise_link(run: TracingRun) -> "subprocess.Popen[bytes]":
-    """Create the carrier-up veth and DHCP peer, then wait for NM to see it.
+def _reset_dnsmasq_lease_file() -> str:
+    lease_file = os.path.join(HARNESS_DIR, "dnsmasq.leases")
+    if os.path.exists(lease_file):
+        os.remove(lease_file)
+    return lease_file
 
-    NetworkManager is already running, so realising the link here exercises the
-    real one-time have_connection_for_device gate exactly as HAOS does.
-    """
+
+def realise_link(run: TracingRun) -> "subprocess.Popen[bytes]":
     run("ip", "link", "add", DEVICE, "type", "veth", "peer", "name", PHONE)
     run("ip", "address", "add", "192.0.2.1/24", "dev", PHONE)
     run("ip", "link", "set", PHONE, "up")
     run("ip", "link", "set", DEVICE, "up")
-    # Each realisation gets a fresh single-address pool. Every veth is created
-    # with a new MAC, so a lease database carried over from a prior scenario
-    # would leave the only address bound to a stale client and starve DHCP.
-    lease_file = os.path.join(HARNESS_DIR, "dnsmasq.leases")
-    if os.path.exists(lease_file):
-        os.remove(lease_file)
+    lease_file = _reset_dnsmasq_lease_file()
     with open(os.path.join(HARNESS_DIR, "dnsmasq.log"), "ab") as log:
         proc = subprocess.Popen(
             [
@@ -87,7 +81,6 @@ def destroy_link(run: TracingRun, proc: "subprocess.Popen[bytes] | None") -> Non
 
 
 def drop_generated_connections(run: TracingRun) -> None:
-    """Remove any NetworkManager-generated connection so cleanup stays exact."""
     run("nmcli", "-w", "5", "device", "disconnect", DEVICE, check=False)
     listing = (
         run(

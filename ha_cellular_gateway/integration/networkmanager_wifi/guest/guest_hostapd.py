@@ -1,5 +1,3 @@
-"""Hostapd process control and Wi-Fi association/foreign-profile helpers."""
-
 from __future__ import annotations
 
 import os

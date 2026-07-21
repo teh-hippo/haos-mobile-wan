@@ -20,7 +20,7 @@ class GatewayCleanupHostProtectionTests(GatewayTestCase):
         engine = self._prepare_active_engine()
         engine.apply()
 
-        restarted = self._restart_engine()
+        restarted = self._restart_waiting_engine()
         install_realistic_firewall_state(
             restarted.runner,
             restarted.firewall,
@@ -178,7 +178,7 @@ class GatewayCleanupHostProtectionTests(GatewayTestCase):
         engine = self._prepare_active_engine()
         engine.apply()
 
-        restarted = self._restart_engine()
+        restarted = self._restart_waiting_engine()
         install_realistic_firewall_state(
             restarted.runner,
             restarted.firewall,

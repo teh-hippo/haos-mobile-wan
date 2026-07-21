@@ -1,5 +1,3 @@
-"""Wi-Fi marker secret-preservation scenario."""
-
 from __future__ import annotations
 
 import subprocess
@@ -7,12 +5,16 @@ import subprocess
 from app.nm_metadata import DbusWifiProfileMetadata
 from app.wifi_custody import MARKER_KEY
 from live_constants import LAB_MARKER_VALUE, SYNTHETIC_PSK, WIFI_UUID
-from live_dbus import get_settings, profile_exists, read_psk, without_user_setting
+from live_dbus import (
+    get_settings,
+    profile_exists,
+    read_psk_without_logging,
+    without_user_setting,
+)
 from live_tracing import TracingRun, require
 
 
 def test_wifi_marker_preserves_secret(run: TracingRun) -> None:
-    """A Wi-Fi profile's PSK and every other setting survive marker changes."""
     try:
         created = run(
             "nmcli",
@@ -42,8 +44,7 @@ def test_wifi_marker_preserves_secret(run: TracingRun) -> None:
         created.returncode == 0,
         "synthetic Wi-Fi profile creation failed",
     )
-    secret_before = read_psk(run, WIFI_UUID)
-    # Compare exactly, but never put either value in the failure message.
+    secret_before = read_psk_without_logging(run, WIFI_UUID)
     require(secret_before == SYNTHETIC_PSK, "synthetic PSK was not stored")
     settings_before = get_settings(WIFI_UUID)
     require(
@@ -58,7 +59,7 @@ def test_wifi_marker_preserves_secret(run: TracingRun) -> None:
         "marker did not persist through the production D-Bus helper",
     )
     require(
-        read_psk(run, WIFI_UUID) == secret_before,
+        read_psk_without_logging(run, WIFI_UUID) == secret_before,
         "writing the marker altered the Wi-Fi PSK",
     )
     settings_marked = get_settings(WIFI_UUID)
@@ -75,7 +76,7 @@ def test_wifi_marker_preserves_secret(run: TracingRun) -> None:
     metadata.clear(MARKER_KEY)
     require(metadata.read(MARKER_KEY) is None, "marker was not cleared")
     require(
-        read_psk(run, WIFI_UUID) == secret_before,
+        read_psk_without_logging(run, WIFI_UUID) == secret_before,
         "clearing the marker altered the Wi-Fi PSK",
     )
     settings_cleared = get_settings(WIFI_UUID)

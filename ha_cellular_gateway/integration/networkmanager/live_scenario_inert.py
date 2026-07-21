@@ -1,11 +1,3 @@
-"""Inert-creation and generated-default safety scenarios.
-
-Paired controls (negative leak control, positive inert control) run through
-NetworkManager's real one-time have_connection_for_device realisation gate,
-plus the honest safety cases for scenarios the production inert-create fix
-does not cover.
-"""
-
 from __future__ import annotations
 
 import time
@@ -30,14 +22,6 @@ from live_tracing import TracingRun, require, wait_for
 
 
 def test_inert_creation_controls(run: TracingRun) -> None:
-    """Paired controls run through NetworkManager's real realisation gate.
-
-    Each control installs its profile before the carrier-up veth exists, so the
-    one-time have_connection_for_device gate behaves as it does on HAOS.
-    """
-    # Negative control (mandatory, non-vacuous): an autoconnectable profile with
-    # no route isolation is present at realisation, so NM auto-activates it and
-    # leaks a default into the main table.
     run(
         "nmcli",
         "connection",
@@ -76,8 +60,6 @@ def test_inert_creation_controls(run: TracingRun) -> None:
         run("nmcli", "connection", "delete", "uuid", LEAK_UUID, check=False)
     require(not profile_exists(run, LEAK_UUID), "leak control profile remains")
 
-    # Positive control: the production inert profile is present at realisation,
-    # so NM neither generates a default nor activates it.
     profile = NmProfile(run, veth_spec(INERT_UUID, "nm-lab-inert", autoconnect="no"))
     profile.create()
     require(profile.inspect().state == "exact", "inert profile is not exact")
@@ -96,9 +78,6 @@ def test_inert_creation_controls(run: TracingRun) -> None:
         )
         _activate_inert(run, profile)
 
-        # Same-link delete/recreate without global no-auto-default masking: the
-        # realisation gate already passed with a matching profile, so churning
-        # the profile over the still-realised device wires no default.
         profile.deactivate()
         profile.delete()
         wait_for(
@@ -129,14 +108,6 @@ def test_inert_creation_controls(run: TracingRun) -> None:
 
 
 def test_generated_default_safety(run: TracingRun) -> None:
-    """Honest safety cases for scenarios the production fix does not cover.
-
-    When a device is realised with no matching profile, NetworkManager may
-    generate a default wired connection and wire a default into the main table.
-    The production inert-create fix has no bearing on this; the app's
-    kernel-truth main-table safety must still detect it fail-closed.
-    """
-    # Profile-absent first realisation.
     proc = realise_link(run)
     try:
         time.sleep(3)
@@ -145,7 +116,6 @@ def test_generated_default_safety(run: TracingRun) -> None:
         drop_generated_connections(run)
         destroy_link(run, proc)
 
-    # Link re-realisation during a profile gap.
     proc = realise_link(run)
     try:
         time.sleep(3)
@@ -158,8 +128,6 @@ def test_generated_default_safety(run: TracingRun) -> None:
 def _assert_generated_default_is_caught(run: TracingRun, label: str) -> None:
     generated = bool(active_uuid(run)) and bool(device_ipv4(run))
     if not generated:
-        # This NetworkManager build did not auto-generate a default for the veth
-        # device; make no claim that the production fix prevents the scenario.
         return
     require(
         main_default_present(run, DEVICE),

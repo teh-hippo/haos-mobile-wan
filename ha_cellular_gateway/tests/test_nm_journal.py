@@ -1,5 +1,3 @@
-"""Behavioural tests for :mod:`rootfs.app.nm_journal`."""
-
 from __future__ import annotations
 
 import unittest
@@ -48,9 +46,6 @@ class LoadTests(unittest.TestCase):
         self.assertIsNot(self.journal.owned["iphone_usb"], source_entry)
 
     def test_new_format_owned_not_a_dict_is_invalid(self) -> None:
-        # A string "owned" value would satisfy the legacy flat-map shape (all
-        # keys and values being strings), so use a non-string value to force
-        # evaluation past that heuristic and into the new-format validation.
         result = self.journal.load({"phase": "active", "owned": ["nope"]})
 
         self.assertEqual(result, INVALID_MESSAGE)

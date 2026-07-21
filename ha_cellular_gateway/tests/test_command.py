@@ -1,5 +1,3 @@
-"""Behavioural tests for :mod:`rootfs.app.command`."""
-
 from __future__ import annotations
 
 import subprocess

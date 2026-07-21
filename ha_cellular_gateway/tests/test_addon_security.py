@@ -5,7 +5,7 @@ from pathlib import Path
 
 try:
     import yaml
-except ImportError:  # pragma: no cover - exercised in CI
+except ImportError:
     yaml = None
 
 

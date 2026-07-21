@@ -1,5 +1,3 @@
-"""Tracing and assertion helpers shared by live scenarios."""
-
 from __future__ import annotations
 
 import subprocess
@@ -27,8 +25,6 @@ class TracingRun:
 
 
 class TracingMetadata:
-    """Production D-Bus metadata store that records mutation order in the trace."""
-
     def __init__(self, uuid: str, events: list[tuple[str, tuple[str, ...]]]) -> None:
         self.store = DbusWifiProfileMetadata(uuid)
         self.events = events

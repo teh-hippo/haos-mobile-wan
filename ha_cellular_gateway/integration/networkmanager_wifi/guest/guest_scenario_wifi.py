@@ -1,5 +1,3 @@
-"""Fixed Wi-Fi custody, wrong-PSK rejection, and target-loss recovery scenarios."""
-
 from __future__ import annotations
 
 import os

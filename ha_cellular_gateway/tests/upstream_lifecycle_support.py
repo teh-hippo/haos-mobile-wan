@@ -21,8 +21,6 @@ def genuine_profile() -> dict[str, str]:
 
 
 class UpstreamLifecycleTestCase(unittest.TestCase):
-    """Shared engine-building helpers for UpstreamLifecycle tests."""
-
     def setUp(self) -> None:
         self.directory = tempfile.TemporaryDirectory()
         self.state_path = Path(self.directory.name) / "state.json"

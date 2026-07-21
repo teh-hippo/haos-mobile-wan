@@ -213,7 +213,6 @@ elif [ "$setup_status" -ne 0 ]; then
   exit "$setup_status"
 fi
 
-# LAB_EXPECT is restricted to the two literals validated above.
 # shellcheck disable=SC2029
 ssh "${ssh_options[@]}" lab@127.0.0.1 \
   "sudo env LAB_EXPECT=${LAB_EXPECT} /home/lab/haos-mobile-wan/ha_cellular_gateway/integration/networkmanager_wifi/guest/run-tests.sh"

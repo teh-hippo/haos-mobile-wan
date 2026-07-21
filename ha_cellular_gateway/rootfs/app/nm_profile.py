@@ -10,9 +10,6 @@ from .errors import GatewayError
 
 ACTIVATION_COOLDOWN_SECONDS = 30
 
-# Enforced on the original `nmcli connection add` argv for every app profile so
-# NetworkManager cannot auto-activate before exact settings (route isolation in
-# particular) are applied. Central inert-creation guard for USB and Wi-Fi.
 INERT_CREATE_SETTINGS: tuple[tuple[str, str], ...] = (
     ("connection.autoconnect", "no"),
     ("connection.autoconnect-retries", "0"),
@@ -20,7 +17,6 @@ INERT_CREATE_SETTINGS: tuple[tuple[str, str], ...] = (
 
 
 def inert_create_args(create_args: tuple[str, ...]) -> tuple[str, ...]:
-    """Return the add argv with the inert settings enforced without duplicates."""
     inert_keys = {key for key, _ in INERT_CREATE_SETTINGS}
     kept: list[str] = []
     for key, value in zip(create_args[::2], create_args[1::2]):

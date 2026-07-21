@@ -1,11 +1,3 @@
-"""Value-template rendering and friendly-label mapping for discovery entities.
-
-Jinja2 and Home Assistant are optional test-time dependencies, so the
-rendering helpers and availability flags stay local to this module rather
-than in shared support, matching how discovery templates are only ever
-exercised here.
-"""
-
 from __future__ import annotations
 
 import asyncio

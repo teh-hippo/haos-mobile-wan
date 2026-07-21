@@ -1,9 +1,3 @@
-"""Behavioural tests for :mod:`rootfs.app.gateway_probe`.
-
-``probe_upstream`` only depends on ``engine._run``, so it is exercised here
-against a minimal stand-in rather than a full ``GatewayEngine``.
-"""
-
 from __future__ import annotations
 
 import subprocess

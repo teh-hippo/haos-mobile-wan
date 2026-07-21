@@ -1,12 +1,3 @@
-"""Entry point for the real-NetworkManager integration lab.
-
-Runs each scenario module in the exact order production behaviour must hold:
-a real-nmcli sanity check, then production profile/inventory, inert-creation
-controls, generated-default safety, Wi-Fi custody/DHCP with full cleanup, and
-Wi-Fi metadata secret preservation. Every realised link and dnsmasq peer is
-torn down on any exit path via ``teardown_active_links``.
-"""
-
 from __future__ import annotations
 
 from app.command import CommandRunner

@@ -1,13 +1,3 @@
-"""NetworkManager profile, device, and DHCP state for the fake command runner.
-
-Models the subset of ``nmcli`` behaviour the app depends on: connection
-profiles, device activation/state, DHCP auto-activation and lease
-install/teardown, and Wi-Fi radio/scan state. Activating a profile or
-installing a DHCP lease also updates interface addressing and the main
-routing table, so this state composes a ``RouteInterfaceState`` rather than
-duplicating that bookkeeping.
-"""
-
 from __future__ import annotations
 
 from ipaddress import ip_interface
@@ -24,16 +14,8 @@ class NetworkManagerState:
         self.nm_active: dict[str, str] = {}
         self.nm_routes: dict[int, list[dict[str, object]]] = {}
         self.nm_auto_activate = True
-        # Interfaces that model a carrier-up device with a DHCP server ready to
-        # lease, keyed to the offered {address, prefix, gateway}. A NetworkManager
-        # connection added without connection.autoconnect=no auto-activates onto a
-        # matching device and installs its DHCP routes, reproducing the real leak.
         self.nm_dhcp: dict[str, dict[str, object]] = {}
-        # Interface an ethernet profile added with `ifname *` binds to, mirroring
-        # the iPhone ipheth device that has no stable interface name.
         self.nm_wildcard_bind: str | None = None
-        # DHCP leases the fake installed per profile uuid, so deactivate/delete
-        # tears the lease and its routes down exactly as NetworkManager does.
         self.nm_dhcp_leases: dict[str, dict[str, object]] = {}
         self.nm_delete_fail = False
         self.nm_auth_failure = False
@@ -251,7 +233,6 @@ class NetworkManagerState:
         return Result()
 
     def _autoactivate(self, uuid: str) -> None:
-        """Model NetworkManager auto-activating an autoconnectable add."""
         if not self.nm_auto_activate:
             return
         profile = self.nm_profiles[uuid]
@@ -266,11 +247,6 @@ class NetworkManagerState:
         interface: str,
         offer: dict[str, object],
     ) -> None:
-        """Assign a DHCP lease and install its routes into the profile's table.
-
-        An unset ipv4.route-table lands the mobile default in the main table,
-        exactly as NetworkManager does before route isolation is applied.
-        """
         profile = self.nm_profiles[uuid]
         address = str(offer["address"])
         prefix = int(str(offer["prefix"]))
@@ -303,7 +279,6 @@ class NetworkManagerState:
         }
 
     def _teardown_lease(self, uuid: str) -> None:
-        """Tear down a DHCP lease and its routes as NetworkManager does."""
         lease = self.nm_dhcp_leases.pop(uuid, None)
         if lease is None:
             return

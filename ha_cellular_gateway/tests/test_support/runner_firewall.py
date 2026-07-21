@@ -1,10 +1,3 @@
-"""Firewall (iptables/ip6tables) command state for the fake command runner.
-
-Owns the chain listings (``-S`` output), synthetic rule-existence checks
-(``-C``), and the chain mutation commands (``-N``/``-F``/``-X``/``-A``/``-I``/
-``-D``) that the app's ``Netfilter`` helper issues.
-"""
-
 from __future__ import annotations
 
 import shlex

@@ -1,5 +1,3 @@
-"""Fixed identifiers and paths shared across the NetworkManager lab scenarios."""
-
 from __future__ import annotations
 
 from app.nm_profile_specs import USB_PROFILE_UUID
@@ -24,6 +22,5 @@ LEASE_ADDRESS = "192.0.2.100/24"
 LEASE_GATEWAY = "192.0.2.1"
 HARNESS_DIR = "/run/networkmanager-integration"
 
-# Synthetic lab-only secret. It is never printed and is not a real user's PSK.
 SYNTHETIC_PSK = "lab-synthetic-psk-01"
 LAB_MARKER_VALUE = "02:00:00:00:00:aa|1|"

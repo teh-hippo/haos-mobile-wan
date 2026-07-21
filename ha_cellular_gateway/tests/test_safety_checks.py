@@ -1,12 +1,3 @@
-"""Direct behavioural tests for the safety-check phase functions in
-:mod:`rootfs.app.safety_checks`.
-
-Each phase function is exercised directly against a real ``SafetyInspector``
-(built through the shared engine fixtures) with individual collaborator
-methods monkeypatched per test, matching the codebase convention of building
-real objects and stubbing only the bound method under scrutiny.
-"""
-
 from __future__ import annotations
 
 import tempfile

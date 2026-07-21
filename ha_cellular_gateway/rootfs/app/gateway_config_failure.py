@@ -7,7 +7,6 @@ if TYPE_CHECKING:
 
 
 def handle_config_error(engine: GatewayEngine) -> None:
-    """Record the fixed configuration error as the current reconcile outcome."""
     config_error = engine.lifecycle_state.config_error
     assert config_error is not None
     with engine.lock:

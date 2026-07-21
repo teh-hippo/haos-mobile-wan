@@ -1,5 +1,3 @@
-"""Behavioural tests for :mod:`rootfs.app.api_token`."""
-
 from __future__ import annotations
 
 import os

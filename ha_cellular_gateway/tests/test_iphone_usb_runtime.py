@@ -1,8 +1,3 @@
-"""Direct unit tests for IPhoneUsbRuntime's low-level process, pairing, and
-USB-detection helpers (independent of the higher-level IPhoneUsbUpstream
-orchestration already covered by test_iphone_usb_pairing.py).
-"""
-
 from __future__ import annotations
 
 import time
@@ -11,7 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from rootfs.app.errors import GatewayError
-from rootfs.app.upstream_iphone_runtime import IPhoneUsbRuntime
+from rootfs.app.upstream_iphone_runtime import IPhoneUsbRuntime, PairingResult
 from test_support.process import FakeProcess, Result
 
 
@@ -79,20 +74,22 @@ class IPhoneUsbRuntimeTests(unittest.TestCase):
             return Result(returncode=1)
 
         runtime = self._runtime(run=run)
-        sentinel = ("phone-udid", 1.0, None)
-        runtime.pairing_retry = sentinel  # type: ignore[assignment]
+        sentinel = (
+            "phone-udid",
+            1.0,
+            PairingResult(False, "pairing_failed"),
+        )
+        runtime.pairing_retry = sentinel
 
         self.assertFalse(runtime.validate_pairing("phone-udid"))
         self.assertEqual(runtime.pairing_retry, sentinel)
 
     def test_pair_device_returns_paired_result_on_success(self) -> None:
         runtime = self._runtime(run=lambda *a, **k: Result(returncode=0))
-        # A stale retry entry (well past the cooldown) must not short-circuit
-        # a fresh pairing attempt, and must be cleared once pairing succeeds.
-        runtime.pairing_retry = (  # type: ignore[assignment]
+        runtime.pairing_retry = (
             "phone-udid",
             time.monotonic() - 1000.0,
-            None,
+            PairingResult(False, "pairing_failed"),
         )
 
         result = runtime.pair_device("phone-udid")
@@ -134,8 +131,6 @@ class IPhoneUsbRuntimeTests(unittest.TestCase):
         self,
     ) -> None:
         sys_usb_root = self.root / "sys_usb"
-        # A device directory whose idVendor cannot be read as text (a
-        # directory rather than a file) must be skipped, not fail the scan.
         (sys_usb_root / "1-1" / "idVendor").mkdir(parents=True)
         runtime = self._runtime(sys_usb_root=sys_usb_root)
 

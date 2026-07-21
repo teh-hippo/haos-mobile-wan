@@ -40,9 +40,6 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-# Capture the full build and run output while preserving the real exit status
-# of "docker compose up". errexit is relaxed only around the pipeline so the
-# status file is always written even when the lab fails.
 set +e
 {
     docker compose -f "$COMPOSE_FILE" up --build --abort-on-container-exit \

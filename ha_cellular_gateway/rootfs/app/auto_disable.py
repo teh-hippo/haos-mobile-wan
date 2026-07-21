@@ -16,16 +16,6 @@ RETRY_SECONDS = 60
 
 
 class AutoDisable:
-    """Stop the add-on when it never reaches an applied gateway in time.
-
-    While the add-on runs without a successfully applied data plane, a fixed
-    deadline counts down. Once the gateway applies, the deadline clears. On
-    expiry the controller latches an in-memory stop-pending state, releases
-    every owned network resource, then asks Supervisor to stop the add-on.
-    Nothing is persisted, so an explicit later manual start is a fresh
-    session with a fresh timer.
-    """
-
     def __init__(
         self,
         config: GatewayConfig,

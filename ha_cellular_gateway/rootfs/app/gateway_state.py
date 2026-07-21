@@ -8,8 +8,6 @@ from .upstream_models import ResolvedUpstream
 
 @dataclass
 class LifecycleState:
-    """Startup, persisted-ownership, and outcome state for the reconcile loop."""
-
     config_error: str | None = None
     state_load_error: str | None = None
     management_interface: str | None = None
@@ -24,8 +22,6 @@ class LifecycleState:
 
 @dataclass
 class SelectionState:
-    """The most recently resolved downstream/upstream connection pairing."""
-
     downstream: str | None = None
     upstream: ResolvedUpstream | None = None
     active_connection: str | None = None
@@ -41,8 +37,6 @@ class SelectionState:
 
 @dataclass
 class HealthState:
-    """Upstream reachability probe results and their invalidation generation."""
-
     generation: int = 0
     upstream_healthy: bool = False
     public_ip: str | None = None

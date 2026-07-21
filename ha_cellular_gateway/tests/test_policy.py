@@ -166,8 +166,6 @@ class PolicyRoutingTests(unittest.TestCase):
             argv = tuple(args)
             counts[argv] = counts.get(argv, 0) + 1
             if argv[:3] in (("ip", "rule", "del"), ("ip", "route", "del")):
-                # Let each delete "succeed" exactly twice before the kernel
-                # reports there is nothing left to remove.
                 return Result(returncode=0 if counts[argv] <= 2 else 1)
             return Result()
 
@@ -188,7 +186,6 @@ class PolicyRoutingTests(unittest.TestCase):
         }
         self.assertTrue(rule_deletes)
         self.assertTrue(route_deletes)
-        # 2 successful deletes followed by the final "nothing left" failure.
         self.assertTrue(all(count == 3 for count in rule_deletes.values()))
         self.assertTrue(all(count == 3 for count in route_deletes.values()))
 

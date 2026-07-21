@@ -1,5 +1,3 @@
-"""Helper-process (usbmuxd/nmcli) and cleanup tests for IPhoneUsbUpstream."""
-
 from __future__ import annotations
 
 import unittest

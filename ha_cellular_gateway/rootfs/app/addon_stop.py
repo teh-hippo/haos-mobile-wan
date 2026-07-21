@@ -22,14 +22,6 @@ def request_self_stop(
     token: str | None = None,
     connection_factory: ConnectionFactory | None = None,
 ) -> str | None:
-    """Ask Supervisor to stop this add-on, fire-and-forget.
-
-    Supervisor terminates the container before the HTTP response can be
-    written, so this sends ``POST /addons/self/stop`` and closes the
-    connection without reading a response. A missing response is not a
-    failure. Only fast connection or send errors are returned so the caller
-    can retry on a rate-limited cadence.
-    """
     supervisor_token = (
         token if token is not None else os.environ.get("SUPERVISOR_TOKEN")
     )

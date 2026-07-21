@@ -1,1 +1,0 @@
-"""HAOS Mobile WAN app."""

@@ -1,5 +1,3 @@
-"""Discovery payload schema and state payload field filtering."""
-
 from __future__ import annotations
 
 import unittest
@@ -27,8 +25,6 @@ EXPECTED_COMPONENTS = {
     "dnsmasq_running",
 }
 
-# Retired entities are still published as empty device-discovery components so
-# Home Assistant removes any retained entity from an earlier add-on version.
 REMOVED_COMPONENTS = {"enabled"}
 
 

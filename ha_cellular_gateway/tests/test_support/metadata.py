@@ -1,11 +1,7 @@
-"""In-memory NetworkManager Wi-Fi profile metadata double."""
-
 from __future__ import annotations
 
 
 class FakeWifiProfileMetadata:
-    """In-memory stand-in for the app Wi-Fi profile's NetworkManager metadata."""
-
     def __init__(self) -> None:
         self.data: dict[str, str] = {}
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+- Remove redundant comments and docstrings across the gateway runtime and
+  integration support so the implementation remains self-documenting.
+- Tighten Wi-Fi custody test helper typing without changing runtime behaviour.
+
 ## 1.0.0
 
 - Promote Mobile WAN to stable after live HAOS acceptance of iPhone USB,

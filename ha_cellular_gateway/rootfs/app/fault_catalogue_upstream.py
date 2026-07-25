@@ -4,133 +4,176 @@ from __future__ import annotations
 
 from .faults import FaultSpec
 
-UPSTREAM_FAULTS: tuple[FaultSpec, ...] = (
-    FaultSpec(
-        id="upstream_usb_access_unavailable",
-        translation_key="upstream_configuration",
-        summary="USB device access is unavailable; enable the app USB permission",
-        exact=("USB device access is unavailable; enable the app usb permission",),
-    ),
-    FaultSpec(
-        id="wifi_management_overlap",
-        translation_key="hotspot_configuration",
-        summary="The Wi-Fi upstream is the management interface",
-        exact=("Wi-Fi upstream is the management interface",),
-    ),
-    FaultSpec(
-        id="wifi_custody_management",
-        translation_key="hotspot_configuration",
-        summary="The dedicated Wi-Fi adapter is the management interface",
-        exact=("The dedicated Wi-Fi adapter is the management interface",),
-    ),
-    FaultSpec(
-        id="wifi_device_missing",
-        translation_key="hotspot_configuration",
-        summary="The dedicated Wi-Fi adapter is not present",
-        exact=("The dedicated Wi-Fi adapter is not present",),
-    ),
-    FaultSpec(
-        id="wifi_device_unmanaged",
-        translation_key="hotspot_configuration",
-        summary="NetworkManager does not manage the dedicated Wi-Fi adapter",
-        exact=("NetworkManager does not manage the dedicated Wi-Fi adapter",),
-    ),
-    FaultSpec(
-        id="wifi_radio_off",
-        translation_key="hotspot_configuration",
-        summary="The Wi-Fi radio is turned off",
-        exact=("The Wi-Fi radio is turned off",),
-    ),
-    FaultSpec(
-        id="wifi_radio_blocked",
-        translation_key="hotspot_configuration",
-        summary="The Wi-Fi radio is hardware-blocked",
-        exact=("The Wi-Fi radio is hardware-blocked",),
-    ),
-    FaultSpec(
-        id="wifi_radio_inspection_unavailable",
-        summary="NetworkManager Wi-Fi radio inspection is unavailable",
-        exact=("NetworkManager Wi-Fi radio inspection is unavailable",),
-    ),
-    FaultSpec(
-        id="wifi_displace_failed",
-        translation_key="hotspot_configuration",
-        summary="A foreign Wi-Fi connection still controls the dedicated adapter",
-        exact=("A foreign Wi-Fi connection still controls the dedicated adapter",),
-    ),
-    FaultSpec(
-        id="lineage_wifi_delete_failed",
-        translation_key="hotspot_configuration",
-        summary="A legacy Supervisor Wi-Fi profile could not be removed",
-        exact=("A legacy Supervisor Wi-Fi profile could not be removed",),
-    ),
-    FaultSpec(
-        id="hotspot_auth_failed",
-        translation_key="hotspot_configuration",
-        summary="The hotspot rejected the configured Wi-Fi password",
-        exact=("The hotspot rejected the configured Wi-Fi password",),
-    ),
-    FaultSpec(
-        id="hotspot_target_absent",
-        summary="The hotspot network is not currently visible",
-        transient=True,
-        exact=("The hotspot network is not currently visible",),
-    ),
-    FaultSpec(
-        id="hotspot_connecting",
-        summary="Associating with the hotspot network",
-        transient=True,
-        exact=("Associating with the hotspot network",),
-    ),
-    FaultSpec(
-        id="wifi_restoration_incomplete",
-        translation_key="hotspot_configuration",
-        summary="The dedicated Wi-Fi adapter runtime state was not fully restored",
-        exact=("Wi-Fi adapter runtime restoration is incomplete",),
-    ),
-    FaultSpec(
-        id="wifi_restoration_pending",
-        summary="The dedicated Wi-Fi adapter runtime restoration is pending",
-        transient=True,
-        exact=("The marked Wi-Fi adapter runtime restoration is pending",),
-    ),
-    FaultSpec(
-        id="upstream_foreign_profile",
-        translation_key="upstream_configuration",
-        summary="A foreign NetworkManager profile can control iPhone USB",
-        exact=("iPhone USB has a foreign NetworkManager profile",),
-    ),
-    FaultSpec(
-        id="upstream_profile_drift",
-        translation_key="upstream_configuration",
-        summary="The app-owned iPhone USB profile has unexpected settings",
-        exact=("The app-owned iPhone USB profile has unexpected settings",),
-    ),
-    FaultSpec(
-        id="upstream_profile_drift",
-        translation_key="upstream_configuration",
-        summary="The app-owned generic USB profile has unexpected settings",
-        exact=("The app-owned generic USB profile has unexpected settings",),
-    ),
-    FaultSpec(
-        id="wifi_profile_drift",
-        translation_key="hotspot_configuration",
-        summary="The app-owned Wi-Fi hotspot profile has unexpected settings",
-        exact=("The app-owned Wi-Fi hotspot profile has unexpected settings",),
-    ),
-    FaultSpec(
-        id="hotspot_credentials_missing",
-        translation_key="hotspot_configuration",
-        summary="Wi-Fi hotspot credentials are not configured",
-        exact=("Wi-Fi hotspot credentials are not configured",),
-    ),
-    FaultSpec(
-        id="wifi_inspection_waiting",
-        summary="Waiting for NetworkManager Wi-Fi inspection",
-        transient=True,
-        exact=("NetworkManager Wi-Fi inspection is unavailable",),
-    ),
+UPSTREAM_USB_ACCESS_UNAVAILABLE = FaultSpec(
+    id="upstream_usb_access_unavailable",
+    translation_key="upstream_configuration",
+    summary="USB device access is unavailable; enable the app USB permission",
+    template="USB device access is unavailable; enable the app usb permission",
 )
+
+WIFI_MANAGEMENT_OVERLAP = FaultSpec(
+    id="wifi_management_overlap",
+    translation_key="hotspot_configuration",
+    summary="The Wi-Fi upstream is the management interface",
+    template="Wi-Fi upstream is the management interface",
+)
+
+WIFI_CUSTODY_MANAGEMENT = FaultSpec(
+    id="wifi_custody_management",
+    translation_key="hotspot_configuration",
+    summary="The dedicated Wi-Fi adapter is the management interface",
+    template="The dedicated Wi-Fi adapter is the management interface",
+)
+
+WIFI_DEVICE_MISSING = FaultSpec(
+    id="wifi_device_missing",
+    translation_key="hotspot_configuration",
+    summary="The dedicated Wi-Fi adapter is not present",
+    template="The dedicated Wi-Fi adapter is not present",
+)
+
+WIFI_DEVICE_UNMANAGED = FaultSpec(
+    id="wifi_device_unmanaged",
+    translation_key="hotspot_configuration",
+    summary="NetworkManager does not manage the dedicated Wi-Fi adapter",
+    template="NetworkManager does not manage the dedicated Wi-Fi adapter",
+)
+
+WIFI_RADIO_OFF = FaultSpec(
+    id="wifi_radio_off",
+    translation_key="hotspot_configuration",
+    summary="The Wi-Fi radio is turned off",
+    template="The Wi-Fi radio is turned off",
+)
+
+WIFI_RADIO_BLOCKED = FaultSpec(
+    id="wifi_radio_blocked",
+    translation_key="hotspot_configuration",
+    summary="The Wi-Fi radio is hardware-blocked",
+    template="The Wi-Fi radio is hardware-blocked",
+)
+
+WIFI_RADIO_INSPECTION_UNAVAILABLE = FaultSpec(
+    id="wifi_radio_inspection_unavailable",
+    summary="NetworkManager Wi-Fi radio inspection is unavailable",
+    template="NetworkManager Wi-Fi radio inspection is unavailable",
+)
+
+WIFI_DISPLACE_FAILED = FaultSpec(
+    id="wifi_displace_failed",
+    translation_key="hotspot_configuration",
+    summary="A foreign Wi-Fi connection still controls the dedicated adapter",
+    template="A foreign Wi-Fi connection still controls the dedicated adapter",
+)
+
+LINEAGE_WIFI_DELETE_FAILED = FaultSpec(
+    id="lineage_wifi_delete_failed",
+    translation_key="hotspot_configuration",
+    summary="A legacy Supervisor Wi-Fi profile could not be removed",
+    template="A legacy Supervisor Wi-Fi profile could not be removed",
+)
+
+HOTSPOT_AUTH_FAILED = FaultSpec(
+    id="hotspot_auth_failed",
+    translation_key="hotspot_configuration",
+    summary="The hotspot rejected the configured Wi-Fi password",
+    template="The hotspot rejected the configured Wi-Fi password",
+)
+
+HOTSPOT_TARGET_ABSENT = FaultSpec(
+    id="hotspot_target_absent",
+    summary="The hotspot network is not currently visible",
+    transient=True,
+    template="The hotspot network is not currently visible",
+)
+
+HOTSPOT_CONNECTING = FaultSpec(
+    id="hotspot_connecting",
+    summary="Associating with the hotspot network",
+    transient=True,
+    template="Associating with the hotspot network",
+)
+
+WIFI_RESTORATION_INCOMPLETE = FaultSpec(
+    id="wifi_restoration_incomplete",
+    translation_key="hotspot_configuration",
+    summary="The dedicated Wi-Fi adapter runtime state was not fully restored",
+    template="Wi-Fi adapter runtime restoration is incomplete",
+)
+
+WIFI_RESTORATION_PENDING = FaultSpec(
+    id="wifi_restoration_pending",
+    summary="The dedicated Wi-Fi adapter runtime restoration is pending",
+    transient=True,
+    template="The marked Wi-Fi adapter runtime restoration is pending",
+)
+
+UPSTREAM_FOREIGN_PROFILE = FaultSpec(
+    id="upstream_foreign_profile",
+    translation_key="upstream_configuration",
+    summary="A foreign NetworkManager profile can control iPhone USB",
+    template="iPhone USB has a foreign NetworkManager profile",
+)
+
+UPSTREAM_PROFILE_DRIFT = FaultSpec(
+    id="upstream_profile_drift",
+    translation_key="upstream_configuration",
+    summary="The app-owned iPhone USB profile has unexpected settings",
+    template="The app-owned iPhone USB profile has unexpected settings",
+)
+
+UPSTREAM_PROFILE_DRIFT_2 = FaultSpec(
+    id="upstream_profile_drift",
+    translation_key="upstream_configuration",
+    summary="The app-owned generic USB profile has unexpected settings",
+    template="The app-owned generic USB profile has unexpected settings",
+)
+
+WIFI_PROFILE_DRIFT = FaultSpec(
+    id="wifi_profile_drift",
+    translation_key="hotspot_configuration",
+    summary="The app-owned Wi-Fi hotspot profile has unexpected settings",
+    template="The app-owned Wi-Fi hotspot profile has unexpected settings",
+)
+
+HOTSPOT_CREDENTIALS_MISSING = FaultSpec(
+    id="hotspot_credentials_missing",
+    translation_key="hotspot_configuration",
+    summary="Wi-Fi hotspot credentials are not configured",
+    template="Wi-Fi hotspot credentials are not configured",
+)
+
+WIFI_INSPECTION_WAITING = FaultSpec(
+    id="wifi_inspection_waiting",
+    summary="Waiting for NetworkManager Wi-Fi inspection",
+    transient=True,
+    template="NetworkManager Wi-Fi inspection is unavailable",
+)
+
+UPSTREAM_FAULTS: tuple[FaultSpec, ...] = (
+    UPSTREAM_USB_ACCESS_UNAVAILABLE,
+    WIFI_MANAGEMENT_OVERLAP,
+    WIFI_CUSTODY_MANAGEMENT,
+    WIFI_DEVICE_MISSING,
+    WIFI_DEVICE_UNMANAGED,
+    WIFI_RADIO_OFF,
+    WIFI_RADIO_BLOCKED,
+    WIFI_RADIO_INSPECTION_UNAVAILABLE,
+    WIFI_DISPLACE_FAILED,
+    LINEAGE_WIFI_DELETE_FAILED,
+    HOTSPOT_AUTH_FAILED,
+    HOTSPOT_TARGET_ABSENT,
+    HOTSPOT_CONNECTING,
+    WIFI_RESTORATION_INCOMPLETE,
+    WIFI_RESTORATION_PENDING,
+    UPSTREAM_FOREIGN_PROFILE,
+    UPSTREAM_PROFILE_DRIFT,
+    UPSTREAM_PROFILE_DRIFT_2,
+    WIFI_PROFILE_DRIFT,
+    HOTSPOT_CREDENTIALS_MISSING,
+    WIFI_INSPECTION_WAITING,
+)
+
 
 PAIRING_FAULTS: dict[str, FaultSpec] = {
     "waiting_for_device": FaultSpec(

@@ -1,3 +1,10 @@
+"""The faults this app can report, and the identity Home Assistant needs for them.
+
+A fault is described once. The same spec renders the text the app reports and
+recognises that text again when the status is assembled, so the wording and the
+issue identity derived from it cannot drift apart.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -5,49 +12,48 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class FaultSpec:
-    """One fault the app can report, and everything Home Assistant needs for it.
-
-    A spec owns the reported text and the identity derived from it, so the two
-    cannot drift apart. ``summary`` of ``None`` means the reported text is
-    already the user-facing message.
-    """
-
     id: str
+    template: str = ""
     translation_key: str | None = None
     summary: str | None = None
     transient: bool = False
-    exact: tuple[str, ...] = ()
-    template: str | None = None
     prefixes: tuple[str, ...] = ()
     contains: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.template is not None and not self.heads:
-            raise ValueError(f"{self.id} template has no literal prefix")
+        if self.parameterised and not self.head:
+            raise ValueError(f"{self.id} has no literal text before its first value")
 
     @property
-    def heads(self) -> tuple[str, ...]:
-        heads = self.prefixes
-        if self.template is not None:
-            head = self.template.split("{", 1)[0]
-            if head:
-                heads = (head, *heads)
-        return heads
+    def parameterised(self) -> bool:
+        return "{" in self.template
+
+    @property
+    def head(self) -> str:
+        return self.template.split("{", 1)[0]
+
+    @property
+    def text(self) -> str:
+        if self.parameterised:
+            raise ValueError(f"{self.id} needs values; call render()")
+        return self.template
 
     def render(self, **values: object) -> str:
-        if self.template is None:
-            raise ValueError(f"{self.id} has no template to render")
         return self.template.format(**values)
 
     def matches(self, error: str) -> bool:
-        return (
-            error in self.exact
-            or error.startswith(self.heads)
-            or any(part in error for part in self.contains)
+        if self.template:
+            if self.parameterised:
+                if error.startswith(self.head):
+                    return True
+            elif error == self.template:
+                return True
+        return error.startswith(self.prefixes) or any(
+            part in error for part in self.contains
         )
 
-    def issue(self, error: str) -> Fault:
-        return Fault(spec=self, detail=error)
+    def issue(self, detail: str) -> Fault:
+        return Fault(spec=self, detail=detail)
 
 
 @dataclass(frozen=True)

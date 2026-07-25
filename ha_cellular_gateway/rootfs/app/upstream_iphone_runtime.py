@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .command import RunCommand, stop_process
 from .errors import GatewayError
+from .fault_catalogue_upstream import UPSTREAM_USB_ACCESS_UNAVAILABLE
 from .usb_network import interface_carrier, interfaces_by_driver
 
 
@@ -54,9 +55,7 @@ class IPhoneUsbRuntime:
             if self.which(command) is None:
                 errors.append(f"Required command is unavailable: {command}")
         if not self.usb_root.exists():
-            errors.append(
-                "USB device access is unavailable; enable the app usb permission"
-            )
+            errors.append(UPSTREAM_USB_ACCESS_UNAVAILABLE.text)
         return errors
 
     def ensure_usbmuxd(self) -> None:

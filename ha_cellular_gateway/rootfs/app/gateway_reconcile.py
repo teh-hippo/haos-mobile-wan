@@ -5,6 +5,7 @@ import time
 from typing import TYPE_CHECKING
 
 from .errors import GatewayError, SafetyError
+from .fault_catalogue_host import MANAGEMENT_INTERFACE_UNAVAILABLE
 from .gateway_cleanup import cleanup, cleanup_changed_ownership
 from .gateway_safety_evaluation import (
     evaluate_safety,
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
     from .upstream_models import ResolvedUpstream
 
 OPERATION_ERRORS = (GatewayError, OSError, subprocess.SubprocessError, ValueError)
-MANAGEMENT_ERROR = "Management interface is unavailable"
+MANAGEMENT_ERROR = MANAGEMENT_INTERFACE_UNAVAILABLE.text
 
 
 def apply(

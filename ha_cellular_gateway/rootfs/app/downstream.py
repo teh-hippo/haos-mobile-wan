@@ -7,6 +7,14 @@ from typing import TYPE_CHECKING
 
 from .command import RunCommand
 from .errors import GatewayError
+from .fault_catalogue_host import (
+    DOWNSTREAM_ADDRESS_CONFLICT,
+    DOWNSTREAM_AMBIGUOUS,
+    DOWNSTREAM_HOST_MANAGED,
+    DOWNSTREAM_INACTIVE,
+    DOWNSTREAM_MISSING,
+    DOWNSTREAM_MISSING_2,
+)
 from .management import interface_addresses
 from .nm_profile_specs import GENERIC_USB_DRIVERS
 from .usb_network import interface_driver
@@ -65,10 +73,10 @@ class DownstreamInterface:
 
     def selection_error(self, management_interface: str | None) -> str:
         if self.config.downstream_mac:
-            return "Configured downstream NIC is not present"
+            return DOWNSTREAM_MISSING.text
         if not self.candidates(management_interface):
-            return "USB Ethernet downstream is not present"
-        return "Multiple USB Ethernet adapters detected; set downstream_mac"
+            return DOWNSTREAM_MISSING_2.text
+        return DOWNSTREAM_AMBIGUOUS.text
 
     def address_errors(
         self,
@@ -80,17 +88,17 @@ class DownstreamInterface:
         desired = self.config.downstream_address
         if owned:
             if desired not in addresses:
-                return ["App-owned downstream address is unavailable"]
+                return [DOWNSTREAM_INACTIVE.text]
             if addresses != {desired}:
-                return ["Downstream interface has unexpected IPv4 addresses"]
+                return [DOWNSTREAM_ADDRESS_CONFLICT.text]
             return []
         if addresses:
-            return ["Downstream interface has host-managed IPv4 addresses"]
+            return [DOWNSTREAM_HOST_MANAGED.text]
         return []
 
     def apply(self, interface: str) -> None:
         if self.addresses(interface):
-            raise GatewayError("Downstream interface has host-managed IPv4 addresses")
+            raise GatewayError(DOWNSTREAM_HOST_MANAGED.text)
         self.run(
             "ip",
             "-4",
@@ -101,7 +109,7 @@ class DownstreamInterface:
             interface,
         )
         if self.config.downstream_address not in self.addresses(interface):
-            raise GatewayError("App-owned downstream address is unavailable")
+            raise GatewayError(DOWNSTREAM_INACTIVE.text)
 
     def cleanup(self, ownership: dict[str, object] | None) -> None:
         if not self.owns_address(ownership):

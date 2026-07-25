@@ -112,6 +112,6 @@ RULE_FAULTS: tuple[FaultSpec, ...] = (
     ),
     FaultSpec(
         id="hotspot_management_overlap",
-        exact=("Hotspot Wi-Fi interface is the management interface",),
+        template="Hotspot Wi-Fi interface is the management interface",
     ),
 )

@@ -12,6 +12,7 @@ from .config import STATE_PATH, GatewayConfig
 from .dhcp import DnsmasqService
 from .downstream import DownstreamInterface
 from .errors import GatewayError
+from .fault_catalogue_host import PERSISTENT_OWNERSHIP_STATE_INVALID
 from .firewall import Firewall
 from .gateway_cleanup import cleanup as cleanup_gateway
 from .gateway_reconcile import apply as apply_gateway
@@ -127,7 +128,7 @@ class GatewayEngine:
                 self.policy.route_args(owned_state)
             except (GatewayError, TypeError, ValueError):
                 owned_state = None
-                startup_errors.append("Persistent ownership state is invalid")
+                startup_errors.append(PERSISTENT_OWNERSHIP_STATE_INVALID.text)
         self.lifecycle_state.owned_state = owned_state
         self.lifecycle_state.state_load_error = "; ".join(startup_errors) or None
         if self.lifecycle_state.state_load_error:

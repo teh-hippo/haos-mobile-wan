@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 
 from app.const import GENERIC_USB, GENERIC_USB_WIFI_FALLBACK, WIFI_HOTSPOT
 from app.mobile_connection import MobileConnectionResolver
@@ -19,8 +20,7 @@ def generic_usb_and_fallback(run: TracingRun) -> None:
     generic.nm.profile.create()
     interface = bind_generic_usb()
     require(
-        os.path.basename(os.path.realpath(f"/sys/class/net/{interface}/device/driver"))
-        == "cdc_ether",
+        Path(f"/sys/class/net/{interface}/device/driver").resolve().name == "cdc_ether",
         "QEMU generic USB did not bind with cdc_ether",
     )
     resolved = resolve_generic(generic)

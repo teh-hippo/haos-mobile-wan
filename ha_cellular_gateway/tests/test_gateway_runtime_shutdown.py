@@ -51,12 +51,14 @@ class GatewayRuntimeShutdownTests(GatewayTestCase):
         engine.cleanup = fail_cleanup
         engine.upstream.cleanup = cleanup_upstream
 
-        with self.assertLogs(
-            "rootfs.app.gateway_runtime",
-            level="INFO",
-        ) as captured:
-            with self.assertRaisesRegex(GatewayError, "host cleanup failed"):
-                engine.stop()
+        with (
+            self.assertLogs(
+                "rootfs.app.gateway_runtime",
+                level="INFO",
+            ) as captured,
+            self.assertRaisesRegex(GatewayError, "host cleanup failed"),
+        ):
+            engine.stop()
 
         self.assertTrue(upstream_cleaned)
         self.assertIn(
@@ -70,12 +72,14 @@ class GatewayRuntimeShutdownTests(GatewayTestCase):
         engine.upstream_lifecycle.deactivate = lambda management: None
         engine.upstream_lifecycle.error = "profile deletion blocked"
 
-        with self.assertLogs(
-            "rootfs.app.gateway_runtime",
-            level="INFO",
-        ) as captured:
-            with self.assertRaisesRegex(GatewayError, "profile deletion blocked"):
-                engine.stop()
+        with (
+            self.assertLogs(
+                "rootfs.app.gateway_runtime",
+                level="INFO",
+            ) as captured,
+            self.assertRaisesRegex(GatewayError, "profile deletion blocked"),
+        ):
+            engine.stop()
 
         self.assertIn(
             "Graceful shutdown cleanup failed",
@@ -95,14 +99,16 @@ class GatewayRuntimeShutdownTests(GatewayTestCase):
         engine.upstream_lifecycle.deactivate = lambda management: None
         engine.upstream_lifecycle.error = "profile deletion blocked"
 
-        with self.assertLogs(
-            "rootfs.app.gateway_runtime",
-            level="INFO",
-        ) as captured:
-            with self.assertRaisesRegex(
+        with (
+            self.assertLogs(
+                "rootfs.app.gateway_runtime",
+                level="INFO",
+            ) as captured,
+            self.assertRaisesRegex(
                 GatewayError, "host cleanup failed; profile deletion blocked"
-            ):
-                engine.stop()
+            ),
+        ):
+            engine.stop()
 
         self.assertIn(
             "Graceful shutdown cleanup failed",

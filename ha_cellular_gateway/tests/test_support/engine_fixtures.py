@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from rootfs.app.gateway import GatewayEngine
 
 
-def build_engine(config: GatewayConfig, **kwargs: object) -> "GatewayEngine":
+def build_engine(config: GatewayConfig, **kwargs: object) -> GatewayEngine:
     from rootfs.app.gateway import GatewayEngine
 
     kwargs.setdefault("wifi_metadata", FakeWifiProfileMetadata())

@@ -19,7 +19,7 @@ INERT_CREATE_SETTINGS: tuple[tuple[str, str], ...] = (
 def inert_create_args(create_args: tuple[str, ...]) -> tuple[str, ...]:
     inert_keys = {key for key, _ in INERT_CREATE_SETTINGS}
     kept: list[str] = []
-    for key, value in zip(create_args[::2], create_args[1::2]):
+    for key, value in zip(create_args[::2], create_args[1::2], strict=False):
         if key not in inert_keys:
             kept += [key, value]
     for key, value in INERT_CREATE_SETTINGS:

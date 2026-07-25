@@ -201,9 +201,9 @@ class MainOrchestrationTests(unittest.TestCase):
             mock.patch.object(main, "MqttPublisher", return_value=publisher),
             mock.patch.object(main.signal, "signal"),
             mock.patch.object(main, "_shutdown") as shutdown,
+            self.assertRaisesRegex(RuntimeError, "socket closed"),
         ):
-            with self.assertRaisesRegex(RuntimeError, "socket closed"):
-                main.main()
+            main.main()
 
         shutdown.assert_called_once_with(engine, publisher, server, worker_thread)
 

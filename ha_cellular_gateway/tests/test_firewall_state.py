@@ -77,7 +77,7 @@ class FirewallStateTests(unittest.TestCase):
             (
                 "iptables",
                 "DOCKER-USER",
-                tuple(),
+                (),
                 tuple(
                     firewall.netfilter.jump_rule(
                         firewall.FORWARD_CHAIN, "ha-cellgw:jump"
@@ -87,7 +87,7 @@ class FirewallStateTests(unittest.TestCase):
             (
                 "iptables",
                 "INPUT",
-                tuple(),
+                (),
                 tuple(
                     firewall.netfilter.jump_rule(
                         firewall.INPUT_CHAIN,

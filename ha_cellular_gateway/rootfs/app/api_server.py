@@ -11,7 +11,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class GatewayHandler(BaseHTTPRequestHandler):
-    server: "GatewayServer"
+    server: GatewayServer
 
     def log_request(
         self,

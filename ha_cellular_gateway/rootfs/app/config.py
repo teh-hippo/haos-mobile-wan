@@ -58,7 +58,7 @@ class GatewayConfig:
     api_port: ClassVar[int] = 8099
 
     @classmethod
-    def from_path(cls, path: Path = OPTIONS_PATH) -> "GatewayConfig":
+    def from_path(cls, path: Path = OPTIONS_PATH) -> GatewayConfig:
         config = cls._from_data(cls._read_options(path))
         config.validate()
         return config
@@ -67,7 +67,7 @@ class GatewayConfig:
     def load_path(
         cls,
         path: Path = OPTIONS_PATH,
-    ) -> tuple["GatewayConfig", str | None]:
+    ) -> tuple[GatewayConfig, str | None]:
         errors: list[str] = []
         try:
             data = cls._read_options(path)
@@ -90,7 +90,7 @@ class GatewayConfig:
         return data
 
     @classmethod
-    def _from_data(cls, data: dict[str, object]) -> "GatewayConfig":
+    def _from_data(cls, data: dict[str, object]) -> GatewayConfig:
         def option(key: str) -> object:
             return data.get(key, _OPTION_DEFAULTS[key])
 

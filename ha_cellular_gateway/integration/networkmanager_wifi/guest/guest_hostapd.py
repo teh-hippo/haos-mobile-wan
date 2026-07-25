@@ -4,6 +4,7 @@ import os
 import signal
 import subprocess
 import time
+from pathlib import Path
 
 from app.networkmanager_wifi import NetworkManagerWifi
 from guest_tracing import (
@@ -79,7 +80,7 @@ def wait_until_active(wifi: NetworkManagerWifi) -> None:
 
 
 def stop_hostapd() -> None:
-    with open(os.environ["LAB_HOSTAPD_PID_FILE"], encoding="utf-8") as stream:
+    with Path(os.environ["LAB_HOSTAPD_PID_FILE"]).open(encoding="utf-8") as stream:
         pid = int(stream.read())
     os.kill(pid, signal.SIGTERM)
     wait_for(
@@ -90,10 +91,7 @@ def stop_hostapd() -> None:
 
 
 def start_hostapd() -> None:
-    try:
-        os.unlink(os.environ["LAB_HOSTAPD_PID_FILE"])
-    except FileNotFoundError:
-        pass
+    Path(os.environ["LAB_HOSTAPD_PID_FILE"]).unlink(missing_ok=True)
     result = subprocess.run(
         [
             "ip",

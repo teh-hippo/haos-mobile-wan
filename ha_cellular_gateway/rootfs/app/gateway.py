@@ -3,8 +3,8 @@ from __future__ import annotations
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from .auto_disable import AutoDisable
 from .command import CommandRunner

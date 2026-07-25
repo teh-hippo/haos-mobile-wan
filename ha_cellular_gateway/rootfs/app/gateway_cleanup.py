@@ -182,6 +182,13 @@ def cleanup(
     preserve_host_protection: bool = False,
     owned_only: bool = False,
 ) -> None:
+    """Remove what the app installed, and only what the app installed.
+
+    A bad configuration means the recorded ownership cannot be trusted to
+    describe reality, so cleanup falls back to removing strictly what it can
+    still prove it owns and drops the host protection rules it may never have
+    installed in the first place.
+    """
     if engine.lifecycle_state.config_error:
         owned_only = True
         preserve_host_protection = False

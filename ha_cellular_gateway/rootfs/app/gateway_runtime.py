@@ -43,6 +43,14 @@ def refresh_health_if_due(engine: GatewayEngine) -> None:
 
 
 def fail_closed(engine: GatewayEngine, error: Exception) -> None:
+    """Tear the gateway down and leave it down until the fault clears.
+
+    Anything unexpected costs the mobile path, never the management network, so
+    cleanup preserves host protection and a failure to clean up is recorded
+    beside the original error rather than replacing it or being raised. The
+    teardown continues either way: a half-removed gateway is the one state
+    worse than no gateway at all.
+    """
     with engine.operation_lock:
         cleanup_error: Exception | None = None
         try:

@@ -293,8 +293,8 @@ default stable stage and uses the signed
 `ghcr.io/teh-hippo/haos-mobile-wan` image.
 
 Source-size guardrails are category-specific rather than one repository-wide
-number: runtime modules are limited to 250 lines, unit and support modules to
-400, the live NetworkManager lab to 350 and QEMU guest modules to 300.
+number: runtime modules are limited to 400 lines, unit and support modules to 500,
+the live NetworkManager lab to 350 and QEMU guest modules to 300.
 
 The [NetworkManager integration
 lab](ha_cellular_gateway/integration/networkmanager/README.md) runs on pull
@@ -324,7 +324,8 @@ uv run ruff format --check .
 uv run ruff check --select C901 --config 'lint.mccabe.max-complexity=15' \
   ha_cellular_gateway/rootfs/app
 uv run mypy ha_cellular_gateway/rootfs/app tools
-uv run python tools/structure_contract.py
+uv run python -m tools.structure_contract
+uv run python -m tools.distribution_contract
 git ls-files -z '*.sh' | xargs -0 uv run shellcheck -x
 uv run actionlint
 

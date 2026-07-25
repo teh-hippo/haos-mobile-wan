@@ -49,16 +49,7 @@ jobs:
       - name: Read app version
         id: metadata
         run: |
-          version=$(uv run python - <<'PY'
-          from pathlib import Path
-          import yaml
-
-          app = yaml.safe_load(
-              Path("ha_cellular_gateway/config.yaml").read_text(encoding="utf-8")
-          )
-          print(app["version"])
-          PY
-          )
+          version=$(uv run python -m tools.app_metadata)
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Determine whether to publish

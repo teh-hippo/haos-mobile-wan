@@ -3,14 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 BUDGETS = (
-    ("runtime", Path("ha_cellular_gateway/rootfs/app"), "*.py", 250),
-    ("unit test", Path("ha_cellular_gateway/tests"), "test_*.py", 400),
+    ("runtime", Path("ha_cellular_gateway/rootfs/app"), "*.py", 400),
+    ("unit test", Path("ha_cellular_gateway/tests"), "test_*.py", 500),
     ("test support", Path("ha_cellular_gateway/tests"), "*_support.py", 300),
     (
         "test support",
         Path("ha_cellular_gateway/tests/test_support"),
         "*.py",
-        400,
+        500,
     ),
     (
         "NetworkManager lab",

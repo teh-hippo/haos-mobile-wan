@@ -7,6 +7,8 @@ from collections.abc import Callable
 from .command import RunCommand
 from .config import GatewayConfig
 from .errors import GatewayError
+from .fault_catalogue_host import HOTSPOT_NOT_ASSOCIATED
+from .fault_catalogue_upstream import WIFI_INSPECTION_WAITING, WIFI_PROFILE_DRIFT
 from .networkmanager import NetworkManagerResult
 from .networkmanager_invariants import (
     main_default_present,
@@ -30,10 +32,8 @@ from .wifi_custody import (
 )
 from .wifi_custody_marker import CustodyMarker, parse_marker
 
-WIFI_NOT_ASSOCIATED = "Hotspot Wi-Fi is enabled but not associated"
-WIFI_PROFILE_DRIFT_MESSAGE = (
-    "The app-owned Wi-Fi hotspot profile has unexpected settings"
-)
+WIFI_NOT_ASSOCIATED = HOTSPOT_NOT_ASSOCIATED.text
+WIFI_PROFILE_DRIFT_MESSAGE = WIFI_PROFILE_DRIFT.text
 WIFI_ROUTE_MESSAGE = (
     f"NetworkManager Wi-Fi table {WIFI_ROUTE_TABLE} has unexpected routes"
 )
@@ -169,7 +169,7 @@ class NetworkManagerWifi:
             return NetworkManagerResult(
                 None,
                 "waiting",
-                "NetworkManager Wi-Fi inspection is unavailable",
+                WIFI_INSPECTION_WAITING.text,
                 True,
             )
 

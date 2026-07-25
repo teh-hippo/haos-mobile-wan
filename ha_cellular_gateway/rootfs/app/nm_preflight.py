@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .config import GatewayConfig
+from .fault_catalogue_host import MANAGEMENT_INTERFACE_UNAVAILABLE
+from .fault_catalogue_upstream import UPSTREAM_FOREIGN_PROFILE, WIFI_MANAGEMENT_OVERLAP
 from .management import ManagementBaseline
 from .nm_inventory import NmInventory, ProfileRecord
 from .nm_migration import is_lineage_wifi
@@ -12,9 +14,9 @@ from .nm_profile_specs import (
     WIFI_PROFILE_UUID,
 )
 
-MANAGEMENT_REQUIRED = "Management interface is unavailable"
-WIFI_MANAGEMENT_CONFLICT = "Wi-Fi upstream is the management interface"
-USB_FOREIGN_PROFILE = "iPhone USB has a foreign NetworkManager profile"
+MANAGEMENT_REQUIRED = MANAGEMENT_INTERFACE_UNAVAILABLE.text
+WIFI_MANAGEMENT_CONFLICT = WIFI_MANAGEMENT_OVERLAP.text
+USB_FOREIGN_PROFILE = UPSTREAM_FOREIGN_PROFILE.text
 
 
 @dataclass(frozen=True)

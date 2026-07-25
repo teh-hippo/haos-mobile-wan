@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from .config import GatewayConfig
 from .errors import GatewayError
+from .fault_catalogue_upstream import HOTSPOT_CREDENTIALS_MISSING
 from .networkmanager_wifi import NetworkManagerWifi, safe_wifi_unavailable
 from .nm_inventory import NmInventory, ProfileRecord
 from .nm_journal import NmOwnershipJournal
@@ -131,7 +132,7 @@ class UpstreamLifecycle:
 
     def _claim_wifi(self, management: ManagementBaseline | None) -> list[str]:
         if not self.config.hotspot_credentials_configured:
-            return ["Wi-Fi hotspot credentials are not configured"]
+            return [HOTSPOT_CREDENTIALS_MISSING.text]
         errors = self.wifi.claim(self._manage_iface(management))
         if self.config.uses_usb:
             errors = [error for error in errors if not safe_wifi_unavailable(error)]

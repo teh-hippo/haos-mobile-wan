@@ -4,12 +4,13 @@ import re
 
 from .command import RunCommand
 from .config import GatewayConfig
+from .fault_catalogue_upstream import LINEAGE_WIFI_DELETE_FAILED
 from .nm_inventory import NmInventory, ProfileRecord
 from .nm_profile import NmProfile
 from .nm_profile_specs import legacy_usb_profile_spec
 
 LEGACY_USB_DRIFT_ERROR = "The legacy iPhone USB profile has unexpected settings"
-LINEAGE_WIFI_DELETE_ERROR = "A legacy Supervisor Wi-Fi profile could not be removed"
+LINEAGE_WIFI_DELETE_ERROR = LINEAGE_WIFI_DELETE_FAILED.text
 
 
 def migrate_legacy_usb(run: RunCommand) -> list[str]:

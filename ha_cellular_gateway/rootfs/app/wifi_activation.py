@@ -5,6 +5,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from .command import RunCommand
+from .fault_catalogue_upstream import (
+    HOTSPOT_AUTH_FAILED,
+    HOTSPOT_CONNECTING,
+    HOTSPOT_TARGET_ABSENT,
+)
 from .nm_device import cached_ssids, disconnect_device, request_scan
 from .nm_profile import NmProfile
 
@@ -12,9 +17,9 @@ ACTIVATION_BACKOFF_MIN = 5.0
 ACTIVATION_BACKOFF_MAX = 60.0
 SCAN_INTERVAL_SECONDS = 45.0
 
-TARGET_ABSENT = "The hotspot network is not currently visible"
-CONNECTING = "Associating with the hotspot network"
-AUTH_FAILED = "The hotspot rejected the configured Wi-Fi password"
+TARGET_ABSENT = HOTSPOT_TARGET_ABSENT.text
+CONNECTING = HOTSPOT_CONNECTING.text
+AUTH_FAILED = HOTSPOT_AUTH_FAILED.text
 
 
 @dataclass(frozen=True)

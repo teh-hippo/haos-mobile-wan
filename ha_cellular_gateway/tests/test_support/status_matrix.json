@@ -1,0 +1,767 @@
+[
+  {
+    "kind": "exact",
+    "input": "Persistent ownership state is invalid",
+    "id": "persistent_ownership_state_invalid",
+    "translation_key": "state_invalid",
+    "repairable": true,
+    "transient": false,
+    "message": "Saved gateway ownership state is invalid"
+  },
+  {
+    "kind": "exact",
+    "input": "Management interface/address baseline does not match",
+    "id": "management_baseline_mismatch",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The management baseline no longer matches the configured host state"
+  },
+  {
+    "kind": "exact",
+    "input": "Management interface is unavailable",
+    "id": "management_interface_unavailable",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The management interface is unavailable"
+  },
+  {
+    "kind": "exact",
+    "input": "Host IPv4 forwarding is not enabled",
+    "id": "ipv4_forwarding_disabled",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "Host IPv4 forwarding is disabled"
+  },
+  {
+    "kind": "exact",
+    "input": "Cannot verify host IPv4 forwarding",
+    "id": "ipv4_forwarding_unverified",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The gateway could not verify host IPv4 forwarding"
+  },
+  {
+    "kind": "exact",
+    "input": "iptables is not using the nf_tables backend",
+    "id": "iptables_backend_mismatch",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "iptables is not using the nf_tables backend"
+  },
+  {
+    "kind": "exact",
+    "input": "Docker DOCKER-USER chain is missing",
+    "id": "docker_user_missing",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The Docker DOCKER-USER chain is missing"
+  },
+  {
+    "kind": "exact",
+    "input": "Cannot inspect the host firewall backend",
+    "id": "firewall_backend_unavailable",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The gateway could not inspect the host firewall backend"
+  },
+  {
+    "kind": "exact",
+    "input": "Upstream interface is unavailable",
+    "id": "upstream_interface_unavailable",
+    "translation_key": null,
+    "repairable": false,
+    "transient": true,
+    "message": "The upstream interface is unavailable"
+  },
+  {
+    "kind": "exact",
+    "input": "Upstream interface/address is not active",
+    "id": "upstream_interface_inactive",
+    "translation_key": null,
+    "repairable": false,
+    "transient": true,
+    "message": "The upstream interface is not active"
+  },
+  {
+    "kind": "exact",
+    "input": "Hotspot Wi-Fi adapter is disabled",
+    "id": "hotspot_adapter_disabled",
+    "translation_key": "hotspot_adapter_disabled",
+    "repairable": true,
+    "transient": false,
+    "message": "The hotspot Wi-Fi adapter is disabled"
+  },
+  {
+    "kind": "exact",
+    "input": "Hotspot Wi-Fi is enabled but not associated",
+    "id": "hotspot_not_associated",
+    "translation_key": "hotspot_not_associated",
+    "repairable": false,
+    "transient": true,
+    "message": "The hotspot Wi-Fi adapter is enabled but has not associated with the phone"
+  },
+  {
+    "kind": "exact",
+    "input": "Management interface is not the main default route",
+    "id": "management_default_route_missing",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The management interface is not the main default route"
+  },
+  {
+    "kind": "exact",
+    "input": "Mobile upstream has a main-table default route",
+    "id": "upstream_default_route_present",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The mobile upstream still has a main default route"
+  },
+  {
+    "kind": "exact",
+    "input": "Cannot inspect main-table default routes",
+    "id": "default_routes_unavailable",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The gateway could not inspect the main default routes"
+  },
+  {
+    "kind": "exact",
+    "input": "Configured downstream NIC is not present",
+    "id": "downstream_missing",
+    "translation_key": "downstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The configured downstream NIC is not present"
+  },
+  {
+    "kind": "exact",
+    "input": "USB Ethernet downstream is not present",
+    "id": "downstream_missing",
+    "translation_key": "downstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "A USB Ethernet downstream adapter is not present"
+  },
+  {
+    "kind": "exact",
+    "input": "Multiple USB Ethernet adapters detected; set downstream_mac",
+    "id": "downstream_ambiguous",
+    "translation_key": "downstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "More than one eligible USB Ethernet adapter is attached"
+  },
+  {
+    "kind": "exact",
+    "input": "Downstream NIC must differ from management and upstream interfaces",
+    "id": "downstream_interface_overlap",
+    "translation_key": "downstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The downstream NIC must differ from the management and upstream interfaces"
+  },
+  {
+    "kind": "exact",
+    "input": "Downstream interface has host-managed IPv4 addresses",
+    "id": "downstream_host_managed",
+    "translation_key": "downstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The downstream adapter has host-managed IPv4 configuration"
+  },
+  {
+    "kind": "exact",
+    "input": "App-owned downstream address is unavailable",
+    "id": "downstream_inactive",
+    "translation_key": "downstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The app-owned downstream address is unavailable"
+  },
+  {
+    "kind": "exact",
+    "input": "Downstream interface has unexpected IPv4 addresses",
+    "id": "downstream_address_conflict",
+    "translation_key": "downstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The downstream adapter has unexpected IPv4 addresses"
+  },
+  {
+    "kind": "exact",
+    "input": "Downstream interface is unavailable",
+    "id": "downstream_unavailable",
+    "translation_key": "downstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The downstream interface is unavailable"
+  },
+  {
+    "kind": "exact",
+    "input": "IPv6 is active on downstream NIC",
+    "id": "downstream_ipv6_active",
+    "translation_key": "downstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "IPv6 is active on the downstream NIC"
+  },
+  {
+    "kind": "exact",
+    "input": "Cannot verify downstream IPv6 state",
+    "id": "downstream_ipv6_unverified",
+    "translation_key": "downstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The gateway could not verify downstream IPv6 state"
+  },
+  {
+    "kind": "exact",
+    "input": "IPv6 is active on mobile upstream",
+    "id": "upstream_ipv6_active",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "IPv6 is active on the mobile upstream"
+  },
+  {
+    "kind": "exact",
+    "input": "Cannot verify upstream IPv6 state",
+    "id": "upstream_ipv6_unverified",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The gateway could not verify mobile upstream IPv6 state"
+  },
+  {
+    "kind": "exact",
+    "input": "Cannot inspect policy-routing ownership",
+    "id": "policy_ownership_unavailable",
+    "translation_key": "policy_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The gateway could not inspect policy-routing ownership"
+  },
+  {
+    "kind": "exact",
+    "input": "USB device access is unavailable; enable the app usb permission",
+    "id": "upstream_usb_access_unavailable",
+    "translation_key": "upstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "USB device access is unavailable; enable the app USB permission"
+  },
+  {
+    "kind": "exact",
+    "input": "Wi-Fi upstream is the management interface",
+    "id": "wifi_management_overlap",
+    "translation_key": "hotspot_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The Wi-Fi upstream is the management interface"
+  },
+  {
+    "kind": "exact",
+    "input": "The dedicated Wi-Fi adapter is the management interface",
+    "id": "wifi_custody_management",
+    "translation_key": "hotspot_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The dedicated Wi-Fi adapter is the management interface"
+  },
+  {
+    "kind": "exact",
+    "input": "The dedicated Wi-Fi adapter is not present",
+    "id": "wifi_device_missing",
+    "translation_key": "hotspot_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The dedicated Wi-Fi adapter is not present"
+  },
+  {
+    "kind": "exact",
+    "input": "NetworkManager does not manage the dedicated Wi-Fi adapter",
+    "id": "wifi_device_unmanaged",
+    "translation_key": "hotspot_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "NetworkManager does not manage the dedicated Wi-Fi adapter"
+  },
+  {
+    "kind": "exact",
+    "input": "The Wi-Fi radio is turned off",
+    "id": "wifi_radio_off",
+    "translation_key": "hotspot_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The Wi-Fi radio is turned off"
+  },
+  {
+    "kind": "exact",
+    "input": "The Wi-Fi radio is hardware-blocked",
+    "id": "wifi_radio_blocked",
+    "translation_key": "hotspot_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The Wi-Fi radio is hardware-blocked"
+  },
+  {
+    "kind": "exact",
+    "input": "NetworkManager Wi-Fi radio inspection is unavailable",
+    "id": "wifi_radio_inspection_unavailable",
+    "translation_key": null,
+    "repairable": false,
+    "transient": false,
+    "message": "NetworkManager Wi-Fi radio inspection is unavailable"
+  },
+  {
+    "kind": "exact",
+    "input": "A foreign Wi-Fi connection still controls the dedicated adapter",
+    "id": "wifi_displace_failed",
+    "translation_key": "hotspot_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "A foreign Wi-Fi connection still controls the dedicated adapter"
+  },
+  {
+    "kind": "exact",
+    "input": "A legacy Supervisor Wi-Fi profile could not be removed",
+    "id": "lineage_wifi_delete_failed",
+    "translation_key": "hotspot_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "A legacy Supervisor Wi-Fi profile could not be removed"
+  },
+  {
+    "kind": "exact",
+    "input": "The hotspot rejected the configured Wi-Fi password",
+    "id": "hotspot_auth_failed",
+    "translation_key": "hotspot_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The hotspot rejected the configured Wi-Fi password"
+  },
+  {
+    "kind": "exact",
+    "input": "The hotspot network is not currently visible",
+    "id": "hotspot_target_absent",
+    "translation_key": null,
+    "repairable": false,
+    "transient": true,
+    "message": "The hotspot network is not currently visible"
+  },
+  {
+    "kind": "exact",
+    "input": "Associating with the hotspot network",
+    "id": "hotspot_connecting",
+    "translation_key": null,
+    "repairable": false,
+    "transient": true,
+    "message": "Associating with the hotspot network"
+  },
+  {
+    "kind": "exact",
+    "input": "Wi-Fi adapter runtime restoration is incomplete",
+    "id": "wifi_restoration_incomplete",
+    "translation_key": "hotspot_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The dedicated Wi-Fi adapter runtime state was not fully restored"
+  },
+  {
+    "kind": "exact",
+    "input": "The marked Wi-Fi adapter runtime restoration is pending",
+    "id": "wifi_restoration_pending",
+    "translation_key": null,
+    "repairable": false,
+    "transient": true,
+    "message": "The dedicated Wi-Fi adapter runtime restoration is pending"
+  },
+  {
+    "kind": "exact",
+    "input": "iPhone USB has a foreign NetworkManager profile",
+    "id": "upstream_foreign_profile",
+    "translation_key": "upstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "A foreign NetworkManager profile can control iPhone USB"
+  },
+  {
+    "kind": "exact",
+    "input": "The app-owned iPhone USB profile has unexpected settings",
+    "id": "upstream_profile_drift",
+    "translation_key": "upstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The app-owned iPhone USB profile has unexpected settings"
+  },
+  {
+    "kind": "exact",
+    "input": "The app-owned generic USB profile has unexpected settings",
+    "id": "upstream_profile_drift",
+    "translation_key": "upstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The app-owned generic USB profile has unexpected settings"
+  },
+  {
+    "kind": "exact",
+    "input": "The app-owned Wi-Fi hotspot profile has unexpected settings",
+    "id": "wifi_profile_drift",
+    "translation_key": "hotspot_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The app-owned Wi-Fi hotspot profile has unexpected settings"
+  },
+  {
+    "kind": "exact",
+    "input": "Wi-Fi hotspot credentials are not configured",
+    "id": "hotspot_credentials_missing",
+    "translation_key": "hotspot_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "Wi-Fi hotspot credentials are not configured"
+  },
+  {
+    "kind": "exact",
+    "input": "NetworkManager Wi-Fi inspection is unavailable",
+    "id": "wifi_inspection_waiting",
+    "translation_key": null,
+    "repairable": false,
+    "transient": true,
+    "message": "Waiting for NetworkManager Wi-Fi inspection"
+  },
+  {
+    "kind": "rule",
+    "input": "Strict rp_filter is enabled on sample detail",
+    "id": "strict_rp_filter_enabled",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "Strict rp_filter is enabled on a required interface"
+  },
+  {
+    "kind": "rule",
+    "input": "Cannot read rp_filter for sample detail",
+    "id": "rp_filter_unavailable",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The gateway could not read rp_filter on a required interface"
+  },
+  {
+    "kind": "rule",
+    "input": "Unexpected main-table default route:sample detail",
+    "id": "unexpected_default_route",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "An unexpected main default route is present"
+  },
+  {
+    "kind": "rule",
+    "input": "Policy priority sample detail",
+    "id": "policy_priority_conflict",
+    "translation_key": "policy_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "A required policy-routing priority is already in use"
+  },
+  {
+    "kind": "rule",
+    "input": "Table 201 already has a foreign policy rule here",
+    "id": "policy_foreign_rule",
+    "translation_key": "policy_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "A foreign policy rule is using the gateway routing table"
+  },
+  {
+    "kind": "rule",
+    "input": "Table 201 contains an unexpected route here",
+    "id": "policy_unexpected_route",
+    "translation_key": "policy_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The gateway routing table contains an unexpected route"
+  },
+  {
+    "kind": "rule",
+    "input": "Required command is unavailable: sample detail",
+    "id": "upstream_required_command_unavailable",
+    "translation_key": "upstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "A required iPhone USB command is not installed"
+  },
+  {
+    "kind": "rule",
+    "input": "Invalid app configuration: Hotspot sample detail",
+    "id": "hotspot_configuration_failed",
+    "translation_key": "hotspot_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The hotspot Wi-Fi profile could not be configured"
+  },
+  {
+    "kind": "rule",
+    "input": "Cannot read app configuration:sample detail",
+    "id": "app_configuration_unavailable",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The app could not load a safe host configuration"
+  },
+  {
+    "kind": "rule",
+    "input": "Invalid app configuration:sample detail",
+    "id": "app_configuration_unavailable",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The app could not load a safe host configuration"
+  },
+  {
+    "kind": "rule",
+    "input": "Hotspot Wi-Fi provisioning failed:sample detail",
+    "id": "hotspot_configuration_failed",
+    "translation_key": "hotspot_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The hotspot Wi-Fi profile could not be configured"
+  },
+  {
+    "kind": "rule",
+    "input": "Safety inspection failed:sample detail",
+    "id": "safety_inspection_failed",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The gateway could not complete its safety inspection"
+  },
+  {
+    "kind": "rule",
+    "input": "Activation failed:sample detail",
+    "id": "activation_failed",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The gateway could not apply the requested network state"
+  },
+  {
+    "kind": "rule",
+    "input": "Auto-disable cleanup failed:sample detail",
+    "id": "auto_disable_cleanup_failed",
+    "translation_key": null,
+    "repairable": false,
+    "transient": false,
+    "message": "Auto-disable cleanup failed:sample detail"
+  },
+  {
+    "kind": "rule",
+    "input": "Auto-stop request failed:sample detail",
+    "id": "auto_stop_request_failed",
+    "translation_key": null,
+    "repairable": false,
+    "transient": false,
+    "message": "Auto-stop request failed:sample detail"
+  },
+  {
+    "kind": "rule",
+    "input": "Auto-disable state persistence failed:sample detail",
+    "id": "auto_disable_state_failed",
+    "translation_key": null,
+    "repairable": false,
+    "transient": false,
+    "message": "Auto-disable state persistence failed:sample detail"
+  },
+  {
+    "kind": "rule",
+    "input": "Hotspot Wi-Fi deactivation failed:sample detail",
+    "id": "hotspot_deactivation_failed",
+    "translation_key": null,
+    "repairable": false,
+    "transient": false,
+    "message": "Hotspot Wi-Fi deactivation failed:sample detail"
+  },
+  {
+    "kind": "rule",
+    "input": "NetworkManager profile operation failed:sample detail",
+    "id": "networkmanager_profile_failed",
+    "translation_key": null,
+    "repairable": false,
+    "transient": false,
+    "message": "NetworkManager profile operation failed:sample detail"
+  },
+  {
+    "kind": "rule",
+    "input": "NetworkManager profile cleanup failed:sample detail",
+    "id": "networkmanager_cleanup_failed",
+    "translation_key": null,
+    "repairable": false,
+    "transient": false,
+    "message": "NetworkManager profile cleanup failed:sample detail"
+  },
+  {
+    "kind": "rule",
+    "input": "NetworkManager ownership journal failed:sample detail",
+    "id": "networkmanager_journal_failed",
+    "translation_key": null,
+    "repairable": false,
+    "transient": false,
+    "message": "NetworkManager ownership journal failed:sample detail"
+  },
+  {
+    "kind": "rule",
+    "input": "Management interface changed from sample detail",
+    "id": "management_interface_changed",
+    "translation_key": "host_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "Management interface changed from sample detail"
+  },
+  {
+    "kind": "rule",
+    "input": "Hotspot Wi-Fi interface is the management interface",
+    "id": "hotspot_management_overlap",
+    "translation_key": null,
+    "repairable": false,
+    "transient": false,
+    "message": "Hotspot Wi-Fi interface is the management interface"
+  },
+  {
+    "kind": "pairing",
+    "input": "waiting_for_device",
+    "id": "upstream_waiting_for_device",
+    "translation_key": null,
+    "repairable": false,
+    "transient": true,
+    "message": "Waiting for a USB upstream device"
+  },
+  {
+    "kind": "pairing",
+    "input": "waiting_for_hotspot",
+    "id": "upstream_waiting_for_hotspot",
+    "translation_key": null,
+    "repairable": false,
+    "transient": true,
+    "message": "Waiting for iPhone Personal Hotspot"
+  },
+  {
+    "kind": "pairing",
+    "input": "waiting_for_carrier",
+    "id": "upstream_waiting_for_carrier",
+    "translation_key": null,
+    "repairable": false,
+    "transient": true,
+    "message": "Waiting for USB tethering carrier"
+  },
+  {
+    "kind": "pairing",
+    "input": "waiting_for_profile",
+    "id": "upstream_waiting_for_profile",
+    "translation_key": null,
+    "repairable": false,
+    "transient": true,
+    "message": "Waiting for the NetworkManager USB profile"
+  },
+  {
+    "kind": "pairing",
+    "input": "waiting_for_interface",
+    "id": "upstream_waiting_for_interface",
+    "translation_key": null,
+    "repairable": false,
+    "transient": true,
+    "message": "Waiting for the iPhone USB network interface"
+  },
+  {
+    "kind": "pairing",
+    "input": "not_ready",
+    "id": "upstream_not_ready",
+    "translation_key": null,
+    "repairable": false,
+    "transient": true,
+    "message": "Upstream connectivity is not ready"
+  },
+  {
+    "kind": "pairing",
+    "input": "waiting_for_trust",
+    "id": "upstream_waiting_for_trust",
+    "translation_key": null,
+    "repairable": false,
+    "transient": true,
+    "message": "Waiting for iPhone USB trust confirmation"
+  },
+  {
+    "kind": "pairing",
+    "input": "waiting_for_unlock",
+    "id": "upstream_waiting_for_unlock",
+    "translation_key": null,
+    "repairable": false,
+    "transient": true,
+    "message": "Waiting for iPhone to be unlocked"
+  },
+  {
+    "kind": "pairing",
+    "input": "daemon_failed",
+    "id": "upstream_daemon_failed",
+    "translation_key": "upstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The iPhone USB pairing helper failed to start"
+  },
+  {
+    "kind": "pairing",
+    "input": "profile_failed",
+    "id": "upstream_profile_failed",
+    "translation_key": "upstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The NetworkManager iPhone USB profile could not be configured"
+  },
+  {
+    "kind": "pairing",
+    "input": "profile_conflict",
+    "id": "upstream_profile_conflict",
+    "translation_key": "upstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "A different NetworkManager profile controls the USB upstream interface"
+  },
+  {
+    "kind": "pairing",
+    "input": "invalid_lease",
+    "id": "upstream_invalid_lease",
+    "translation_key": "upstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "The USB NetworkManager lease is invalid"
+  },
+  {
+    "kind": "pairing",
+    "input": "multiple_devices",
+    "id": "upstream_multiple_devices",
+    "translation_key": "upstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "Multiple USB upstream devices detected"
+  },
+  {
+    "kind": "pairing",
+    "input": "pairing_failed",
+    "id": "upstream_pairing_failed",
+    "translation_key": "upstream_configuration",
+    "repairable": true,
+    "transient": false,
+    "message": "iPhone USB pairing failed"
+  }
+]

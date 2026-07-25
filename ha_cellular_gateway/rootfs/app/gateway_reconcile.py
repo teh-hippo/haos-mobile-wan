@@ -4,9 +4,9 @@ import subprocess
 import time
 from typing import TYPE_CHECKING
 
+from . import fault_catalogue_host as host_faults
+from . import fault_catalogue_rules as rule_faults
 from .errors import GatewayError, SafetyError
-from .fault_catalogue_host import MANAGEMENT_INTERFACE_UNAVAILABLE
-from .fault_catalogue_rules import ACTIVATION_FAILED
 from .gateway_cleanup import cleanup, cleanup_changed_ownership
 from .gateway_safety_evaluation import (
     evaluate_safety,
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from .upstream_models import ResolvedUpstream
 
 OPERATION_ERRORS = (GatewayError, OSError, subprocess.SubprocessError, ValueError)
-MANAGEMENT_ERROR = MANAGEMENT_INTERFACE_UNAVAILABLE.text
+MANAGEMENT_ERROR = host_faults.MANAGEMENT_INTERFACE_UNAVAILABLE.text
 
 
 def apply(
@@ -84,7 +84,7 @@ def apply(
                 engine,
                 preserve_host_protection=True,
             )
-            message = ACTIVATION_FAILED.render(error=err)
+            message = rule_faults.ACTIVATION_FAILED.render(error=err)
             with engine.lock:
                 engine.lifecycle_state.last_error = message
             raise GatewayError(message) from err

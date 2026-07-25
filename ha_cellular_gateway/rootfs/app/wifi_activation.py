@@ -4,12 +4,8 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from . import fault_catalogue_upstream as upstream_faults
 from .command import RunCommand
-from .fault_catalogue_upstream import (
-    HOTSPOT_AUTH_FAILED,
-    HOTSPOT_CONNECTING,
-    HOTSPOT_TARGET_ABSENT,
-)
 from .nm_device import cached_ssids, disconnect_device, request_scan
 from .nm_profile import NmProfile
 
@@ -17,9 +13,9 @@ ACTIVATION_BACKOFF_MIN = 5.0
 ACTIVATION_BACKOFF_MAX = 60.0
 SCAN_INTERVAL_SECONDS = 45.0
 
-TARGET_ABSENT = HOTSPOT_TARGET_ABSENT.text
-CONNECTING = HOTSPOT_CONNECTING.text
-AUTH_FAILED = HOTSPOT_AUTH_FAILED.text
+TARGET_ABSENT = upstream_faults.HOTSPOT_TARGET_ABSENT.text
+CONNECTING = upstream_faults.HOTSPOT_CONNECTING.text
+AUTH_FAILED = upstream_faults.HOTSPOT_AUTH_FAILED.text
 
 
 @dataclass(frozen=True)

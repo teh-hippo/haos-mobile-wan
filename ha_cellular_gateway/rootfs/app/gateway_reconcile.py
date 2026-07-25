@@ -5,16 +5,13 @@ import time
 from typing import TYPE_CHECKING
 
 from .errors import GatewayError, SafetyError
-from .gateway_cleanup import cleanup
-from .gateway_config_failure import handle_config_error
-from .gateway_management import reconcile_without_management
+from .gateway_cleanup import cleanup, cleanup_changed_ownership
 from .gateway_safety_evaluation import (
     evaluate_safety,
     handle_unsafe_state,
     record_evaluation,
 )
 from .gateway_startup import recover_from_restart
-from .gateway_transition import cleanup_changed_ownership
 
 if TYPE_CHECKING:
     from .gateway import GatewayEngine
@@ -22,6 +19,7 @@ if TYPE_CHECKING:
     from .upstream_models import ResolvedUpstream
 
 OPERATION_ERRORS = (GatewayError, OSError, subprocess.SubprocessError, ValueError)
+MANAGEMENT_ERROR = "Management interface is unavailable"
 
 
 def apply(
@@ -34,12 +32,12 @@ def apply(
         raise GatewayError(engine.lifecycle_state.config_error)
 
     with engine.operation_lock:
-        management = engine._resolve_management()
+        management = engine.resolve_management()
         downstream = engine.safety.find_downstream(
             management.interface if management else None
         )
         if upstream_errors is None:
-            upstream, upstream_errors = engine._resolve_upstream(downstream)
+            upstream, upstream_errors = engine.resolve_upstream(downstream)
         cleanup_changed_ownership(engine, downstream, upstream)
         address_owned = engine.downstream.owns_address(
             engine.lifecycle_state.owned_state,
@@ -56,7 +54,7 @@ def apply(
         with engine.lock:
             engine.selection_state.downstream = downstream
             engine.selection_state.safety_errors = errors
-        engine._record_upstream(upstream)
+        engine.record_upstream(upstream)
         if errors:
             message = handle_unsafe_state(engine, downstream, errors)
             raise SafetyError(message)
@@ -72,7 +70,7 @@ def apply(
                 downstream, upstream
             )
             engine.lifecycle_state.owned_state["downstream_address_owned"] = True
-            engine._persist_state()
+            engine.persist_state()
         try:
             engine.firewall.protect_host(downstream)
             engine.downstream.apply(downstream)
@@ -93,7 +91,7 @@ def apply(
             engine.lifecycle_state.applied = True
             engine.selection_state.active_connection = upstream.connection
             engine.lifecycle_state.last_error = None
-            engine._persist_state()
+            engine.persist_state()
 
 
 def _needs_apply(
@@ -143,7 +141,7 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
             if engine.auto_disable.pending:
                 return
 
-            management = engine._resolve_management()
+            management = engine.resolve_management()
 
             if startup_cleanup_pending:
                 recover_from_restart(engine, management)
@@ -158,4 +156,32 @@ def reconcile(engine: GatewayEngine, *, refresh_health: bool = False) -> None:
             _reconcile_with_management(engine, management)
     finally:
         if refresh_health and not engine.stop_event.is_set():
-            engine._refresh_health_if_due()
+            engine.refresh_health_if_due()
+
+
+def handle_config_error(engine: GatewayEngine) -> None:
+    config_error = engine.lifecycle_state.config_error
+    assert config_error is not None
+    with engine.lock:
+        engine.selection_state.downstream = None
+        engine.selection_state.safety_errors = [config_error]
+        engine.lifecycle_state.last_error = config_error
+    engine.record_upstream(None)
+
+
+def reconcile_without_management(
+    engine: GatewayEngine,
+) -> None:
+    engine.upstream_lifecycle.deactivate(None)
+    engine.persist_state()
+    cleanup(
+        engine,
+        preserve_host_protection=True,
+        owned_only=True,
+    )
+    with engine.lock:
+        engine.selection_state.downstream = None
+        error = engine.lifecycle_state.management_error or MANAGEMENT_ERROR
+        engine.selection_state.safety_errors = [error]
+        engine.lifecycle_state.last_error = error
+    engine.record_upstream(None)

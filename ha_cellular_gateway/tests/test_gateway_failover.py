@@ -155,7 +155,7 @@ class GatewayFailoverTests(GatewayTestCase):
         )
         downstream = "enx001122334455"
         engine.management = ManagementBaseline("end0", "192.168.1.2/24")
-        engine._resolve_management = lambda: engine.management
+        engine.resolve_management = lambda: engine.management
         engine.safety.find_downstream = lambda *_a, **_k: downstream
         engine.safety.errors = lambda *args, **kwargs: []
         engine.dhcp.start = lambda _downstream: setattr(

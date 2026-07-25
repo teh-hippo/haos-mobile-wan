@@ -93,12 +93,12 @@ class GatewayStatusHealthTests(GatewayTestCase):
             address="172.20.10.2/28",
             gateway="172.20.10.1",
         )
-        self.engine._record_upstream(wifi)
+        self.engine.record_upstream(wifi)
         self.engine.health_state.upstream_healthy = True
         self.engine.health_state.public_ip = "203.0.113.10"
         self.engine.health_state.last_health_probe = time.time()
 
-        self.engine._record_upstream(usb)
+        self.engine.record_upstream(usb)
 
         self.assertFalse(self.engine.health_state.upstream_healthy)
         self.assertIsNone(self.engine.health_state.public_ip)
@@ -118,14 +118,14 @@ class GatewayStatusHealthTests(GatewayTestCase):
             address="172.20.10.2/28",
             gateway="172.20.10.1",
         )
-        self.engine._record_upstream(wifi)
+        self.engine.record_upstream(wifi)
 
         def stale_probe(upstream):
-            self.engine._record_upstream(usb)
+            self.engine.record_upstream(usb)
             return True, "203.0.113.10"
 
-        self.engine._health_probe = stale_probe
-        self.engine._refresh_health_if_due()
+        self.engine.health_probe = stale_probe
+        self.engine.refresh_health_if_due()
 
         self.assertEqual(self.engine.selection_state.upstream, usb)
         self.assertFalse(self.engine.health_state.upstream_healthy)
@@ -140,14 +140,14 @@ class GatewayStatusHealthTests(GatewayTestCase):
             address="172.20.10.4/28",
             gateway="172.20.10.1",
         )
-        self.engine._record_upstream(wifi)
+        self.engine.record_upstream(wifi)
 
         def stale_probe(upstream):
             self.engine.cleanup()
             return True, "203.0.113.10"
 
-        self.engine._health_probe = stale_probe
-        self.engine._refresh_health_if_due()
+        self.engine.health_probe = stale_probe
+        self.engine.refresh_health_if_due()
 
         self.assertEqual(self.engine.selection_state.upstream, wifi)
         self.assertFalse(self.engine.health_state.upstream_healthy)
@@ -159,8 +159,8 @@ class GatewayStatusHealthTests(GatewayTestCase):
         engine.apply()
         engine.health_state.last_health_probe = None
 
-        engine._health_probe = lambda upstream: (True, "203.0.113.55")
-        engine._refresh_health_if_due()
+        engine.health_probe = lambda upstream: (True, "203.0.113.55")
+        engine.refresh_health_if_due()
 
         self.assertTrue(engine.health_state.upstream_healthy)
         self.assertEqual(engine.health_state.public_ip, "203.0.113.55")
@@ -178,9 +178,9 @@ class GatewayStatusHealthTests(GatewayTestCase):
                 "_health_probe must not run again before the interval elapses"
             )
 
-        engine._health_probe = _unexpected
+        engine.health_probe = _unexpected
 
-        engine._refresh_health_if_due()
+        engine.refresh_health_if_due()
 
     def test_manual_reconcile_does_not_run_external_health_probe(self) -> None:
         engine = self._prepare_active_engine()
@@ -205,7 +205,7 @@ class GatewayStatusHealthTests(GatewayTestCase):
             state_path=self.state_path,
         )
         engine.lifecycle_state.owned_state = {"downstream": "eth1"}
-        engine._persist_state()
+        engine.persist_state()
 
         status_text = json.dumps(engine.status(), sort_keys=True)
         self.assertNotIn("hotspot_password", status_text)

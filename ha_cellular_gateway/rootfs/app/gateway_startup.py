@@ -49,7 +49,7 @@ def recover_from_restart(
     recovery: list[str] = []
     if not config_error:
         recovery = engine.upstream_lifecycle.recover(management)
-        engine._persist_state()
+        engine.persist_state()
         if recovery:
             with engine.lock:
                 engine.lifecycle_state.last_error = "; ".join(recovery)

@@ -11,6 +11,7 @@ from .errors import GatewayError
 
 if TYPE_CHECKING:
     from .gateway import GatewayEngine
+    from .upstream_models import ResolvedUpstream
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -66,18 +67,18 @@ def _resolve_protected_downstream(
     protected_downstream = downstream
     if (
         preserve_host_protection
-        and not engine._protectable_downstream(protected_downstream)
-        and engine._protectable_downstream(engine.selection_state.downstream)
+        and not engine.protectable_downstream(protected_downstream)
+        and engine.protectable_downstream(engine.selection_state.downstream)
     ):
         protected_downstream = engine.selection_state.downstream
-    if not engine._protectable_downstream(protected_downstream) and isinstance(
+    if not engine.protectable_downstream(protected_downstream) and isinstance(
         owned_state, dict
     ):
         candidate = owned_state.get("downstream")
         protected_downstream = candidate if isinstance(candidate, str) else None
     if not (
         preserve_host_protection or engine.downstream.owns_address(owned_state)
-    ) or not engine._protectable_downstream(protected_downstream):
+    ) or not engine.protectable_downstream(protected_downstream):
         protected_downstream = None
     return protected_downstream
 
@@ -172,7 +173,7 @@ def _reset_after_cleanup(engine: GatewayEngine, errors: list[str]) -> None:
         engine.health_state.upstream_healthy = False
         engine.health_state.public_ip = None
         engine.health_state.last_health_probe = None
-        engine._persist_state()
+        engine.persist_state()
 
 
 def cleanup(
@@ -199,3 +200,28 @@ def cleanup(
         _reset_after_cleanup(engine, errors)
     if errors:
         raise GatewayError("Cleanup failed: " + "; ".join(errors))
+
+
+def cleanup_changed_ownership(
+    engine: GatewayEngine,
+    downstream: str | None,
+    upstream: ResolvedUpstream | None,
+) -> None:
+    owned_state = engine.lifecycle_state.owned_state
+    if downstream is None or upstream is None or not owned_state:
+        return
+    expected = engine.policy.ownership(downstream, upstream)
+    if all(
+        owned_state.get(key) == expected[key]
+        for key in (
+            "downstream",
+            "upstream_interface",
+            "upstream_address",
+            "upstream_gateway",
+        )
+    ):
+        return
+    cleanup(
+        engine,
+        preserve_host_protection=True,
+    )

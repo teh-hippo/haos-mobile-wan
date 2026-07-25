@@ -27,7 +27,7 @@ class GatewayRuntimeShutdownTests(GatewayTestCase):
         engine.upstream.resolve = lambda *_a, **_k: (_ for _ in ()).throw(
             AssertionError("upstream resolution must be skipped while stopping")
         )
-        engine._health_probe = lambda *_a, **_k: (_ for _ in ()).throw(
+        engine.health_probe = lambda *_a, **_k: (_ for _ in ()).throw(
             AssertionError("health probe must be skipped while stopping")
         )
 

@@ -22,7 +22,7 @@ def restore_management_identity(
 def resolve_pinned_management(
     engine: GatewayEngine,
 ) -> ManagementBaseline | None:
-    baseline = resolve_management(engine._run)
+    baseline = resolve_management(engine.run_command)
     error = None
     pinned_interface = engine.lifecycle_state.management_interface
     if (
@@ -37,7 +37,7 @@ def resolve_pinned_management(
         baseline = None
     elif baseline is not None and pinned_interface is None:
         engine.lifecycle_state.management_interface = baseline.interface
-        engine._persist_state()
+        engine.persist_state()
     with engine.lock:
         engine.management = baseline
         engine.lifecycle_state.management_error = error

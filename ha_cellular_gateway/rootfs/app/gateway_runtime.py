@@ -10,6 +10,7 @@ from .status_model import derive_gateway_state, derive_health
 
 if TYPE_CHECKING:
     from .gateway import GatewayEngine
+    from .upstream_models import ResolvedUpstream
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ def refresh_health_if_due(engine: GatewayEngine) -> None:
     now = time.time()
     if last_probe is not None and now - last_probe < engine.HEALTH_PROBE_INTERVAL:
         return
-    healthy, public_ip = engine._health_probe(upstream)
+    healthy, public_ip = engine.health_probe(upstream)
     with engine.lock:
         if (
             engine.selection_state.upstream != upstream
@@ -56,7 +57,7 @@ def fail_closed(engine: GatewayEngine, error: Exception) -> None:
         ) as err:
             cleanup_error = err
         engine.upstream_lifecycle.deactivate(engine.management)
-        engine._persist_state()
+        engine.persist_state()
         lifecycle_error = engine.upstream_lifecycle.error
         with engine.lock:
             engine.lifecycle_state.applied = False
@@ -162,7 +163,7 @@ def run_loop(engine: GatewayEngine) -> None:
             subprocess.SubprocessError,
             ValueError,
         ) as err:
-            engine._fail_closed(err)
+            engine.fail_closed(err)
         if engine.stop_event.is_set():
             break
         engine.auto_disable.reconcile(engine)
@@ -186,7 +187,7 @@ def stop(engine: GatewayEngine) -> None:
         ) as err:
             cleanup_error = err
         engine.upstream_lifecycle.deactivate(engine.management)
-        engine._persist_state()
+        engine.persist_state()
         lifecycle_error = engine.upstream_lifecycle.error
         if lifecycle_error:
             message = (
@@ -230,3 +231,32 @@ def _status_config(engine: GatewayEngine) -> dict[str, object]:
         "downstream_mac": config.downstream_mac,
         "downstream_address": config.downstream_address,
     }
+
+
+def probe_upstream(
+    engine: GatewayEngine,
+    upstream: ResolvedUpstream | None,
+) -> tuple[bool, str | None]:
+    if upstream is None:
+        return False, None
+    try:
+        result = engine.run_command(
+            "curl",
+            "-4",
+            "-fsS",
+            "--interface",
+            upstream.ip,
+            "--max-time",
+            "10",
+            "https://www.cloudflare.com/cdn-cgi/trace",
+            check=False,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False, None
+    if result.returncode != 0:
+        return False, None
+    for line in result.stdout.splitlines():
+        if line.startswith("ip="):
+            return True, line.partition("=")[2]
+    return True, None

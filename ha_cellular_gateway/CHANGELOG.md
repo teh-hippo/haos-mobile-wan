@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.2
+
+- Describe each reported fault once. A catalogue now owns a fault's wording,
+  its Home Assistant issue identity and the text it is recognised by, replacing
+  the tables and hand-written matchers that rebuilt that identity from English
+  prose. No fault changes its identifier, translation key or message.
+- Give the gateway engine a real public interface instead of twenty-eight
+  reaches into its private names from modules that had been split out to
+  satisfy a file-length limit, and fold those fragments back together.
+- Move the workflow validation that guards the app's privileges, base image,
+  AppArmor profile and release channel out of inline YAML and into tested
+  modules that linting and type checking can see.
+- Record why the routing tables, fail-closed paths and Wi-Fi custody
+  restoration behave as they do.
+- Remove dead build artefacts, widen the lint rules and raise the coverage
+  floor to match what the suite achieves.
+
 ## 1.0.1
 
 - Remove redundant comments and docstrings across the gateway runtime and

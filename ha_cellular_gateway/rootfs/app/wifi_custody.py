@@ -3,19 +3,9 @@ from __future__ import annotations
 import subprocess
 from collections.abc import Callable
 
+from . import fault_catalogue_upstream as upstream_faults
 from .command import RunCommand
 from .errors import GatewayError
-from .fault_catalogue_upstream import (
-    WIFI_CUSTODY_MANAGEMENT,
-    WIFI_DEVICE_MISSING,
-    WIFI_DEVICE_UNMANAGED,
-    WIFI_DISPLACE_FAILED,
-    WIFI_RADIO_BLOCKED,
-    WIFI_RADIO_INSPECTION_UNAVAILABLE,
-    WIFI_RADIO_OFF,
-    WIFI_RESTORATION_INCOMPLETE,
-    WIFI_RESTORATION_PENDING,
-)
 from .networkmanager_invariants import main_default_present
 from .nm_device import (
     DeviceState,
@@ -33,14 +23,14 @@ from .wifi_custody_marker import CustodyMarker, parse_marker
 CUSTODY_ERRORS = (GatewayError, OSError, subprocess.SubprocessError, ValueError)
 MARKER_KEY = "cellgw.custody"
 
-MANAGEMENT_GUARD = WIFI_CUSTODY_MANAGEMENT.text
-DEVICE_MISSING = WIFI_DEVICE_MISSING.text
-DEVICE_UNMANAGED = WIFI_DEVICE_UNMANAGED.text
-RADIO_SOFT_OFF = WIFI_RADIO_OFF.text
-RADIO_HARD_OFF = WIFI_RADIO_BLOCKED.text
-RADIO_INSPECTION_UNAVAILABLE = WIFI_RADIO_INSPECTION_UNAVAILABLE.text
-DISPLACE_FAILED = WIFI_DISPLACE_FAILED.text
-RESTORE_PENDING = WIFI_RESTORATION_PENDING.text
+MANAGEMENT_GUARD = upstream_faults.WIFI_CUSTODY_MANAGEMENT.text
+DEVICE_MISSING = upstream_faults.WIFI_DEVICE_MISSING.text
+DEVICE_UNMANAGED = upstream_faults.WIFI_DEVICE_UNMANAGED.text
+RADIO_SOFT_OFF = upstream_faults.WIFI_RADIO_OFF.text
+RADIO_HARD_OFF = upstream_faults.WIFI_RADIO_BLOCKED.text
+RADIO_INSPECTION_UNAVAILABLE = upstream_faults.WIFI_RADIO_INSPECTION_UNAVAILABLE.text
+DISPLACE_FAILED = upstream_faults.WIFI_DISPLACE_FAILED.text
+RESTORE_PENDING = upstream_faults.WIFI_RESTORATION_PENDING.text
 
 
 class WifiCustodian:
@@ -179,7 +169,7 @@ class WifiCustodian:
             try:
                 set_device_autoconnect(self.run, interface, True)
             except CUSTODY_ERRORS:
-                return [WIFI_RESTORATION_INCOMPLETE.text]
+                return [upstream_faults.WIFI_RESTORATION_INCOMPLETE.text]
         self._clear_profile_marker()
         persist()
         return []

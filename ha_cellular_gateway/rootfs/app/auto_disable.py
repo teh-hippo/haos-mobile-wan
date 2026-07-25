@@ -6,12 +6,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from . import fault_catalogue_rules as rule_faults
 from .addon_stop import StopRequester, request_self_stop
-from .fault_catalogue_rules import (
-    AUTO_DISABLE_CLEANUP_FAILED,
-    AUTO_DISABLE_STATE_FAILED,
-    AUTO_STOP_REQUEST_FAILED,
-)
 
 if TYPE_CHECKING:
     from .config import GatewayConfig
@@ -73,7 +69,7 @@ class AutoDisable:
         self._retry_at = now + RETRY_SECONDS
         error = self.stop_requester()
         self.stop_error = (
-            AUTO_STOP_REQUEST_FAILED.render(error=error) if error else None
+            rule_faults.AUTO_STOP_REQUEST_FAILED.render(error=error) if error else None
         )
 
     def _release(self, engine: GatewayEngine) -> bool:
@@ -87,7 +83,9 @@ class AutoDisable:
             ValueError,
         ) as err:
             cleanup_ok = False
-            self.cleanup_error = AUTO_DISABLE_CLEANUP_FAILED.render(error=err)
+            self.cleanup_error = rule_faults.AUTO_DISABLE_CLEANUP_FAILED.render(
+                error=err
+            )
         engine.upstream_lifecycle.deactivate(engine.management)
         self._persist(engine)
         lifecycle_error = engine.upstream_lifecycle.error
@@ -103,6 +101,8 @@ class AutoDisable:
         try:
             engine.persist_state()
         except (OSError, ValueError) as err:
-            self.persistence_error = AUTO_DISABLE_STATE_FAILED.render(error=err)
+            self.persistence_error = rule_faults.AUTO_DISABLE_STATE_FAILED.render(
+                error=err
+            )
         else:
             self.persistence_error = None

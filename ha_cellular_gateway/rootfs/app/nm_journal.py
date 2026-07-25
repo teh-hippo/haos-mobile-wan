@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from .fault_catalogue_rules import NETWORKMANAGER_JOURNAL_FAILED
+from . import fault_catalogue_rules as rule_faults
 from .nm_profile import ProfileSpec
 
 
@@ -94,7 +94,7 @@ class NmOwnershipJournal:
         try:
             self.persist()
         except (OSError, ValueError) as err:
-            return NETWORKMANAGER_JOURNAL_FAILED.render(error=err)
+            return rule_faults.NETWORKMANAGER_JOURNAL_FAILED.render(error=err)
         return None
 
     @staticmethod

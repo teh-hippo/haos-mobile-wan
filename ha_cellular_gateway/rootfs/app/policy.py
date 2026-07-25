@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import ipaddress
 
+from . import fault_catalogue_rules as rule_faults
 from .command import RunCommand, run_json, run_json_table
 from .config import GatewayConfig
 from .errors import GatewayError
-from .fault_catalogue_rules import POLICY_PRIORITY_CONFLICT
 from .policy_match import (
     route_descriptor,
     route_descriptor_from_args,
@@ -155,7 +155,9 @@ class PolicyRouting:
             if priority in self.RULE_PRIORITIES and not any(
                 rule_matches(rule, expected) for expected in expected_rules
             ):
-                conflicts.append(POLICY_PRIORITY_CONFLICT.render(priority=priority))
+                conflicts.append(
+                    rule_faults.POLICY_PRIORITY_CONFLICT.render(priority=priority)
+                )
                 continue
             if rule_table == table and not any(
                 rule_matches(rule, expected) for expected in expected_rules

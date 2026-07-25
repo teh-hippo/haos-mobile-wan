@@ -7,10 +7,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import fault_catalogue_rules as rule_faults
+from . import fault_catalogue_upstream as upstream_faults
 from .command import RunCommand, stop_process
 from .errors import GatewayError
-from .fault_catalogue_rules import UPSTREAM_REQUIRED_COMMAND_UNAVAILABLE
-from .fault_catalogue_upstream import UPSTREAM_USB_ACCESS_UNAVAILABLE
 from .usb_network import interface_carrier, interfaces_by_driver
 
 
@@ -55,10 +55,12 @@ class IPhoneUsbRuntime:
         for command in ("usbmuxd", "idevice_id", "idevicepair", "nmcli"):
             if self.which(command) is None:
                 errors.append(
-                    UPSTREAM_REQUIRED_COMMAND_UNAVAILABLE.render(command=command)
+                    rule_faults.UPSTREAM_REQUIRED_COMMAND_UNAVAILABLE.render(
+                        command=command
+                    )
                 )
         if not self.usb_root.exists():
-            errors.append(UPSTREAM_USB_ACCESS_UNAVAILABLE.text)
+            errors.append(upstream_faults.UPSTREAM_USB_ACCESS_UNAVAILABLE.text)
         return errors
 
     def ensure_usbmuxd(self) -> None:

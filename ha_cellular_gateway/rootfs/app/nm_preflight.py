@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from . import fault_catalogue_host as host_faults
+from . import fault_catalogue_upstream as upstream_faults
 from .config import GatewayConfig
-from .fault_catalogue_host import MANAGEMENT_INTERFACE_UNAVAILABLE
-from .fault_catalogue_upstream import UPSTREAM_FOREIGN_PROFILE, WIFI_MANAGEMENT_OVERLAP
 from .management import ManagementBaseline
 from .nm_inventory import NmInventory, ProfileRecord
 from .nm_migration import is_lineage_wifi
@@ -14,9 +14,9 @@ from .nm_profile_specs import (
     WIFI_PROFILE_UUID,
 )
 
-MANAGEMENT_REQUIRED = MANAGEMENT_INTERFACE_UNAVAILABLE.text
-WIFI_MANAGEMENT_CONFLICT = WIFI_MANAGEMENT_OVERLAP.text
-USB_FOREIGN_PROFILE = UPSTREAM_FOREIGN_PROFILE.text
+MANAGEMENT_REQUIRED = host_faults.MANAGEMENT_INTERFACE_UNAVAILABLE.text
+WIFI_MANAGEMENT_CONFLICT = upstream_faults.WIFI_MANAGEMENT_OVERLAP.text
+USB_FOREIGN_PROFILE = upstream_faults.UPSTREAM_FOREIGN_PROFILE.text
 
 
 @dataclass(frozen=True)

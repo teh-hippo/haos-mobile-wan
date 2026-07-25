@@ -3,16 +3,27 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from .status_issue_host import HOST_ERRORS
-from .status_issue_rules import issue_from_rules
-from .status_issue_upstream import (
-    TRANSIENT_EXACT,
-    UPSTREAM_ERRORS,
-    UPSTREAM_STABLE_STATES,
-    UPSTREAM_TRANSIENT_STATES,
+from .fault_catalogue_host import HOST_FAULTS
+from .fault_catalogue_rules import RULE_FAULTS
+from .fault_catalogue_upstream import PAIRING_FAULTS, UPSTREAM_FAULTS
+from .faults import (
+    DRIVER_INACTIVE,
+    DRIVER_INACTIVE_MARKER,
+    GENERIC,
+    PLACEHOLDER_ERROR,
+    Fault,
 )
 
-EXACT_ERRORS = {**HOST_ERRORS, **UPSTREAM_ERRORS}
+# Faults that spell themselves out in full are searched before those matched by
+# a head, so a broader entry never captures a fault that names itself exactly.
+FAULTS = (*HOST_FAULTS, *UPSTREAM_FAULTS, *RULE_FAULTS)
+
+
+def classify(error: str) -> Fault:
+    for spec in FAULTS:
+        if spec.matches(error):
+            return spec.issue(error)
+    return GENERIC.issue(error)
 
 
 def build_status_issues(
@@ -22,107 +33,66 @@ def build_status_issues(
     connection_warnings: Iterable[str] = (),
     runtime_errors: Iterable[str] = (),
 ) -> list[dict[str, Any]]:
-    safety_error_list = list(safety_errors)
-    issues: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    suppressed_errors: set[str] = set()
+    reported = list(safety_errors)
+    collector = _Collector()
 
-    upstream_issue = _issue_from_upstream(upstream_status)
-    if upstream_issue is not None:
-        issues.append(upstream_issue)
-        seen.add(str(upstream_issue["id"]))
-        pairing_message = upstream_status.get("upstream_pairing_message")
-        if isinstance(pairing_message, str) and pairing_message:
-            suppressed_errors.add(pairing_message)
+    upstream = _upstream_fault(upstream_status)
+    suppressed: str | None = None
+    if upstream is not None:
+        collector.add(upstream)
+        suppressed = _pairing_message(upstream_status)
 
-    for error in safety_error_list:
-        if error == "Safety checks have not run yet" or error in suppressed_errors:
-            continue
-        issue = _issue_from_error(error) or _generic_issue(error)
-        issue_id = str(issue["id"])
-        if issue_id in seen:
-            continue
-        seen.add(issue_id)
-        issues.append(issue)
+    for error in reported:
+        if error not in (PLACEHOLDER_ERROR, suppressed):
+            collector.add(classify(error))
 
     for warning in connection_warnings:
-        warning_issue = _issue_from_error(warning)
-        if warning_issue is None:
-            continue
-        warning_issue["blocking"] = False
-        issue_id = str(warning_issue["id"])
-        if issue_id in seen:
-            continue
-        seen.add(issue_id)
-        issues.append(warning_issue)
+        fault = classify(warning)
+        if fault.spec is not GENERIC:
+            collector.add(fault, blocking=False)
 
-    if last_error and not safety_error_list:
-        issue = _issue_from_error(last_error) or _generic_issue(last_error)
-        issue_id = str(issue["id"])
-        if issue_id not in seen:
-            seen.add(issue_id)
-            issues.append(issue)
+    if last_error and not reported:
+        collector.add(classify(last_error))
 
     for error in runtime_errors:
-        issue = _issue_from_error(error) or _generic_issue(error)
-        issue_id = str(issue["id"])
-        if issue_id not in seen:
-            seen.add(issue_id)
-            issues.append(issue)
+        collector.add(classify(error))
 
-    return issues
+    return collector.issues
 
 
-def _issue_from_upstream(upstream_status: dict[str, Any]) -> dict[str, Any] | None:
-    pairing_state = upstream_status.get("upstream_pairing_state")
-    if not isinstance(pairing_state, str):
-        return None
-    pairing_message = upstream_status.get("upstream_pairing_message")
-    if (
-        isinstance(pairing_message, str)
-        and "ipheth driver is not active" in pairing_message
-    ):
-        return _issue(
-            "upstream_driver_inactive",
-            "upstream_configuration",
-            "The host iPhone USB network driver is not active",
+class _Collector:
+    def __init__(self) -> None:
+        self.issues: list[dict[str, Any]] = []
+        self._seen: set[str] = set()
+
+    def add(self, fault: Fault, *, blocking: bool = True) -> None:
+        spec = fault.spec
+        if spec.id in self._seen:
+            return
+        self._seen.add(spec.id)
+        self.issues.append(
+            {
+                "id": spec.id,
+                "translation_key": spec.translation_key,
+                "repairable": bool(spec.translation_key) and not spec.transient,
+                "transient": spec.transient,
+                "blocking": blocking,
+                "message": fault.message,
+            }
         )
-    if pairing_state in UPSTREAM_STABLE_STATES:
-        issue_id, message = UPSTREAM_STABLE_STATES[pairing_state]
-        return _issue(issue_id, "upstream_configuration", message)
-    if pairing_state in UPSTREAM_TRANSIENT_STATES:
-        issue_id, message = UPSTREAM_TRANSIENT_STATES[pairing_state]
-        return _issue(issue_id, None, message, transient=True)
-    return None
 
 
-def _issue_from_error(error: str) -> dict[str, Any] | None:
-    if error in EXACT_ERRORS:
-        issue_id, key, message = EXACT_ERRORS[error]
-        return _issue(issue_id, key, message, transient=error in TRANSIENT_EXACT)
-    rule_match = issue_from_rules(error)
-    if rule_match is not None:
-        issue_id, key, message = rule_match
-        return _issue(issue_id, key, message)
-    return None
+def _pairing_message(upstream_status: dict[str, Any]) -> str | None:
+    message = upstream_status.get("upstream_pairing_message")
+    return message if isinstance(message, str) and message else None
 
 
-def _generic_issue(error: str) -> dict[str, Any]:
-    return _issue("gateway_runtime_error", None, error)
-
-
-def _issue(
-    issue_id: str,
-    translation_key: str | None,
-    message: str,
-    *,
-    transient: bool = False,
-) -> dict[str, Any]:
-    return {
-        "id": issue_id,
-        "translation_key": translation_key,
-        "repairable": bool(translation_key) and not transient,
-        "transient": transient,
-        "blocking": True,
-        "message": message,
-    }
+def _upstream_fault(upstream_status: dict[str, Any]) -> Fault | None:
+    state = upstream_status.get("upstream_pairing_state")
+    if not isinstance(state, str):
+        return None
+    message = _pairing_message(upstream_status)
+    if message is not None and DRIVER_INACTIVE_MARKER in message:
+        return DRIVER_INACTIVE.issue(message)
+    spec = PAIRING_FAULTS.get(state)
+    return None if spec is None else spec.issue(state)

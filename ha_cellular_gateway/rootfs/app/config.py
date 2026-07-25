@@ -52,6 +52,9 @@ class GatewayConfig:
     downstream_address: str
 
     dns_servers: ClassVar[tuple[str, ...]] = ("1.1.1.1", "8.8.8.8")
+    # Every route the app installs for mobile traffic lives here rather than in
+    # the main table, which is what keeps the gateway from ever becoming the
+    # host's default path off the network.
     routing_table: ClassVar[int] = 201
     reconcile_seconds: ClassVar[int] = 5
     api_bind: ClassVar[str] = "172.30.32.1"

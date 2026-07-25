@@ -6,6 +6,10 @@ from .nm_profile import ProfileSpec
 USB_PROFILE_NAME = "haos-mobile-wan-iphone"
 USB_PROFILE_UUID = "69fc469b-e2b9-52ba-8f8d-20e5a353735b"
 LEGACY_USB_PROFILE_UUID = "795b0402-f4b8-571b-91b0-2ab6816add52"
+# NetworkManager puts each mobile path's own routes in its own table, well away
+# from the main table where Home Assistant's management default route lives.
+# The app then copies only the path it has selected into its policy table 201,
+# so a mobile connection can never become the host's default route.
 USB_ROUTE_TABLE = 202
 USB_DHCP_TIMEOUT_SECONDS = 45
 GENERIC_USB_PROFILE_NAME = "haos-mobile-wan-generic-usb"
@@ -14,6 +18,8 @@ GENERIC_USB_DRIVERS = ("rndis_host", "cdc_ether", "cdc_ncm")
 
 WIFI_PROFILE_NAME = "haos-mobile-wan-hotspot"
 WIFI_PROFILE_UUID = "463ad2a4-3a0b-56a2-9b86-ec5470d95eb0"
+# Wi-Fi gets a separate table from USB so the two can be provisioned at once
+# during failover without either one's routes disturbing the other.
 WIFI_ROUTE_TABLE = 203
 
 

@@ -16,6 +16,9 @@ from .upstream_models import ResolvedUpstream, configured_upstream
 
 
 class PolicyRouting:
+    # Well above the priorities the kernel and Home Assistant use, so the app's
+    # rules are consulted only for traffic it owns and a stray rule of ours can
+    # never take precedence over the host's own routing decisions.
     RULE_PRIORITIES = (20100, 20110, 20120)
 
     def __init__(self, config: GatewayConfig, run: RunCommand) -> None:

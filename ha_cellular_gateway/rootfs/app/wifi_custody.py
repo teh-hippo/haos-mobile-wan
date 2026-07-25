@@ -136,6 +136,14 @@ class WifiCustodian:
         marker: CustodyMarker | None,
         persist: Callable[[], None],
     ) -> list[str]:
+        """Hand the adapter back in the runtime state it was borrowed in.
+
+        The marker records what the adapter was doing before the app claimed
+        it. Restoring from that record, rather than assuming a default, is what
+        lets an unrelated Wi-Fi profile reconnect on its own afterwards. If the
+        adapter cannot be identified the claim is deliberately left in place:
+        reporting a pending restore is safer than releasing the wrong device.
+        """
         if marker is not None:
             interface = self.resolve(
                 management_interface, identity=marker.stable_device_identity

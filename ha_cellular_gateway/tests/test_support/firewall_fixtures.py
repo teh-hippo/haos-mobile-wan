@@ -19,7 +19,7 @@ def install_realistic_firewall_state(
         {
             (
                 "iptables",
-                tuple(),
+                (),
                 (
                     "INPUT",
                     *firewall.netfilter.jump_rule(
@@ -31,7 +31,7 @@ def install_realistic_firewall_state(
             ),
             (
                 "iptables",
-                tuple(),
+                (),
                 (
                     "DOCKER-USER",
                     *firewall.netfilter.jump_rule(
@@ -55,7 +55,7 @@ def install_realistic_firewall_state(
             },
             (
                 "ip6tables",
-                tuple(),
+                (),
                 (
                     "INPUT",
                     *firewall.netfilter.jump_rule(
@@ -67,7 +67,7 @@ def install_realistic_firewall_state(
             ),
             (
                 "ip6tables",
-                tuple(),
+                (),
                 (
                     "DOCKER-USER",
                     *firewall.netfilter.jump_rule(

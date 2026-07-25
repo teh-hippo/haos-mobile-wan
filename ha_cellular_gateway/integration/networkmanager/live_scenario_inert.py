@@ -76,7 +76,7 @@ def test_inert_creation_controls(run: TracingRun) -> None:
             networkmanager_routes(run, ROUTE_TABLE) == [],
             "inert profile installed an isolated lease before activation",
         )
-        _activate_inert(run, profile)
+        _activate_inert(run)
 
         profile.deactivate()
         profile.delete()
@@ -99,7 +99,7 @@ def test_inert_creation_controls(run: TracingRun) -> None:
             not main_default_present(run, DEVICE),
             "recreated inert profile leaked a default into the main table",
         )
-        _activate_inert(run, profile)
+        _activate_inert(run)
     finally:
         run("nmcli", "connection", "down", "uuid", INERT_UUID, check=False)
         run("nmcli", "connection", "delete", "uuid", INERT_UUID, check=False)
@@ -136,7 +136,7 @@ def _assert_generated_default_is_caught(run: TracingRun, label: str) -> None:
     )
 
 
-def _activate_inert(run: TracingRun, profile: NmProfile) -> None:
+def _activate_inert(run: TracingRun) -> None:
     run(
         "nmcli",
         "-w",

@@ -135,14 +135,14 @@ class MqttPublisher:
         self._connection.publish(AVAILABILITY_TOPIC, PAYLOAD_ONLINE, qos=1, retain=True)
         self.publish_state()
 
-    def _on_connect(self, client: Any, userdata: Any, flags: Any, rc: Any) -> None:
+    def _on_connect(self, client: Any, _userdata: Any, _flags: Any, rc: Any) -> None:
         if rc:
             _LOGGER.warning("MQTT broker refused the connection (code %s)", rc)
             return
         self.announce()
         client.subscribe(STATUS_TOPIC)
 
-    def _on_message(self, client: Any, userdata: Any, message: Any) -> None:
+    def _on_message(self, _client: Any, _userdata: Any, message: Any) -> None:
         payload = _decode(message.payload)
         if message.topic == STATUS_TOPIC and payload == PAYLOAD_BIRTH:
             self.announce()

@@ -156,9 +156,11 @@ class GatewayConfigTests(unittest.TestCase):
             {"hotspot_ssid": "Phone", "hotspot_password": ""},
             {"hotspot_ssid": "", "hotspot_password": "validpass"},
         ):
-            with self.subTest(overrides=overrides):
-                with self.assertRaisesRegex(GatewayError, "both be set"):
-                    make_config(**overrides).validate()
+            with (
+                self.subTest(overrides=overrides),
+                self.assertRaisesRegex(GatewayError, "both be set"),
+            ):
+                make_config(**overrides).validate()
 
     def test_validates_hotspot_ssid_wifi_limits(self) -> None:
         with self.assertRaisesRegex(GatewayError, "SSID"):
@@ -167,11 +169,11 @@ class GatewayConfigTests(unittest.TestCase):
 
     def test_validates_hotspot_password_length(self) -> None:
         for password in ("short", "x" * 64):
-            with self.subTest(password=password):
-                with self.assertRaisesRegex(GatewayError, "password"):
-                    make_config(
-                        hotspot_ssid="Phone", hotspot_password=password
-                    ).validate()
+            with (
+                self.subTest(password=password),
+                self.assertRaisesRegex(GatewayError, "password"),
+            ):
+                make_config(hotspot_ssid="Phone", hotspot_password=password).validate()
 
     def test_usb_connection_allows_dynamic_upstream_network(self) -> None:
         config = make_config(

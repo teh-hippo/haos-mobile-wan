@@ -65,12 +65,14 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
 
         restarted.dhcp.stop = fail_stop
 
-        with self.assertLogs(
-            "rootfs.app.gateway_startup",
-            level="ERROR",
-        ) as captured:
-            with self.assertRaisesRegex(GatewayError, "Cleanup failed"):
-                restarted.reconcile()
+        with (
+            self.assertLogs(
+                "rootfs.app.gateway_startup",
+                level="ERROR",
+            ) as captured,
+            self.assertRaisesRegex(GatewayError, "Cleanup failed"),
+        ):
+            restarted.reconcile()
 
         self.assertIn(
             "Interrupted gateway recovery failed",

@@ -57,7 +57,6 @@ class WifiActivator:
     def drive(
         self,
         interface: str,
-        active_uuid: str,
         device_fingerprint: tuple[object, ...],
         *,
         foreign_active: bool,

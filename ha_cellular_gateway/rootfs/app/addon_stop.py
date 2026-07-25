@@ -3,6 +3,7 @@ from __future__ import annotations
 import http.client
 import os
 from collections.abc import Callable
+from contextlib import suppress
 
 Connection = http.client.HTTPConnection
 ConnectionFactory = Callable[[], Connection]
@@ -42,7 +43,5 @@ def request_self_stop(
 
 
 def _close(connection: Connection) -> None:
-    try:
+    with suppress(OSError):
         connection.close()
-    except OSError:
-        pass

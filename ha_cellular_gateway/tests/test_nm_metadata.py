@@ -28,7 +28,7 @@ class FakeDBusException(Exception):
 
 
 class FakeSettingsObject:
-    def __init__(self, bus: "FakeBus") -> None:
+    def __init__(self, bus: FakeBus) -> None:
         self._bus = bus
 
     def GetConnectionByUuid(self, uuid: str, dbus_interface: str | None = None):
@@ -38,7 +38,7 @@ class FakeSettingsObject:
 
 
 class FakeConnectionObject:
-    def __init__(self, bus: "FakeBus") -> None:
+    def __init__(self, bus: FakeBus) -> None:
         self._bus = bus
 
     def GetSettings(self, dbus_interface: str | None = None):
@@ -110,28 +110,29 @@ class NmMetadataTests(unittest.TestCase):
     def test_permission_and_transport_errors_convert_not_missing(self) -> None:
         for name in (PERMISSION_DENIED, TRANSPORT_ERROR):
             with self.subTest(error=name):
-                buses: list[FakeBus] = []
+                self._assert_error_converts(name)
 
-                def factory(address: str, name: str = name) -> FakeBus:
-                    bus = FakeBus(lookup_error=FakeDBusException(name))
-                    buses.append(bus)
-                    return bus
+    def _assert_error_converts(self, name: str) -> None:
+        buses: list[FakeBus] = []
 
-                store = DbusWifiProfileMetadata(UUID)
-                with mock.patch.object(
-                    nm_metadata, "_dbus", lambda: make_dbus(factory)
-                ):
-                    for action in (
-                        lambda: store.read("marker"),
-                        lambda: store.write("marker", "value"),
-                        lambda: store.clear("marker"),
-                    ):
-                        with self.assertRaises(GatewayError) as ctx:
-                            action()
-                        self.assertEqual(str(ctx.exception), METADATA_UNAVAILABLE)
+        def factory(address: str) -> FakeBus:
+            bus = FakeBus(lookup_error=FakeDBusException(name))
+            buses.append(bus)
+            return bus
 
-                self.assertTrue(buses)
-                self.assertTrue(all(bus.closed for bus in buses))
+        store = DbusWifiProfileMetadata(UUID)
+        with mock.patch.object(nm_metadata, "_dbus", lambda: make_dbus(factory)):
+            for action in (
+                lambda: store.read("marker"),
+                lambda: store.write("marker", "value"),
+                lambda: store.clear("marker"),
+            ):
+                with self.assertRaises(GatewayError) as ctx:
+                    action()
+                self.assertEqual(str(ctx.exception), METADATA_UNAVAILABLE)
+
+        self.assertTrue(buses)
+        self.assertTrue(all(bus.closed for bus in buses))
 
     def test_read_returns_the_existing_marker_value(self) -> None:
         store = DbusWifiProfileMetadata(UUID)

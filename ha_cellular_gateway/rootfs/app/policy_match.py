@@ -32,8 +32,7 @@ def rule_matches(rule: dict[str, object], expected: list[str]) -> bool:
             or str(rule.get("iifname", rule.get("iif", ""))) == interface
         )
         and (
-            not source
-            and actual_source in {"", "all"}
+            (not source and actual_source in {"", "all"})
             or actual_source in allowed_sources
         )
     )

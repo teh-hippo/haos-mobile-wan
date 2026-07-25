@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 
@@ -49,4 +48,4 @@ class StateStore:
             encoding="utf-8",
         )
         temporary.chmod(0o600)
-        os.replace(temporary, self.path)
+        temporary.replace(self.path)

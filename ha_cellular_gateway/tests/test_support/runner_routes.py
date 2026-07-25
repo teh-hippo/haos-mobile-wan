@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import json
-from typing import Union
 
 from .process import Result
 
 Address = tuple[str, int]
-AddressBook = Union[Address, list[Address]]
+AddressBook = Address | list[Address]
 
 
 class RouteInterfaceState:

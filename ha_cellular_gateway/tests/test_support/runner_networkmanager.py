@@ -72,7 +72,7 @@ class NetworkManagerState:
         )
 
     def _connection_add(self, pairs: list[str]) -> Result:
-        add_fields = dict(zip(pairs[::2], pairs[1::2]))
+        add_fields = dict(zip(pairs[::2], pairs[1::2], strict=False))
         uuid = add_fields["connection.uuid"]
         kind = add_fields["type"]
         profile = {

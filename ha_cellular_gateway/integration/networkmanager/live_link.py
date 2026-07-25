@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-import os
 import subprocess
+from pathlib import Path
 
 from live_constants import DEVICE, FIXED_UUIDS, HARNESS_DIR, PHONE
 from live_dbus import delete_fixed_profiles, device_present
 from live_tracing import TracingRun, wait_for
 
-_ACTIVE_DNSMASQ: list["subprocess.Popen[bytes]"] = []
+_ACTIVE_DNSMASQ: list[subprocess.Popen[bytes]] = []
 
 
-def _terminate(proc: "subprocess.Popen[bytes]") -> None:
+def _terminate(proc: subprocess.Popen[bytes]) -> None:
     if proc.poll() is None:
         proc.terminate()
         try:
@@ -20,30 +20,29 @@ def _terminate(proc: "subprocess.Popen[bytes]") -> None:
             proc.wait(timeout=5)
 
 
-def untrack_process(proc: "subprocess.Popen[bytes]") -> None:
+def untrack_process(proc: subprocess.Popen[bytes]) -> None:
     if proc in _ACTIVE_DNSMASQ:
         _ACTIVE_DNSMASQ.remove(proc)
 
 
-def stop_dnsmasq(proc: "subprocess.Popen[bytes]") -> None:
+def stop_dnsmasq(proc: subprocess.Popen[bytes]) -> None:
     untrack_process(proc)
     _terminate(proc)
 
 
 def _reset_dnsmasq_lease_file() -> str:
-    lease_file = os.path.join(HARNESS_DIR, "dnsmasq.leases")
-    if os.path.exists(lease_file):
-        os.remove(lease_file)
-    return lease_file
+    lease_file = Path(HARNESS_DIR) / "dnsmasq.leases"
+    lease_file.unlink(missing_ok=True)
+    return str(lease_file)
 
 
-def realise_link(run: TracingRun) -> "subprocess.Popen[bytes]":
+def realise_link(run: TracingRun) -> subprocess.Popen[bytes]:
     run("ip", "link", "add", DEVICE, "type", "veth", "peer", "name", PHONE)
     run("ip", "address", "add", "192.0.2.1/24", "dev", PHONE)
     run("ip", "link", "set", PHONE, "up")
     run("ip", "link", "set", DEVICE, "up")
     lease_file = _reset_dnsmasq_lease_file()
-    with open(os.path.join(HARNESS_DIR, "dnsmasq.log"), "ab") as log:
+    with (Path(HARNESS_DIR) / "dnsmasq.log").open("ab") as log:
         proc = subprocess.Popen(
             [
                 "dnsmasq",
@@ -70,7 +69,7 @@ def realise_link(run: TracingRun) -> "subprocess.Popen[bytes]":
     return proc
 
 
-def destroy_link(run: TracingRun, proc: "subprocess.Popen[bytes] | None") -> None:
+def destroy_link(run: TracingRun, proc: subprocess.Popen[bytes] | None) -> None:
     if proc is not None:
         stop_dnsmasq(proc)
     run("ip", "link", "delete", DEVICE, "type", "veth", check=False)

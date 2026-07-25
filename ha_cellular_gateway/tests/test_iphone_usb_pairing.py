@@ -25,7 +25,7 @@ class IPhoneUsbPairingTests(IPhoneUsbUpstreamHarness):
             ),
         )
 
-        upstream, errors = manager.resolve()
+        upstream, _errors = manager.resolve()
 
         self.assertIsNone(upstream)
         self.assertEqual(network_manager.inspect_calls, [])
@@ -121,7 +121,7 @@ class IPhoneUsbPairingTests(IPhoneUsbUpstreamHarness):
         self._add_apple_usb_device()
         manager = self._manager(runner, FakeNetworkManager())
 
-        upstream, errors = manager.resolve()
+        upstream, _errors = manager.resolve()
 
         self.assertIsNone(upstream)
         self.assertEqual(manager.pairing_state, "multiple_devices")
@@ -134,7 +134,7 @@ class IPhoneUsbPairingTests(IPhoneUsbUpstreamHarness):
         self._add_ipheth_interface("eth1")
         manager = self._manager(runner, FakeNetworkManager())
 
-        upstream, errors = manager.resolve()
+        upstream, _errors = manager.resolve()
 
         self.assertIsNone(upstream)
         self.assertEqual(manager.pairing_state, "multiple_devices")
@@ -149,7 +149,7 @@ class IPhoneUsbPairingTests(IPhoneUsbUpstreamHarness):
         )
         manager = self._manager(runner, network_manager)
 
-        upstream, errors = manager.resolve()
+        upstream, _errors = manager.resolve()
 
         self.assertIsNone(upstream)
         self.assertEqual(manager.pairing_state, "profile_conflict")
@@ -164,7 +164,7 @@ class IPhoneUsbPairingTests(IPhoneUsbUpstreamHarness):
         )
         manager = self._manager(runner, network_manager)
 
-        upstream, errors = manager.resolve()
+        upstream, _errors = manager.resolve()
 
         self.assertIsNone(upstream)
         self.assertEqual(manager.pairing_state, "invalid_lease")
@@ -179,7 +179,7 @@ class IPhoneUsbPairingTests(IPhoneUsbUpstreamHarness):
         )
         manager = self._manager(runner, network_manager)
 
-        upstream, errors = manager.resolve()
+        upstream, _errors = manager.resolve()
 
         self.assertIsNone(upstream)
         self.assertEqual(manager.pairing_state, "waiting_for_profile")

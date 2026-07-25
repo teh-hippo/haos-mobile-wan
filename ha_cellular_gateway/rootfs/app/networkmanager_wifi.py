@@ -192,7 +192,7 @@ class NetworkManagerWifi:
         fingerprint = (device.managed, device.autoconnect, device.radio_software)
         foreign_active = bool(active) and active != self.profile.spec.uuid
         outcome = self.activator.drive(
-            interface, active, fingerprint, foreign_active=foreign_active
+            interface, fingerprint, foreign_active=foreign_active
         )
         if outcome.phase == "associated":
             return self._verify_active(interface)

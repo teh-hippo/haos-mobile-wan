@@ -27,7 +27,7 @@ BUDGETS = (
 )
 
 
-def violations(root: Path = Path(".")) -> list[str]:
+def violations(root: Path = Path()) -> list[str]:
     errors: list[str] = []
     for label, directory, pattern, maximum in BUDGETS:
         for path in sorted((root / directory).glob(pattern)):

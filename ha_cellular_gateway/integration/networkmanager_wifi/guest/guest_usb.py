@@ -2,31 +2,30 @@ from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 
 from app.upstream_generic_usb import GenericUsbUpstream
 from guest_tracing import management, require, wait_for
 
 
 def generic_interface() -> str | None:
-    root = "/sys/class/net"
-    for name in os.listdir(root):
-        driver = os.path.join(root, name, "device", "driver")
-        if not os.path.exists(driver):
+    for entry in Path("/sys/class/net").iterdir():
+        driver = entry / "device" / "driver"
+        if not driver.exists():
             continue
-        if os.path.basename(os.path.realpath(driver)) in {
+        if driver.resolve().name in {
             "rndis_host",
             "cdc_ether",
             "cdc_ncm",
         }:
-            return name
+            return entry.name
     return None
 
 
 def bind_generic_usb() -> str:
     driver = os.environ["LAB_GENERIC_USB_DRIVER"]
     bind_id = os.environ["LAB_GENERIC_USB_BIND_ID"]
-    with open(
-        f"/sys/bus/usb/drivers/{driver}/bind",
+    with Path(f"/sys/bus/usb/drivers/{driver}/bind").open(
         "w",
         encoding="utf-8",
     ) as stream:
@@ -40,8 +39,7 @@ def bind_generic_usb() -> str:
 def unbind_generic_usb() -> None:
     driver = os.environ["LAB_GENERIC_USB_DRIVER"]
     bind_id = os.environ["LAB_GENERIC_USB_BIND_ID"]
-    with open(
-        f"/sys/bus/usb/drivers/{driver}/unbind",
+    with Path(f"/sys/bus/usb/drivers/{driver}/unbind").open(
         "w",
         encoding="utf-8",
     ) as stream:

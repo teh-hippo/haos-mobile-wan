@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .errors import GatewayError
+from .fault_catalogue_rules import SAFETY_INSPECTION_FAILED
 from .gateway_cleanup import cleanup, cleanup_changed_ownership
 from .lifecycle import log_upstream_transitions, wifi_interface_status
 
@@ -48,7 +49,7 @@ def evaluate_safety(
             ),
         )
     except OPERATION_ERRORS as err:
-        errors = [f"Safety inspection failed: {err}"]
+        errors = [SAFETY_INSPECTION_FAILED.render(error=err)]
     wifi_status = wifi_interface_status(engine)
     return SafetyEvaluation(downstream, upstream, upstream_errors, errors, wifi_status)
 

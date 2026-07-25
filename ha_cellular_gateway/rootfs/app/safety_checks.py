@@ -25,6 +25,11 @@ from .fault_catalogue_host import (
     UPSTREAM_IPV6_ACTIVE,
     UPSTREAM_IPV6_UNVERIFIED,
 )
+from .fault_catalogue_rules import (
+    RP_FILTER_UNAVAILABLE,
+    STRICT_RP_FILTER_ENABLED,
+    UNEXPECTED_DEFAULT_ROUTE,
+)
 from .upstream_models import ResolvedUpstream
 
 if TYPE_CHECKING:
@@ -93,9 +98,9 @@ def rp_filter_errors(
     for interface in interfaces:
         try:
             if inspector.rp_filter(interface) == 1:
-                errors.append(f"Strict rp_filter is enabled on {interface}")
+                errors.append(STRICT_RP_FILTER_ENABLED.render(interface=interface))
         except (OSError, ValueError):
-            errors.append(f"Cannot read rp_filter for {interface}")
+            errors.append(RP_FILTER_UNAVAILABLE.render(interface=interface))
     return errors
 
 
@@ -139,8 +144,9 @@ def default_route_errors(
             unexpected_defaults = default_interfaces - {management_interface}
             if unexpected_defaults:
                 errors.append(
-                    "Unexpected main-table default route: "
-                    + ",".join(sorted(unexpected_defaults))
+                    UNEXPECTED_DEFAULT_ROUTE.render(
+                        detail=",".join(sorted(unexpected_defaults))
+                    )
                 )
         if upstream_interface and upstream_interface in default_interfaces:
             errors.append(UPSTREAM_DEFAULT_ROUTE_PRESENT.text)
@@ -216,7 +222,7 @@ def downstream_errors(
             )
         )
         if inspector.rp_filter(downstream) == 1:
-            errors.append("Strict rp_filter is enabled on downstream NIC")
+            errors.append(STRICT_RP_FILTER_ENABLED.render(interface="downstream NIC"))
     except OPERATION_ERRORS:
         errors.append(DOWNSTREAM_UNAVAILABLE.text)
     try:

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .command import RunCommand, stop_process
 from .errors import GatewayError
+from .fault_catalogue_rules import UPSTREAM_REQUIRED_COMMAND_UNAVAILABLE
 from .fault_catalogue_upstream import UPSTREAM_USB_ACCESS_UNAVAILABLE
 from .usb_network import interface_carrier, interfaces_by_driver
 
@@ -53,7 +54,9 @@ class IPhoneUsbRuntime:
         errors: list[str] = []
         for command in ("usbmuxd", "idevice_id", "idevicepair", "nmcli"):
             if self.which(command) is None:
-                errors.append(f"Required command is unavailable: {command}")
+                errors.append(
+                    UPSTREAM_REQUIRED_COMMAND_UNAVAILABLE.render(command=command)
+                )
         if not self.usb_root.exists():
             errors.append(UPSTREAM_USB_ACCESS_UNAVAILABLE.text)
         return errors

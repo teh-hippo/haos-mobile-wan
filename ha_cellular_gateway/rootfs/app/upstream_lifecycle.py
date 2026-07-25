@@ -6,6 +6,10 @@ from typing import TYPE_CHECKING
 
 from .config import GatewayConfig
 from .errors import GatewayError
+from .fault_catalogue_rules import (
+    NETWORKMANAGER_CLEANUP_FAILED,
+    NETWORKMANAGER_PROFILE_FAILED,
+)
 from .fault_catalogue_upstream import HOTSPOT_CREDENTIALS_MISSING
 from .networkmanager_wifi import NetworkManagerWifi, safe_wifi_unavailable
 from .nm_inventory import NmInventory, ProfileRecord
@@ -89,7 +93,7 @@ class UpstreamLifecycle:
             if errors and management is not None:
                 errors.extend(self._release_all(management))
         except PROFILE_ERRORS as err:
-            errors.append(f"NetworkManager profile operation failed: {err}")
+            errors.append(NETWORKMANAGER_PROFILE_FAILED.render(error=err))
         self.error = "; ".join(dict.fromkeys(errors)) or None
         journal_error = self.journal.transition(
             "active" if self.error is None else "blocked"
@@ -117,7 +121,7 @@ class UpstreamLifecycle:
             errors.extend(self.wifi.release(self._manage_iface(management)))
             errors.extend(migrate_legacy_usb(self.usb.run))
         except PROFILE_ERRORS as err:
-            errors.append(f"NetworkManager profile cleanup failed: {err}")
+            errors.append(NETWORKMANAGER_CLEANUP_FAILED.render(error=err))
         self.error = "; ".join(dict.fromkeys(errors)) or None
         journal_error = self.journal.transition(
             "disabled" if self.error is None else "blocked"

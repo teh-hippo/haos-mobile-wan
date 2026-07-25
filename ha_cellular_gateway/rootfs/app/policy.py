@@ -5,6 +5,7 @@ import ipaddress
 from .command import RunCommand, run_json, run_json_table
 from .config import GatewayConfig
 from .errors import GatewayError
+from .fault_catalogue_rules import POLICY_PRIORITY_CONFLICT
 from .policy_match import (
     route_descriptor,
     route_descriptor_from_args,
@@ -154,7 +155,7 @@ class PolicyRouting:
             if priority in self.RULE_PRIORITIES and not any(
                 rule_matches(rule, expected) for expected in expected_rules
             ):
-                conflicts.append(f"Policy priority {priority} is already in use")
+                conflicts.append(POLICY_PRIORITY_CONFLICT.render(priority=priority))
                 continue
             if rule_table == table and not any(
                 rule_matches(rule, expected) for expected in expected_rules

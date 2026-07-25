@@ -7,6 +7,11 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from .addon_stop import StopRequester, request_self_stop
+from .fault_catalogue_rules import (
+    AUTO_DISABLE_CLEANUP_FAILED,
+    AUTO_DISABLE_STATE_FAILED,
+    AUTO_STOP_REQUEST_FAILED,
+)
 
 if TYPE_CHECKING:
     from .config import GatewayConfig
@@ -67,7 +72,9 @@ class AutoDisable:
             return
         self._retry_at = now + RETRY_SECONDS
         error = self.stop_requester()
-        self.stop_error = f"Auto-stop request failed: {error}" if error else None
+        self.stop_error = (
+            AUTO_STOP_REQUEST_FAILED.render(error=error) if error else None
+        )
 
     def _release(self, engine: GatewayEngine) -> bool:
         cleanup_ok = True
@@ -80,7 +87,7 @@ class AutoDisable:
             ValueError,
         ) as err:
             cleanup_ok = False
-            self.cleanup_error = f"Auto-disable cleanup failed: {err}"
+            self.cleanup_error = AUTO_DISABLE_CLEANUP_FAILED.render(error=err)
         engine.upstream_lifecycle.deactivate(engine.management)
         self._persist(engine)
         lifecycle_error = engine.upstream_lifecycle.error
@@ -96,6 +103,6 @@ class AutoDisable:
         try:
             engine.persist_state()
         except (OSError, ValueError) as err:
-            self.persistence_error = f"Auto-disable state persistence failed: {err}"
+            self.persistence_error = AUTO_DISABLE_STATE_FAILED.render(error=err)
         else:
             self.persistence_error = None

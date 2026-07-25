@@ -36,6 +36,21 @@ class CatalogueOwnershipTests(unittest.TestCase):
                         "render it through the catalogue instead",
                     )
 
+    def test_variable_detail_faults_are_never_rebuilt_by_hand(self) -> None:
+        heads = {
+            spec.head: spec.id for spec in FAULTS if spec.parameterised and spec.head
+        }
+        for path in producer_sources():
+            source = path.read_text(encoding="utf-8")
+            for head, issue_id in heads.items():
+                with self.subTest(module=path.name, issue=issue_id):
+                    self.assertNotIn(
+                        f'"{head}',
+                        source,
+                        f"{path.name} rebuilds text owned by {issue_id}; "
+                        "call render() instead",
+                    )
+
     def test_every_fault_is_reachable_by_the_text_it_describes(self) -> None:
         for spec in FAULTS:
             if not spec.template or spec.parameterised:

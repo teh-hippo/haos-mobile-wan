@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from .errors import GatewayError, SafetyError
 from .fault_catalogue_host import MANAGEMENT_INTERFACE_UNAVAILABLE
+from .fault_catalogue_rules import ACTIVATION_FAILED
 from .gateway_cleanup import cleanup, cleanup_changed_ownership
 from .gateway_safety_evaluation import (
     evaluate_safety,
@@ -83,7 +84,7 @@ def apply(
                 engine,
                 preserve_host_protection=True,
             )
-            message = f"Activation failed: {err}"
+            message = ACTIVATION_FAILED.render(error=err)
             with engine.lock:
                 engine.lifecycle_state.last_error = message
             raise GatewayError(message) from err

@@ -62,52 +62,7 @@ jobs:
           CHANNEL: ${{ inputs.channel }}
           VERSION: ${{ inputs.version }}
         run: |
-          uv run python - <<'PY'
-          import os
-          import sys
-          from pathlib import Path
-
-          from tools.release_contract import (
-              ContractError,
-              config_version,
-              is_beta_version,
-              parse_version,
-          )
-
-          acceptance_reference = os.environ["ACCEPTANCE_REFERENCE"].strip()
-          channel = os.environ["CHANNEL"]
-          version = os.environ["VERSION"]
-          try:
-              parse_version(version)
-          except ContractError as error:
-              print(error, file=sys.stderr)
-              raise SystemExit(1)
-
-          beta = is_beta_version(version)
-          if channel == "beta" and not beta:
-              print("Beta releases require a -beta.N version", file=sys.stderr)
-              raise SystemExit(1)
-          if channel == "stable" and beta:
-              print("Stable releases cannot use a beta version", file=sys.stderr)
-              raise SystemExit(1)
-          if channel == "stable" and not acceptance_reference:
-              print(
-                  "Stable releases require an acceptance reference",
-                  file=sys.stderr,
-              )
-              raise SystemExit(1)
-
-          config = config_version(
-              Path("ha_cellular_gateway/config.yaml").read_text(encoding="utf-8")
-          )
-          if config != version:
-              print(
-                  f"Input version {version} does not match "
-                  f"ha_cellular_gateway/config.yaml version {config}",
-                  file=sys.stderr,
-              )
-              raise SystemExit(1)
-          PY
+          uv run python -m tools.release_dispatch
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Verify tag and release are unused
@@ -200,7 +155,7 @@ jobs:
             --dir sbom
 
       - name: Extract release notes
-        run: uv run python tools/release_notes.py "$VERSION" > release-notes.md
+        run: uv run python -m tools.release_notes "$VERSION" > release-notes.md
 
       - name: Preserve release candidate assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

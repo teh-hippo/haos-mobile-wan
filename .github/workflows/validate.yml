@@ -80,84 +80,11 @@ jobs:
           PYTHONPATH=ha_cellular_gateway/rootfs \
             uv run python -c "import app.main"
 
-      - name: Validate JSON and YAML
-        run: |
-          uv run python - <<'PY'
-          from pathlib import Path
-          import json
-          import yaml
-
-          for path in Path(".").rglob("*.json"):
-              json.loads(path.read_text(encoding="utf-8"))
-
-          for pattern in ("*.yaml", "*.yml"):
-              for path in Path(".").rglob(pattern):
-                  yaml.safe_load(path.read_text(encoding="utf-8"))
-
-          app = yaml.safe_load(
-              Path("ha_cellular_gateway/config.yaml").read_text(encoding="utf-8")
-          )
-          assert app["arch"] == ["aarch64"]
-          assert app["host_network"] is True
-          assert app["hassio_api"] is True
-          assert app["hassio_role"] == "manager"
-          assert app["usb"] is True
-          assert "apparmor" not in app
-          assert app["privileged"] == ["NET_ADMIN", "NET_RAW"]
-          assert app.get("full_access") in (None, False)
-          assert app["host_dbus"] is True
-          assert app.get("udev") in (None, False)
-          assert Path("ha_cellular_gateway/DOCS.md").exists()
-          assert Path("ha_cellular_gateway/translations/en.yaml").exists()
-
-          dockerfile = Path(
-              "ha_cellular_gateway/Dockerfile"
-          ).read_text(encoding="utf-8")
-          assert "ARG BUILD_FROM" not in dockerfile
-          assert dockerfile.startswith(
-              "FROM ghcr.io/home-assistant/base:"
-          )
-
-          profile = Path("ha_cellular_gateway/apparmor.txt").read_text(
-              encoding="utf-8"
-          )
-          assert "complain" not in profile
-          for fragment in (
-              "/run/**",
-              "/proc/**",
-              "/sys/bus/usb/**",
-              "/sys/module/**",
-              "/usr/sbin/conntrack",
-          ):
-              assert fragment not in profile
-          for fragment in (
-              "capability net_admin,",
-              "capability net_raw,",
-              "/run/dbus/system_bus_socket rw,",
-              "peer=(name=org.freedesktop.NetworkManager),",
-              "/run/ha-cellgw/** rwk,",
-              "/run/usbmuxd rw,",
-              "/run/usbmuxd/** rwk,",
-              "/var/run/usbmuxd rw,",
-              "/var/lib/lockdown/** rwk,",
-              "/proc/sys/net/ipv4/** r,",
-              "/dev/bus/usb/** rw,",
-              "/usr/bin/nmcli rix,",
-              "/sys/bus/usb/devices/ r,",
-              "/sys/bus/usb/devices/** r,",
-              "/sys/bus/usb/drivers/ipheth/** r,",
-              "/sys/bus/usb/drivers/rndis_host/** r,",
-              "/sys/bus/usb/drivers/cdc_ether/** r,",
-              "/sys/bus/usb/drivers/cdc_ncm/** r,",
-              "/sys/module/ipheth/** r,",
-          ):
-              assert fragment in profile
-          assert "/sbin/udhcpc" not in profile
-          assert "udhcpc.script" not in profile
-          PY
+      - name: Validate the shipped distribution
+        run: uv run python -m tools.distribution_contract
 
       - name: Validate source structure
-        run: uv run python tools/structure_contract.py
+        run: uv run python -m tools.structure_contract
 
       - name: Lint Home Assistant app
         uses: frenck/action-addon-linter@f995494fd84fae6310d23617e66d0e37de4f14eb # v2.21.0
@@ -185,15 +112,7 @@ jobs:
 
       - name: Build aarch64 app image
         run: |
-          VERSION=$(uv run python - <<'PY'
-          from pathlib import Path
-          import yaml
-          app = yaml.safe_load(
-              Path("ha_cellular_gateway/config.yaml").read_text(encoding="utf-8")
-          )
-          print(app["version"])
-          PY
-          )
+          VERSION=$(uv run python -m tools.app_metadata)
           docker buildx build \
             --platform linux/arm64 \
             --build-arg BUILD_VERSION="$VERSION" \

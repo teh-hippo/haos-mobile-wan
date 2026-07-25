@@ -22,12 +22,12 @@ class Firewall:
         self.config = config
         self.netfilter = Netfilter(run, self.COMMENT_PREFIX)
         rules = FirewallRules(config, self.COMMENT_PREFIX)
-        self._input_rules = rules.input_rules
-        self._forward_rules = rules.forward_rules
-        self._nat_rule = rules.nat_rule
-        self._mss_rules = rules.mss_rules
-        self._input6_rules = rules.input6_rules
-        self._forward6_rules = rules.forward6_rules
+        self.input_rules = rules.input_rules
+        self.forward_rules = rules.forward_rules
+        self.nat_rule = rules.nat_rule
+        self.mss_rules = rules.mss_rules
+        self.input6_rules = rules.input6_rules
+        self.forward6_rules = rules.forward6_rules
 
     def backend_ok(self) -> bool:
         return self.netfilter.backend_ok()
@@ -82,7 +82,7 @@ class Firewall:
         self._ensure_chain_rules(
             "iptables",
             self.INPUT_CHAIN,
-            self._input_rules(),
+            self.input_rules(),
         )
         self.netfilter.ensure_jump(
             "iptables",
@@ -96,7 +96,7 @@ class Firewall:
         self._ensure_chain_rules(
             "iptables",
             self.FORWARD_CHAIN,
-            self._forward_rules(downstream, upstream),
+            self.forward_rules(downstream, upstream),
         )
         self.netfilter.ensure_jump(
             "iptables",
@@ -110,9 +110,9 @@ class Firewall:
             "iptables",
             ["-t", "nat"],
             "POSTROUTING",
-            self._nat_rule(upstream),
+            self.nat_rule(upstream),
         )
-        for rule in self._mss_rules(downstream, upstream):
+        for rule in self.mss_rules(downstream, upstream):
             self.netfilter.ensure_rule(
                 "iptables",
                 ["-t", "mangle"],
@@ -127,7 +127,7 @@ class Firewall:
         self._ensure_chain_rules(
             "ip6tables",
             self.FORWARD6_CHAIN,
-            self._forward6_rules(downstream),
+            self.forward6_rules(downstream),
         )
         self.netfilter.ensure_jump(
             "ip6tables",
@@ -142,7 +142,7 @@ class Firewall:
         self._ensure_chain_rules(
             "ip6tables",
             self.INPUT6_CHAIN,
-            self._input6_rules(),
+            self.input6_rules(),
         )
         self.netfilter.ensure_jump(
             "ip6tables",

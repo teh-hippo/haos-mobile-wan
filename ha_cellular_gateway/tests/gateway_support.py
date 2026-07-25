@@ -57,7 +57,7 @@ class GatewayTestCase(unittest.TestCase):
         engine.lifecycle_state.management_interface = "end0"
         engine.runner.networkmanager.nm_wifi_cache["wlan0"] = {"Phone"}
         engine.upstream_lifecycle.activate(engine.management)
-        engine._persist_state()
+        engine.persist_state()
         engine.firewall.installed = lambda downstream=None, upstream_interface=None: (
             engine.lifecycle_state.applied
         )

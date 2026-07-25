@@ -97,10 +97,10 @@ class GatewayManagementRecoveryTests(GatewayTestCase):
 
     def test_reconcile_skips_work_after_stop_requested(self) -> None:
         self.engine.stop_event.set()
-        self.engine._resolve_management = lambda: (_ for _ in ()).throw(
+        self.engine.resolve_management = lambda: (_ for _ in ()).throw(
             AssertionError("management resolution must be skipped")
         )
-        self.engine._refresh_health_if_due = lambda: (_ for _ in ()).throw(
+        self.engine.refresh_health_if_due = lambda: (_ for _ in ()).throw(
             AssertionError("health refresh must be skipped")
         )
 

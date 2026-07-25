@@ -38,11 +38,12 @@ select = [
     "RET",
     "RUF",
     "SIM",
+    "SLF",
     "UP",
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"ha_cellular_gateway/tests/**" = ["ARG001", "ARG002", "ARG005"]
+"ha_cellular_gateway/tests/**" = ["ARG001", "ARG002", "ARG005", "SLF001"]
 
 [tool.mypy]
 python_version = "3.13"

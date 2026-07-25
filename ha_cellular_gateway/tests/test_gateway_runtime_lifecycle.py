@@ -13,7 +13,7 @@ class FailClosedTests(GatewayTestCase):
         engine.apply()
         self.assertTrue(engine.lifecycle_state.applied)
 
-        engine._fail_closed(GatewayError("upstream vanished"))
+        engine.fail_closed(GatewayError("upstream vanished"))
 
         self.assertFalse(engine.lifecycle_state.applied)
         self.assertIsNone(engine.selection_state.active_connection)
@@ -29,7 +29,7 @@ class FailClosedTests(GatewayTestCase):
 
         engine.cleanup = fail_cleanup
 
-        engine._fail_closed(GatewayError("upstream vanished"))
+        engine.fail_closed(GatewayError("upstream vanished"))
 
         self.assertEqual(
             engine.lifecycle_state.last_error,
@@ -46,7 +46,7 @@ class FailClosedTests(GatewayTestCase):
         engine.upstream_lifecycle.deactivate = lambda management: None
         engine.upstream_lifecycle.error = "profile deletion blocked"
 
-        engine._fail_closed(GatewayError("upstream vanished"))
+        engine.fail_closed(GatewayError("upstream vanished"))
 
         self.assertEqual(
             engine.lifecycle_state.last_error,
@@ -68,7 +68,7 @@ class FailClosedTests(GatewayTestCase):
         engine.upstream_lifecycle.deactivate = lambda management: None
         engine.upstream_lifecycle.error = "profile deletion blocked"
 
-        engine._fail_closed(GatewayError("upstream vanished"))
+        engine.fail_closed(GatewayError("upstream vanished"))
 
         self.assertEqual(
             engine.lifecycle_state.last_error,
@@ -90,7 +90,7 @@ class RunLoopTests(GatewayTestCase):
             fail_closed_calls.append(err)
             engine.stop_event.set()
 
-        engine._fail_closed = fake_fail_closed
+        engine.fail_closed = fake_fail_closed
         engine.auto_disable.reconcile = mock.Mock(
             side_effect=AssertionError(
                 "auto_disable.reconcile must not run after a fail-closed stop"

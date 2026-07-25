@@ -6,7 +6,7 @@ import unittest
 from collections.abc import Callable
 from typing import Any
 
-from rootfs.app.gateway_probe import probe_upstream
+from rootfs.app.gateway_runtime import probe_upstream
 from rootfs.app.upstream_models import ResolvedUpstream
 from test_support.process import Result
 
@@ -19,7 +19,7 @@ UPSTREAM = ResolvedUpstream(
 
 
 def _engine(run: Callable[..., Any]) -> Any:
-    return types.SimpleNamespace(_run=run)
+    return types.SimpleNamespace(run_command=run)
 
 
 class ProbeUpstreamTests(unittest.TestCase):

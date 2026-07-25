@@ -5,8 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .errors import GatewayError
-from .gateway_cleanup import cleanup
-from .gateway_transition import cleanup_changed_ownership
+from .gateway_cleanup import cleanup, cleanup_changed_ownership
 from .lifecycle import log_upstream_transitions, wifi_interface_status
 
 if TYPE_CHECKING:
@@ -32,9 +31,9 @@ def evaluate_safety(
 ) -> SafetyEvaluation:
     downstream = engine.safety.find_downstream(management.interface)
     engine.upstream_lifecycle.activate(management)
-    engine._persist_state()
+    engine.persist_state()
     engine.connection.wifi_error = engine.upstream_lifecycle.error
-    upstream, upstream_errors = engine._resolve_upstream(downstream)
+    upstream, upstream_errors = engine.resolve_upstream(downstream)
     cleanup_changed_ownership(engine, downstream, upstream)
     try:
         errors = engine.safety.errors(
@@ -58,12 +57,12 @@ def record_evaluation(engine: GatewayEngine, evaluation: SafetyEvaluation) -> No
     with engine.lock:
         engine.selection_state.downstream = evaluation.downstream
         engine.selection_state.safety_errors = evaluation.errors
-    engine._record_upstream(evaluation.upstream)
+    engine.record_upstream(evaluation.upstream)
     log_upstream_transitions(engine, evaluation.upstream, evaluation.wifi_status)
 
 
 def protect_host_if_needed(engine: GatewayEngine, downstream: str | None) -> None:
-    if engine._protectable_downstream(
+    if engine.protectable_downstream(
         downstream
     ) and not engine.firewall.host_protection_installed(downstream):
         assert downstream is not None

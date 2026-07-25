@@ -65,12 +65,12 @@ def _ipv4_forwarding_installed(
             firewall.netfilter.chain_matches(
                 "iptables",
                 firewall.FORWARD_CHAIN,
-                firewall._forward_rules(downstream, upstream),
+                firewall.forward_rules(downstream, upstream),
             ),
             firewall.netfilter.rule_exists(
                 "iptables",
                 "POSTROUTING",
-                firewall._nat_rule(upstream),
+                firewall.nat_rule(upstream),
                 ["-t", "nat"],
             ),
             all(
@@ -80,7 +80,7 @@ def _ipv4_forwarding_installed(
                     rule,
                     ["-t", "mangle"],
                 )
-                for rule in firewall._mss_rules(downstream, upstream)
+                for rule in firewall.mss_rules(downstream, upstream)
             ),
         )
     )
@@ -101,7 +101,7 @@ def _ipv6_forwarding_installed(firewall: Firewall, downstream: str) -> bool:
             firewall.netfilter.chain_matches(
                 "ip6tables",
                 firewall.FORWARD6_CHAIN,
-                firewall._forward6_rules(downstream),
+                firewall.forward6_rules(downstream),
             ),
         )
     )
@@ -122,7 +122,7 @@ def _input_guard_installed(firewall: Firewall, downstream: str) -> bool:
             firewall.netfilter.chain_matches(
                 "iptables",
                 firewall.INPUT_CHAIN,
-                firewall._input_rules(),
+                firewall.input_rules(),
             ),
         )
     )
@@ -143,7 +143,7 @@ def _ipv6_input_guard_installed(firewall: Firewall, downstream: str) -> bool:
             firewall.netfilter.chain_matches(
                 "ip6tables",
                 firewall.INPUT6_CHAIN,
-                firewall._input6_rules(),
+                firewall.input6_rules(),
             ),
         )
     )

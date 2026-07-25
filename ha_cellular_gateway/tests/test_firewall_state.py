@@ -96,10 +96,10 @@ class FirewallStateTests(unittest.TestCase):
                     )
                 ),
             ),
-            ("iptables", "POSTROUTING", ("-t", "nat"), tuple(firewall._nat_rule())),
+            ("iptables", "POSTROUTING", ("-t", "nat"), tuple(firewall.nat_rule())),
             *{
                 ("iptables", "FORWARD", ("-t", "mangle"), tuple(rule))
-                for rule in firewall._mss_rules("enx001122334455")
+                for rule in firewall.mss_rules("enx001122334455")
             },
         }
         firewall.netfilter.chain_exists = lambda family, chain: family == "iptables"
@@ -155,9 +155,9 @@ class FirewallStateTests(unittest.TestCase):
             )
         )
         firewall.netfilter.chain_rules = lambda family, chain, table_args=None: [
-            *firewall._input_rules()[:-1],
+            *firewall.input_rules()[:-1],
             ["-j", "ACCEPT"],
-            firewall._input_rules()[-1],
+            firewall.input_rules()[-1],
         ]
 
         self.assertFalse(firewall.host_protection_installed("enx001122334455"))

@@ -43,7 +43,7 @@ def install_realistic_firewall_state(
             (
                 "iptables",
                 ("-t", "nat"),
-                ("POSTROUTING", *firewall._nat_rule(upstream)),
+                ("POSTROUTING", *firewall.nat_rule(upstream)),
             ),
             *{
                 (
@@ -51,7 +51,7 @@ def install_realistic_firewall_state(
                     ("-t", "mangle"),
                     ("FORWARD", *rule),
                 )
-                for rule in firewall._mss_rules(downstream, upstream)
+                for rule in firewall.mss_rules(downstream, upstream)
             },
             (
                 "ip6tables",

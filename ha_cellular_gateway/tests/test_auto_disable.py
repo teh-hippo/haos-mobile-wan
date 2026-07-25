@@ -35,7 +35,7 @@ class FakeEngine:
         self.persist_error: Exception | None = None
         self.events = events if events is not None else []
 
-    def _persist_state(self) -> None:
+    def persist_state(self) -> None:
         self.persist_calls += 1
         if self.persist_error is not None:
             raise self.persist_error

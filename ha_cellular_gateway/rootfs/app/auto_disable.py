@@ -94,7 +94,7 @@ class AutoDisable:
 
     def _persist(self, engine: GatewayEngine) -> None:
         try:
-            engine._persist_state()
+            engine.persist_state()
         except (OSError, ValueError) as err:
             self.persistence_error = f"Auto-disable state persistence failed: {err}"
         else:

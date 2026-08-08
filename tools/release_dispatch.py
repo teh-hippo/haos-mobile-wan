@@ -1,10 +1,3 @@
-"""Check the release dispatch inputs against the channel being published.
-
-This ran as an inline script inside the release workflow, where neither ruff,
-mypy nor the test suite could see it, despite being the gate that decides
-whether a stable release may proceed.
-"""
-
 from __future__ import annotations
 
 import os

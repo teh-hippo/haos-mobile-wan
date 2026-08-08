@@ -1,5 +1,3 @@
-"""Faults reported by the mobile upstream, plus the iPhone pairing states."""
-
 from __future__ import annotations
 
 from .faults import FaultSpec

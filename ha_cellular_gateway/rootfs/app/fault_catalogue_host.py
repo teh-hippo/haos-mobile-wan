@@ -1,5 +1,3 @@
-"""Faults whose reported text is fixed, covering host, downstream and policy."""
-
 from __future__ import annotations
 
 from .faults import FaultSpec

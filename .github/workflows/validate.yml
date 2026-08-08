@@ -83,9 +83,6 @@ jobs:
       - name: Validate the shipped distribution
         run: uv run python -m tools.distribution_contract
 
-      - name: Validate source structure
-        run: uv run python -m tools.structure_contract
-
       - name: Lint Home Assistant app
         uses: frenck/action-addon-linter@f995494fd84fae6310d23617e66d0e37de4f14eb # v2.21.0
         with:

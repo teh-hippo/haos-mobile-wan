@@ -3,6 +3,10 @@
 Earlier release notes are available from
 [GitHub Releases](https://github.com/teh-hippo/haos-mobile-wan/releases).
 
+## 1.0.4
+
+- Refresh the Home Assistant base 3.24 image digest.
+
 ## 1.0.3
 
 - Add matching Start and Stop controls to the documented Home Assistant

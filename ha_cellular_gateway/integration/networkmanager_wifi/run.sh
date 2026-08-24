@@ -6,11 +6,48 @@ REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../../.." && pwd)"
 GUEST_DIR="${SCRIPT_DIR}/guest"
 
 IMAGE_URL="${QEMU_IMAGE_URL:-https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-amd64.qcow2}"
-IMAGE_SHA512="${QEMU_IMAGE_SHA512:-78f658893d7aecb56288b86afebb72dcdb1a636e8e9db8bda64851a308697794678ceb5cd3b7c86afd5fb892afbc6baf9d2dbaceb7855347fde8660e8d68e667}"
+IMAGE_FILENAME="${IMAGE_URL##*/}"
+IMAGE_SHA512_URL="${QEMU_IMAGE_SHA512_URL:-${IMAGE_URL%/*}/SHA512SUMS}"
 CACHE_DIR="${QEMU_CACHE_DIR:-${HOME}/.cache/haos-mobile-wan-qemu}"
 RUN_ROOT="${QEMU_RUN_ROOT:-${TMPDIR:-/tmp}/haos-mobile-wan-qemu}"
 LOG_ROOT="${QEMU_LOG_ROOT:-${SCRIPT_DIR}/logs}"
 LAB_EXPECT="${LAB_EXPECT:-fixed}"
+
+resolve_image_sha512() {
+  local checksum
+
+  if [ -n "${QEMU_IMAGE_SHA512:-}" ]; then
+    checksum="$QEMU_IMAGE_SHA512"
+  else
+    command -v curl >/dev/null || {
+      echo "Required command is unavailable: curl" >&2
+      return 1
+    }
+    checksum="$(
+      curl -fsSL --retry 3 "$IMAGE_SHA512_URL" |
+        awk -v image="$IMAGE_FILENAME" '$2 == image { print $1 }'
+    )"
+  fi
+
+  [[ "$checksum" =~ ^[[:xdigit:]]{128}$ ]] || {
+    echo "Unable to resolve a valid SHA-512 checksum for $IMAGE_FILENAME." >&2
+    return 1
+  }
+  printf '%s\n' "$checksum"
+}
+
+case "${1:-}" in
+  --print-image-sha512)
+    resolve_image_sha512
+    exit
+    ;;
+  "")
+    ;;
+  *)
+    echo "Unknown argument: $1" >&2
+    exit 2
+    ;;
+esac
 
 for command in \
   curl genisoimage python3 qemu-img qemu-system-x86_64 rsync setsid sha512sum \
@@ -54,7 +91,7 @@ if [ -n "${QEMU_BASE_IMAGE:-}" ]; then
   EXPECTED_SHA512="${QEMU_BASE_IMAGE_SHA512:?Set QEMU_BASE_IMAGE_SHA512}"
 else
   BASE_IMAGE="${CACHE_DIR}/debian-13-generic-amd64.qcow2"
-  EXPECTED_SHA512="$IMAGE_SHA512"
+  EXPECTED_SHA512="$(resolve_image_sha512)"
   if [ ! -f "$BASE_IMAGE" ]; then
     temporary="${BASE_IMAGE}.download"
     rm -f "$temporary"

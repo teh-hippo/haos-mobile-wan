@@ -30,14 +30,22 @@ jobs:
             qemu-utils \
             rsync
 
+      - name: Resolve Debian cloud image checksum
+        id: debian-image
+        run: |
+          sha512="$(./ha_cellular_gateway/integration/networkmanager_wifi/run.sh --print-image-sha512)"
+          echo "sha512=$sha512" >> "$GITHUB_OUTPUT"
+
       - name: Cache Debian cloud image
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/haos-mobile-wan-qemu
-          key: debian-13-generic-amd64-78f658893d7aecb5
+          key: debian-13-generic-amd64-${{ steps.debian-image.outputs.sha512 }}
 
       - name: Run QEMU Wi-Fi and generic USB lab
         timeout-minutes: 28
+        env:
+          QEMU_IMAGE_SHA512: ${{ steps.debian-image.outputs.sha512 }}
         run: ./ha_cellular_gateway/integration/networkmanager_wifi/run.sh
 
       - name: Print QEMU lab logs

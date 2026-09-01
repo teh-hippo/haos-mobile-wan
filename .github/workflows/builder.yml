@@ -177,7 +177,7 @@ jobs:
           image: ${{ env.REGISTRY_PREFIX }}/${{ env.IMAGE_NAME }}:${{ needs.init.outputs.version }}
           cosign-identity: ^https://github\.com/teh-hippo/haos-mobile-wan/\.github/workflows/builder\.yml@refs/heads/(main|beta)$
 
-      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+      - uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4
 
       - name: Smoke test published image
         env:

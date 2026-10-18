@@ -155,8 +155,11 @@ The entities report:
 - downstream presence;
 - firewall and DHCP state.
 
-The MQTT entities remain unavailable while the app is stopped. Dashboard
-controls use Home Assistant's add-on actions rather than MQTT commands.
+The app removes its MQTT device and entities when it stops, then recreates them
+when it starts. Home Assistant restores entity IDs and customisations when the
+device returns, provided its deleted-entity records have not been purged after
+30 days. Dashboard controls use Home Assistant's add-on actions rather than
+MQTT commands.
 
 ### Dashboard example
 

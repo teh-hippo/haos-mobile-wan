@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from types import SimpleNamespace
 
 from rootfs.app.mqtt_discovery import (
     AVAILABILITY_TOPIC,
@@ -101,9 +102,67 @@ class PublisherLifecycleTests(unittest.TestCase):
         client = clients[0]
         client.trigger_connect(rc=0)
         publisher.stop()
+        self.assertEqual(
+            client.published[-2],
+            (DISCOVERY_TOPIC, "", 1, True),
+        )
         self.assertEqual(client.published[-1], (AVAILABILITY_TOPIC, "offline", 1, True))
         self.assertTrue(client.loop_stopped)
         self.assertTrue(client.disconnected)
+
+    def test_birth_message_after_stop_does_not_recreate_device(self) -> None:
+        publisher, _engine, clients = make_publisher()
+        publisher.start()
+        client = clients[0]
+        client.trigger_connect(rc=0)
+        publisher.stop()
+
+        discovery_count = sum(
+            topic == DISCOVERY_TOPIC for topic, *_ in client.published
+        )
+        client.trigger_message(STATUS_TOPIC, b"online")
+
+        self.assertEqual(
+            sum(topic == DISCOVERY_TOPIC for topic, *_ in client.published),
+            discovery_count,
+        )
+
+    def test_stop_waits_for_discovery_cleanup_before_disconnect(self) -> None:
+        publisher, _engine, clients = make_publisher()
+        publisher.start()
+        client = clients[0]
+        client.trigger_connect(rc=0)
+        events = []
+
+        def publish(topic, payload, _qos=0, _retain=False):
+            events.append(("publish", topic, payload))
+            if topic == DISCOVERY_TOPIC and payload == "":
+
+                def wait_for_publish(*, timeout):
+                    events.append(("wait", timeout))
+
+                return SimpleNamespace(wait_for_publish=wait_for_publish)
+            return None
+
+        client.publish = publish
+        original_disconnect = client.disconnect
+
+        def disconnect():
+            events.append(("disconnect",))
+            original_disconnect()
+
+        client.disconnect = disconnect
+        publisher.stop()
+
+        self.assertEqual(
+            events,
+            [
+                ("publish", DISCOVERY_TOPIC, ""),
+                ("wait", 10),
+                ("publish", AVAILABILITY_TOPIC, "offline"),
+                ("disconnect",),
+            ],
+        )
 
 
 if __name__ == "__main__":

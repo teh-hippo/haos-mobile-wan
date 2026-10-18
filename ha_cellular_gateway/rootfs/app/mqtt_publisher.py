@@ -50,6 +50,7 @@ class MqttPublisher:
         self._connection: MqttConnection | None = None
         self._warning_emitted = False
         self._stop = threading.Event()
+        self._announce_lock = threading.Lock()
         self._thread: threading.Thread | None = None
 
     def start(self) -> bool:
@@ -78,6 +79,7 @@ class MqttPublisher:
             client_id=CLIENT_ID,
             client_factory=self._client_factory,
         )
+        self._connection = connection
         try:
             connection.connect(
                 availability_topic=AVAILABILITY_TOPIC,
@@ -86,13 +88,13 @@ class MqttPublisher:
                 on_message=self._on_message,
             )
         except OSError as err:
+            self._connection = None
             self._log_unavailable(
                 "MQTT connection failed; retrying in %s seconds: %s",
                 self._retry_interval,
                 err,
             )
             return False
-        self._connection = connection
         if self._warning_emitted:
             _LOGGER.info("MQTT discovery recovered")
         self._warning_emitted = False
@@ -108,15 +110,30 @@ class MqttPublisher:
         if self._thread is not None:
             self._thread.join(timeout=10)
             self._thread = None
-        if self._connection is not None:
-            self._connection.publish(
-                AVAILABILITY_TOPIC,
-                PAYLOAD_OFFLINE,
-                qos=1,
-                retain=True,
-            )
-            self._connection.disconnect()
-            self._connection = None
+        # Detach under the announce lock so a birth or reconnect announce on the
+        # MQTT network thread cannot recreate the device after its removal.
+        with self._announce_lock:
+            connection, self._connection = self._connection, None
+        if connection is None:
+            return
+        # An empty retained device discovery payload removes the device and all
+        # of its entities from Home Assistant.
+        try:
+            info = connection.publish(DISCOVERY_TOPIC, "", qos=1, retain=True)
+            if info is not None:
+                info.wait_for_publish(timeout=10)
+        except (RuntimeError, ValueError) as err:
+            _LOGGER.warning("Could not confirm MQTT discovery cleanup: %s", err)
+        finally:
+            try:
+                connection.publish(
+                    AVAILABILITY_TOPIC,
+                    PAYLOAD_OFFLINE,
+                    qos=1,
+                    retain=True,
+                )
+            finally:
+                connection.disconnect()
 
     def publish_state(self) -> None:
         if self._connection is None:
@@ -128,12 +145,15 @@ class MqttPublisher:
         self._connection.publish(STATE_TOPIC, payload, qos=1, retain=True)
 
     def announce(self) -> None:
-        if self._connection is None:
-            return
-        payload = json.dumps(build_discovery_payload(), separators=(",", ":"))
-        self._connection.publish(DISCOVERY_TOPIC, payload, qos=1, retain=True)
-        self._connection.publish(AVAILABILITY_TOPIC, PAYLOAD_ONLINE, qos=1, retain=True)
-        self.publish_state()
+        with self._announce_lock:
+            if self._connection is None:
+                return
+            payload = json.dumps(build_discovery_payload(), separators=(",", ":"))
+            self._connection.publish(DISCOVERY_TOPIC, payload, qos=1, retain=True)
+            self._connection.publish(
+                AVAILABILITY_TOPIC, PAYLOAD_ONLINE, qos=1, retain=True
+            )
+            self.publish_state()
 
     def _on_connect(self, client: Any, _userdata: Any, _flags: Any, rc: Any) -> None:
         if rc:

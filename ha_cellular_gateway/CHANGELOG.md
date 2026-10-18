@@ -3,6 +3,10 @@
 Earlier release notes are available from
 [GitHub Releases](https://github.com/teh-hippo/haos-mobile-wan/releases).
 
+## 1.0.5
+
+- Remove MQTT entities when the app stops and recreate them when it starts.
+
 ## 1.0.4
 
 - Refresh the Home Assistant base 3.24 image digest.

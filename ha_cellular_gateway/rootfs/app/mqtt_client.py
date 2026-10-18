@@ -63,9 +63,10 @@ class MqttConnection:
         *,
         qos: int = 0,
         retain: bool = False,
-    ) -> None:
+    ) -> Any | None:
         if self._client is not None:
-            self._client.publish(topic, payload, qos, retain)
+            return self._client.publish(topic, payload, qos, retain)
+        return None
 
     def disconnect(self) -> None:
         if self._client is None:
